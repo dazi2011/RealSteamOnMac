@@ -35,8 +35,12 @@ chmod +x "$RUNTIME"
 printf '%s' \
     '<!doctype html><html style="width: 100%; height: 100%"><head><title>SharedJSContext</title><meta charset="utf-8"><script defer="defer" src="/libraries/libraries~00299a408.js"></script><script defer="defer" src="/library.js"></script><link href="/css/library.css" rel="stylesheet"></head><body style="width: 100%; height: 100%; margin: 0; overflow: hidden;"><div id="root" style="height:100%; width: 100%"></div><div style="display:none"></div></body></html>' \
     >"$STEAMUI/index.html"
+printf '%s' \
+    'before(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")middle(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")after' \
+    >"$STEAMUI/chunk~2dcc5aaf7.js"
 
 HOME="$HOME_ROOT" \
+REALSTEAMONMAC_ALLOW_TEST_FIXTURES=1 \
 REALSTEAMONMAC_RUNTIME_EXECUTABLE="$RUNTIME" \
 REALSTEAMONMAC_SUPPORT_ROOT="$SUPPORT" \
 REALSTEAMONMAC_LAUNCHER_DRY_RUN=1 \
@@ -49,5 +53,9 @@ grep -Fq "args=-skipinitialbootstrap -cef-enable-debugging" "$CAPTURE"
 grep -Fq "steamui=verified" "$CAPTURE"
 grep -Fq '/realsteamonmac/ui.js' "$STEAMUI/index.html"
 test -f "$STEAMUI/index.html.realsteamonmac.original"
+test -f \
+    "$STEAMUI/chunk~2dcc5aaf7.js.realsteamonmac.original"
+test "$(grep -o '__REALSTEAMONMAC_CONFIG__' \
+    "$STEAMUI/chunk~2dcc5aaf7.js" | wc -l)" -eq 2
 
 echo "Steam launcher contract: PASS"

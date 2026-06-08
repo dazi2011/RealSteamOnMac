@@ -4,6 +4,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 TMP_ROOT=$(mktemp -d)
 trap 'rm -rf "$TMP_ROOT"' EXIT
+export REALSTEAMONMAC_ALLOW_TEST_FIXTURES=1
 
 "$ROOT/script/build_compat_gate_hook.sh" >/dev/null
 "$ROOT/script/build_steam_launcher.sh" >/dev/null
@@ -39,6 +40,9 @@ cp /usr/bin/true "$RUNTIME_APP/Contents/MacOS/steam_osx"
 printf '%s' \
     '<!doctype html><html style="width: 100%; height: 100%"><head><title>SharedJSContext</title><meta charset="utf-8"><script defer="defer" src="/libraries/libraries~00299a408.js"></script><script defer="defer" src="/library.js"></script><link href="/css/library.css" rel="stylesheet"></head><body style="width: 100%; height: 100%; margin: 0; overflow: hidden;"><div id="root" style="height:100%; width: 100%"></div><div style="display:none"></div></body></html>' \
     >"$RUNTIME_APP/Contents/MacOS/steamui/index.html"
+printf '%s' \
+    'before(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")middle(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")after' \
+    >"$RUNTIME_APP/Contents/MacOS/steamui/chunk~2dcc5aaf7.js"
 ln -s steam_osx "$STEAM_APP/Contents/MacOS/steam.sh"
 codesign --force --deep --sign - "$STEAM_APP"
 codesign --force --deep --sign - "$RUNTIME_APP"
@@ -66,12 +70,17 @@ test -x "$SUPPORT/patch_steamui.py"
 test -f "$SUPPORT/ui/realsteamonmac_ui.js"
 test -f \
     "$RUNTIME_APP/Contents/MacOS/steamui/index.html.realsteamonmac.original"
+test -f \
+    "$RUNTIME_APP/Contents/MacOS/steamui/chunk~2dcc5aaf7.js.realsteamonmac.original"
 grep -q '/realsteamonmac/config.js' \
     "$RUNTIME_APP/Contents/MacOS/steamui/index.html"
 grep -q '/realsteamonmac/ui.js' \
     "$RUNTIME_APP/Contents/MacOS/steamui/index.html"
 grep -q '"appids":\[1118200\]' \
     "$RUNTIME_APP/Contents/MacOS/steamui/realsteamonmac/config.js"
+test "$(grep -o '__REALSTEAMONMAC_CONFIG__' \
+    "$RUNTIME_APP/Contents/MacOS/steamui/chunk~2dcc5aaf7.js" |
+    wc -l)" -eq 2
 test -x "$STEAM_APP/Contents/MacOS/realsteamonmac_launcher"
 test -x "$STEAM_APP/Contents/MacOS/steam_osx.original"
 test ! -e "$STEAM_APP/Contents/MacOS/steam_osx"

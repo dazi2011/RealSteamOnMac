@@ -17,6 +17,13 @@ CURRENT_INDEX = (
     '<div id="root" style="height:100%; width: 100%"></div>'
     '<div style="display:none"></div></body></html>'
 )
+COMPAT_PAGE_ANCHOR = (
+    '(0,f.CI)()&&o.push({title:(0,A.we)'
+    '("#AppProperties_CompatibilityPage")'
+)
+CURRENT_COMPAT_CHUNK = (
+    f"before{COMPAT_PAGE_ANCHOR}middle{COMPAT_PAGE_ANCHOR}after"
+)
 
 
 def load_patcher():
@@ -35,6 +42,11 @@ class SteamUIPatchTests(unittest.TestCase):
         self.steamui.mkdir()
         self.index = self.steamui / "index.html"
         self.index.write_text(CURRENT_INDEX, encoding="utf-8")
+        self.compat_chunk = self.steamui / "chunk~2dcc5aaf7.js"
+        self.compat_chunk.write_text(CURRENT_COMPAT_CHUNK, encoding="utf-8")
+        self.patcher.KNOWN_COMPAT_CHUNK_SHA256.add(
+            self.patcher.sha256_bytes(CURRENT_COMPAT_CHUNK.encode("utf-8"))
+        )
         self.ui_source = self.root / "realsteamonmac_ui.js"
         self.ui_source.write_text("globalThis.realSteamOnMacLoaded = true;\n")
         self.allowlist = self.root / "allowlist.txt"
@@ -45,6 +57,7 @@ class SteamUIPatchTests(unittest.TestCase):
 
     def test_install_is_idempotent_and_restore_recovers_original(self):
         original = self.index.read_bytes()
+        original_compat_chunk = self.compat_chunk.read_bytes()
 
         self.patcher.install_steamui(
             self.steamui,
@@ -57,6 +70,20 @@ class SteamUIPatchTests(unittest.TestCase):
         self.assertTrue(
             (self.steamui / "index.html.realsteamonmac.original").is_file()
         )
+        self.assertTrue(
+            (
+                self.steamui
+                / "chunk~2dcc5aaf7.js.realsteamonmac.original"
+            ).is_file()
+        )
+        patched_compat_chunk = self.compat_chunk.read_text(encoding="utf-8")
+        self.assertEqual(
+            patched_compat_chunk.count(
+                self.patcher.COMPAT_PAGE_ALLOWLIST_GATE
+            ),
+            2,
+        )
+        self.assertNotIn(COMPAT_PAGE_ANCHOR, patched_compat_chunk)
 
         config_path = self.steamui / "realsteamonmac" / "config.js"
         config_text = config_path.read_text(encoding="utf-8")
@@ -73,9 +100,19 @@ class SteamUIPatchTests(unittest.TestCase):
 
         self.patcher.restore_steamui(self.steamui)
         self.assertEqual(self.index.read_bytes(), original)
+        self.assertEqual(
+            self.compat_chunk.read_bytes(),
+            original_compat_chunk,
+        )
         self.assertFalse((self.steamui / "realsteamonmac").exists())
         self.assertFalse(
             (self.steamui / "index.html.realsteamonmac.original").exists()
+        )
+        self.assertFalse(
+            (
+                self.steamui
+                / "chunk~2dcc5aaf7.js.realsteamonmac.original"
+            ).exists()
         )
 
     def test_allowlist_parser_filters_invalid_and_duplicate_values(self):
@@ -122,6 +159,28 @@ class SteamUIPatchTests(unittest.TestCase):
             )
 
         self.assertEqual(self.index.read_bytes(), original)
+        self.assertFalse(
+            (self.steamui / "index.html.realsteamonmac.original").exists()
+        )
+        self.assertFalse((self.steamui / "realsteamonmac").exists())
+
+    def test_unknown_compat_chunk_is_rejected_before_index_changes(self):
+        original_index = self.index.read_bytes()
+        original_chunk = b"unknown compatibility module"
+        self.compat_chunk.write_bytes(original_chunk)
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "unsupported compatibility chunk hash",
+        ):
+            self.patcher.install_steamui(
+                self.steamui,
+                self.ui_source,
+                self.allowlist,
+            )
+
+        self.assertEqual(self.index.read_bytes(), original_index)
+        self.assertEqual(self.compat_chunk.read_bytes(), original_chunk)
         self.assertFalse(
             (self.steamui / "index.html.realsteamonmac.original").exists()
         )
