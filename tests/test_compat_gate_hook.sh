@@ -26,12 +26,17 @@ grep -q 'is_steam_bootstrap_process' "$SOURCE"
 grep -q 'clear_injection_environment' "$SOURCE"
 grep -q 'pthread_create' "$SOURCE"
 grep -q 'data_override_worker' "$SOURCE"
-if grep -q 'DATA_OVERRIDE_ATTEMPTS' "$SOURCE"; then
-    echo "native reconciliation must not expire after a fixed attempt count" >&2
+if grep -Eq 'DATA_OVERRIDE_ATTEMPTS|DATA_OVERRIDE_RECONCILE_DELAY_US' "$SOURCE"; then
+    echo "native reconciliation must use tracked objects, not repeated full scans" >&2
     exit 1
 fi
-grep -q 'DATA_OVERRIDE_RECONCILE_DELAY_US' "$SOURCE"
+grep -q 'TRACKED_OBJECT_REFRESH_DELAY_US' "$SOURCE"
+grep -q 'FULL_RESCAN_INTERVAL_TICKS' "$SOURCE"
+grep -q 'track_object' "$SOURCE"
+grep -q 'refresh_tracked_objects' "$SOURCE"
 grep -q 'while (is_steam_runtime_process())' "$SOURCE"
+grep -q 'environment_cleared' "$SOURCE"
+grep -q 'data override: initial reconciliation completed' "$SOURCE"
 grep -q 'data override: reconciliation worker stopped' "$SOURCE"
 grep -q 'mach_vm_region' "$SOURCE"
 grep -q 'vtable + 0x68' "$SOURCE"

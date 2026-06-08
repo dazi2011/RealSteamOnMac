@@ -17,7 +17,10 @@
 #define STEAMUI_PLATFORM_FLAGS_GETTER_OFFSET ((uintptr_t)0x005EAC3C)
 #define PLATFORM_INVALID_BIT ((uint32_t)0x10)
 #define MAX_ALLOWLIST_APPIDS ((size_t)256)
-#define DATA_OVERRIDE_RECONCILE_DELAY_US 1000000
+#define MAX_TRACKED_APP_OBJECTS ((size_t)64)
+#define TRACKED_OBJECT_REFRESH_DELAY_US 250000
+#define EMPTY_RESCAN_INTERVAL_TICKS 8
+#define FULL_RESCAN_INTERVAL_TICKS 60
 
 static const uint8_t kSteamClientUUID[16] = {
     0xB2, 0x95, 0x06, 0x28, 0x80, 0x3A, 0x3E, 0xFD,
@@ -42,10 +45,14 @@ static const uint32_t kSteamUIExpected[2] = {
 
 static uint32_t gAllowlist[MAX_ALLOWLIST_APPIDS];
 static size_t gAllowlistCount = 0;
+static mach_vm_address_t gTrackedObjects[MAX_TRACKED_APP_OBJECTS];
+static size_t gTrackedObjectCount = 0;
 static bool gAllowlistLoaded = false;
 static bool gRegistered = false;
 static bool gSteamClientPatched = false;
 static bool gSteamUIPatched = false;
+static bool gDataScanStartedLogged = false;
+static bool gDataScanSummaryLogged = false;
 
 static void log_line(const char *message) {
   const char *home = getenv("HOME");
@@ -143,6 +150,62 @@ static bool image_uuid_matches(const struct mach_header *header,
     cursor += command->cmdsize;
   }
   return false;
+}
+
+static void log_steamui_image_diagnostic(void) {
+  uint32_t count = _dyld_image_count();
+  for (uint32_t index = 0; index < count; ++index) {
+    const char *name = _dyld_get_image_name(index);
+    if (name == NULL || strstr(name, "steamui.dylib") == NULL) {
+      continue;
+    }
+
+    const struct mach_header *header = _dyld_get_image_header(index);
+    const struct mach_header_64 *header64 =
+        (const struct mach_header_64 *)header;
+    const uint8_t *cursor =
+        header != NULL && header->magic == MH_MAGIC_64
+            ? (const uint8_t *)(header64 + 1)
+            : NULL;
+    const uint8_t *uuid = NULL;
+    if (cursor != NULL) {
+      for (uint32_t command_index = 0;
+           command_index < header64->ncmds;
+           ++command_index) {
+        const struct load_command *command =
+            (const struct load_command *)cursor;
+        if (command->cmdsize < sizeof(*command)) {
+          break;
+        }
+        if (command->cmd == LC_UUID &&
+            command->cmdsize >= sizeof(struct uuid_command)) {
+          uuid = ((const struct uuid_command *)command)->uuid;
+          break;
+        }
+        cursor += command->cmdsize;
+      }
+    }
+
+    char message[512];
+    if (uuid != NULL) {
+      snprintf(
+          message, sizeof(message),
+          "dyld diagnostic: steamui index=%u magic=0x%08x "
+          "uuid=%02X%02X%02X%02X%02X%02X%02X%02X"
+          "%02X%02X%02X%02X%02X%02X%02X%02X path=%s",
+          index, header->magic,
+          uuid[0], uuid[1], uuid[2], uuid[3],
+          uuid[4], uuid[5], uuid[6], uuid[7],
+          uuid[8], uuid[9], uuid[10], uuid[11],
+          uuid[12], uuid[13], uuid[14], uuid[15], name);
+    } else {
+      snprintf(message, sizeof(message),
+               "dyld diagnostic: steamui index=%u magic=0x%08x "
+               "uuid=unavailable path=%s",
+               index, header != NULL ? header->magic : 0, name);
+    }
+    log_line(message);
+  }
 }
 
 static const struct mach_header *find_image_by_uuid(
@@ -510,6 +573,79 @@ static bool read_process_memory(mach_vm_address_t address,
   return result == KERN_SUCCESS && bytes_read == length;
 }
 
+static void track_object(mach_vm_address_t address) {
+  for (size_t index = 0; index < gTrackedObjectCount; ++index) {
+    if (gTrackedObjects[index] == address) {
+      return;
+    }
+  }
+  if (gTrackedObjectCount < MAX_TRACKED_APP_OBJECTS) {
+    gTrackedObjects[gTrackedObjectCount++] = address;
+  }
+}
+
+typedef struct {
+  size_t valid;
+  size_t patched;
+} tracked_refresh_result;
+
+static tracked_refresh_result refresh_tracked_objects(void) {
+  tracked_refresh_result result = {0, 0};
+  const struct mach_header *steamui = find_image_by_uuid(kSteamUIUUID);
+  if (steamui == NULL) {
+    gTrackedObjectCount = 0;
+    return result;
+  }
+
+  uintptr_t getter =
+      (uintptr_t)steamui + STEAMUI_PLATFORM_FLAGS_GETTER_OFFSET;
+  size_t index = 0;
+  while (index < gTrackedObjectCount) {
+    mach_vm_address_t address = gTrackedObjects[index];
+    uint8_t bytes[0x20];
+    uintptr_t vtable = 0;
+    uintptr_t method = 0;
+    uint32_t appid = 0;
+    uint32_t flags = 0;
+    bool valid =
+        read_process_memory(address, bytes, sizeof(bytes));
+    if (valid) {
+      memcpy(&vtable, bytes, sizeof(vtable));
+      memcpy(&appid, bytes + 0x08, sizeof(appid));
+      memcpy(&flags, bytes + 0x1C, sizeof(flags));
+      valid =
+          vtable != 0 &&
+          is_allowlisted(appid) &&
+          read_process_memory(
+              (mach_vm_address_t)(vtable + 0x68),
+              &method, sizeof(method)) &&
+          method == getter;
+    }
+
+    if (!valid) {
+      gTrackedObjects[index] =
+          gTrackedObjects[gTrackedObjectCount - 1];
+      --gTrackedObjectCount;
+      continue;
+    }
+
+    ++result.valid;
+    if ((flags & PLATFORM_INVALID_BIT) != 0) {
+      uint32_t filtered = flags & ~PLATFORM_INVALID_BIT;
+      if (mach_vm_write(
+              mach_task_self(),
+              address + 0x1C,
+              (vm_offset_t)&filtered,
+              (mach_msg_type_number_t)sizeof(filtered)) ==
+          KERN_SUCCESS) {
+        ++result.patched;
+      }
+    }
+    ++index;
+  }
+  return result;
+}
+
 __attribute__((visibility("default")))
 size_t realsteamonmac_apply_data_overrides(void) {
   ensure_allowlist_loaded();
@@ -517,6 +653,10 @@ size_t realsteamonmac_apply_data_overrides(void) {
   if (steamui == NULL) {
     log_line("data override: matching steamui image was not found");
     return 0;
+  }
+  if (!gDataScanStartedLogged) {
+    gDataScanStartedLogged = true;
+    log_line("data override: first reconciliation scan started");
   }
 
   mach_vm_address_t getter =
@@ -530,6 +670,9 @@ size_t realsteamonmac_apply_data_overrides(void) {
   }
 
   size_t patched = 0;
+  size_t allowlisted_candidates = 0;
+  size_t invalid_candidates = 0;
+  size_t getter_matches = 0;
   mach_vm_address_t region = 0;
   for (;;) {
     mach_vm_size_t region_size = 0;
@@ -569,10 +712,15 @@ size_t realsteamonmac_apply_data_overrides(void) {
           memcpy(&vtable, chunk + offset, sizeof(vtable));
           memcpy(&appid, chunk + offset + 0x08, sizeof(appid));
           memcpy(&flags, chunk + offset + 0x1C, sizeof(flags));
-          if (!is_allowlisted(appid) ||
-              (flags & PLATFORM_INVALID_BIT) == 0 ||
-              vtable == 0) {
+          if (!is_allowlisted(appid)) {
             continue;
+          }
+          ++allowlisted_candidates;
+          if (vtable == 0) {
+            continue;
+          }
+          if ((flags & PLATFORM_INVALID_BIT) != 0) {
+            ++invalid_candidates;
           }
 
           uintptr_t method = 0;
@@ -580,6 +728,11 @@ size_t realsteamonmac_apply_data_overrides(void) {
                   (mach_vm_address_t)(vtable + 0x68),
                   &method, sizeof(method)) ||
               method != getter) {
+            continue;
+          }
+          ++getter_matches;
+          track_object(cursor + offset);
+          if ((flags & PLATFORM_INVALID_BIT) == 0) {
             continue;
           }
 
@@ -607,6 +760,16 @@ size_t realsteamonmac_apply_data_overrides(void) {
   }
 
   free(chunk);
+  if (!gDataScanSummaryLogged) {
+    char message[256];
+    snprintf(message, sizeof(message),
+             "data override: first scan allowlisted=%zu invalid=%zu "
+             "getter_matches=%zu tracked=%zu patched=%zu",
+             allowlisted_candidates, invalid_candidates, getter_matches,
+             gTrackedObjectCount, patched);
+    log_line(message);
+    gDataScanSummaryLogged = true;
+  }
   if (patched > 0) {
     char message[160];
     snprintf(message, sizeof(message),
@@ -623,12 +786,41 @@ size_t realsteamonmac_apply_hooks(void) {
 
 static void *data_override_worker(void *context) {
   (void)context;
+  unsigned int missing_image_checks = 0;
+  unsigned int ticks_since_full_scan = EMPTY_RESCAN_INTERVAL_TICKS;
+  bool environment_cleared = false;
   while (is_steam_runtime_process()) {
     if (find_image_by_uuid(kSteamUIUUID) != NULL) {
-      (void)realsteamonmac_apply_data_overrides();
+      tracked_refresh_result refresh = refresh_tracked_objects();
+      if (refresh.patched > 0) {
+        char message[160];
+        snprintf(message, sizeof(message),
+                 "data override: refreshed %zu tracked object(s)",
+                 refresh.patched);
+        log_line(message);
+      }
+
+      unsigned int interval =
+          gTrackedObjectCount == 0
+              ? EMPTY_RESCAN_INTERVAL_TICKS
+              : FULL_RESCAN_INTERVAL_TICKS;
+      if (ticks_since_full_scan >= interval) {
+        (void)realsteamonmac_apply_data_overrides();
+        ticks_since_full_scan = 0;
+        if (!environment_cleared) {
+          clear_injection_environment();
+          environment_cleared = true;
+          log_line("data override: initial reconciliation completed");
+        }
+      } else {
+        ++ticks_since_full_scan;
+      }
+    } else if (++missing_image_checks == 5) {
+      log_steamui_image_diagnostic();
     }
-    usleep(DATA_OVERRIDE_RECONCILE_DELAY_US);
+    usleep(TRACKED_OBJECT_REFRESH_DELAY_US);
   }
+  clear_injection_environment();
   log_line("data override: reconciliation worker stopped");
   return NULL;
 }
@@ -655,6 +847,5 @@ __attribute__((constructor)) static void initialize_platform_hook(void) {
     return;
   }
   (void)pthread_detach(worker);
-  clear_injection_environment();
   log_line("data override: reconciliation worker started");
 }
