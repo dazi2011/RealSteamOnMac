@@ -89,6 +89,24 @@ class SteamUIPatchTests(unittest.TestCase):
             [1118200, 42],
         )
 
+    def test_install_reapplies_when_steam_restores_the_supported_index(self):
+        original = self.index.read_bytes()
+        self.patcher.install_steamui(
+            self.steamui,
+            self.ui_source,
+            self.allowlist,
+        )
+        self.index.write_bytes(original)
+
+        self.patcher.install_steamui(
+            self.steamui,
+            self.ui_source,
+            self.allowlist,
+        )
+
+        self.patcher.verify_steamui(self.steamui)
+        self.assertIn(b"/realsteamonmac/ui.js", self.index.read_bytes())
+
     def test_unknown_clean_index_is_rejected_without_changes(self):
         self.index.write_text(
             CURRENT_INDEX.replace("SharedJSContext", "UnknownBuild"),

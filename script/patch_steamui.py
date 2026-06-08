@@ -165,12 +165,17 @@ def install_steamui(steamui_root, ui_source, allowlist):
         if current != expected:
             raise ValueError("existing Steam UI patch is inconsistent")
     else:
-        if paths["backup"].exists():
-            raise ValueError("Steam UI backup exists without an active patch")
         if sha256_bytes(current) not in KNOWN_INDEX_SHA256:
             raise ValueError("unsupported Steam UI index hash")
+        if paths["backup"].exists():
+            original = validated_original(paths["backup"])
+            if current != original:
+                raise ValueError(
+                    "Steam UI backup does not match the restored clean index"
+                )
+        else:
+            atomic_write(paths["backup"], current)
         patched = build_patched_index(current_text).encode("utf-8")
-        atomic_write(paths["backup"], current)
         atomic_write(paths["index"], patched)
 
     atomic_write(paths["ui"], ui_source.read_bytes())

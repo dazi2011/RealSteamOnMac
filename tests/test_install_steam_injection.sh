@@ -12,7 +12,9 @@ STEAM_APP="$TMP_ROOT/Steam.app"
 RUNTIME_APP="$TMP_ROOT/SteamRuntime.app"
 BACKUP="$TMP_ROOT/backup"
 SUPPORT="$TMP_ROOT/support"
-mkdir -p "$STEAM_APP/Contents/MacOS" "$RUNTIME_APP/Contents/MacOS"
+mkdir -p \
+    "$STEAM_APP/Contents/MacOS" \
+    "$RUNTIME_APP/Contents/MacOS/steamui"
 
 write_info_plist() {
     destination=$1
@@ -34,6 +36,9 @@ write_info_plist "$RUNTIME_APP/Contents/Info.plist" \
     "test.realsteamonmac.runtime"
 cp /usr/bin/true "$STEAM_APP/Contents/MacOS/steam_osx"
 cp /usr/bin/true "$RUNTIME_APP/Contents/MacOS/steam_osx"
+printf '%s' \
+    '<!doctype html><html style="width: 100%; height: 100%"><head><title>SharedJSContext</title><meta charset="utf-8"><script defer="defer" src="/libraries/libraries~00299a408.js"></script><script defer="defer" src="/library.js"></script><link href="/css/library.css" rel="stylesheet"></head><body style="width: 100%; height: 100%; margin: 0; overflow: hidden;"><div id="root" style="height:100%; width: 100%"></div><div style="display:none"></div></body></html>' \
+    >"$RUNTIME_APP/Contents/MacOS/steamui/index.html"
 ln -s steam_osx "$STEAM_APP/Contents/MacOS/steam.sh"
 codesign --force --deep --sign - "$STEAM_APP"
 codesign --force --deep --sign - "$RUNTIME_APP"
@@ -57,6 +62,16 @@ ditto "$RUNTIME_APP" "$BACKUP/SteamRuntime.app"
 test -f "$SUPPORT/libRealSteamCompatGate.dylib"
 test -x "$SUPPORT/compat-tool/realsteamonmac-experimental/run"
 test -f "$SUPPORT/allowlist.txt"
+test -x "$SUPPORT/patch_steamui.py"
+test -f "$SUPPORT/ui/realsteamonmac_ui.js"
+test -f \
+    "$RUNTIME_APP/Contents/MacOS/steamui/index.html.realsteamonmac.original"
+grep -q '/realsteamonmac/config.js' \
+    "$RUNTIME_APP/Contents/MacOS/steamui/index.html"
+grep -q '/realsteamonmac/ui.js' \
+    "$RUNTIME_APP/Contents/MacOS/steamui/index.html"
+grep -q '"appids":\[1118200\]' \
+    "$RUNTIME_APP/Contents/MacOS/steamui/realsteamonmac/config.js"
 test -x "$STEAM_APP/Contents/MacOS/realsteamonmac_launcher"
 test -x "$STEAM_APP/Contents/MacOS/steam_osx.original"
 test ! -e "$STEAM_APP/Contents/MacOS/steam_osx"

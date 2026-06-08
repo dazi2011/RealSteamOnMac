@@ -8,6 +8,8 @@ HOOK_SOURCE="$ROOT/artifacts/compat-gate-hook/libRealSteamCompatGate.dylib"
 LAUNCHER_SOURCE="$ROOT/artifacts/steam-launcher/realsteamonmac_launcher"
 ENTITLEMENTS="$ROOT/config/steam-runtime-entitlements.plist"
 COMPAT_SOURCE="$ROOT/compat-tool"
+PATCHER_SOURCE="$ROOT/script/patch_steamui.py"
+UI_SOURCE="$ROOT/ui/realsteamonmac_ui.js"
 SUPPORT_ROOT="$HOME/Library/Application Support/RealSteamOnMac"
 CLEAN_BACKUP=""
 
@@ -77,18 +79,28 @@ done
     echo "compatibility tool source is missing: $COMPAT_SOURCE" >&2
     exit 1
 }
+[ -x "$PATCHER_SOURCE" ] || {
+    echo "Steam UI patcher is missing: $PATCHER_SOURCE" >&2
+    exit 1
+}
+[ -f "$UI_SOURCE" ] || {
+    echo "Steam UI source is missing: $UI_SOURCE" >&2
+    exit 1
+}
 
 INFO_PLIST="$STEAM_APP/Contents/Info.plist"
 EXECUTABLE="$STEAM_APP/Contents/MacOS/steam_osx"
 ORIGINAL_BOOTSTRAP_TARGET="$STEAM_APP/Contents/MacOS/steam_osx.original"
 LAUNCHER_TARGET="$STEAM_APP/Contents/MacOS/realsteamonmac_launcher"
 RUNTIME_EXECUTABLE="$RUNTIME_APP/Contents/MacOS/steam_osx"
+STEAMUI_ROOT="$RUNTIME_APP/Contents/MacOS/steamui"
 BACKUP_EXECUTABLE="$CLEAN_BACKUP/Steam.app/Contents/MacOS/steam_osx"
 BACKUP_RUNTIME_EXECUTABLE="$CLEAN_BACKUP/SteamRuntime.app/Contents/MacOS/steam_osx"
 
 for required in \
     "$INFO_PLIST" \
     "$RUNTIME_EXECUTABLE" \
+    "$STEAMUI_ROOT/index.html" \
     "$BACKUP_EXECUTABLE" \
     "$BACKUP_RUNTIME_EXECUTABLE"; do
     [ -f "$required" ] || {
@@ -185,17 +197,28 @@ fi
 mkdir -p "$SUPPORT_ROOT"
 HOOK_TARGET="$SUPPORT_ROOT/libRealSteamCompatGate.dylib"
 COMPAT_TARGET="$SUPPORT_ROOT/compat-tool"
+PATCHER_TARGET="$SUPPORT_ROOT/patch_steamui.py"
+UI_TARGET="$SUPPORT_ROOT/ui/realsteamonmac_ui.js"
 
 cp "$HOOK_SOURCE" "$HOOK_TARGET"
 rm -rf "$COMPAT_TARGET"
 cp -R "$COMPAT_SOURCE" "$COMPAT_TARGET"
 chmod +x "$COMPAT_TARGET/realsteamonmac-experimental/run"
 codesign --force --sign - "$HOOK_TARGET"
+mkdir -p "$SUPPORT_ROOT/ui"
+cp "$PATCHER_SOURCE" "$PATCHER_TARGET"
+cp "$UI_SOURCE" "$UI_TARGET"
+chmod 0755 "$PATCHER_TARGET"
 
 if [ ! -f "$SUPPORT_ROOT/allowlist.txt" ]; then
     cp "$ROOT/config/allowlist.txt" "$SUPPORT_ROOT/allowlist.txt"
     chmod 0600 "$SUPPORT_ROOT/allowlist.txt"
 fi
+
+"$PATCHER_TARGET" install \
+    --steamui-root "$STEAMUI_ROOT" \
+    --ui-source "$UI_TARGET" \
+    --allowlist "$SUPPORT_ROOT/allowlist.txt"
 
 # Preserve the clean Valve bootstrap as a standalone fallback executable.
 SIGNED_BOOTSTRAP="$TMP_ROOT/steam_osx.original"
@@ -268,4 +291,5 @@ printf 'launcher=%s\n' "$LAUNCHER_TARGET"
 printf 'hook=%s\n' "$HOOK_TARGET"
 printf 'compat_tools=%s\n' "$COMPAT_TARGET"
 printf 'allowlist=%s\n' "$SUPPORT_ROOT/allowlist.txt"
+printf 'steamui=%s\n' "$STEAMUI_ROOT"
 printf 'rollback_source=%s\n' "$CLEAN_BACKUP"

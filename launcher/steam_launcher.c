@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 static void log_line(const char *format, ...) {
@@ -43,6 +44,63 @@ static bool build_path(char *destination, size_t capacity,
                        const char *left, const char *right) {
   return snprintf(destination, capacity, "%s/%s", left, right) <
          (int)capacity;
+}
+
+static bool parent_path(char *destination, size_t capacity,
+                        const char *path) {
+  size_t length = strlen(path);
+  if (length == 0 || length >= capacity) {
+    return false;
+  }
+  memcpy(destination, path, length + 1);
+  char *slash = strrchr(destination, '/');
+  if (slash == NULL || slash == destination) {
+    return false;
+  }
+  *slash = '\0';
+  return true;
+}
+
+static bool install_steamui_patch(const char *patcher,
+                                  const char *steamui,
+                                  const char *ui_source,
+                                  const char *allowlist) {
+  pid_t child = fork();
+  if (child < 0) {
+    log_line("Steam UI patch failed: fork: %s", strerror(errno));
+    return false;
+  }
+  if (child == 0) {
+    char *const arguments[] = {
+        "/usr/bin/python3",
+        (char *)patcher,
+        "install",
+        "--steamui-root",
+        (char *)steamui,
+        "--ui-source",
+        (char *)ui_source,
+        "--allowlist",
+        (char *)allowlist,
+        NULL,
+    };
+    execv(arguments[0], arguments);
+    _exit(127);
+  }
+
+  int status = 0;
+  while (waitpid(child, &status, 0) < 0) {
+    if (errno == EINTR) {
+      continue;
+    }
+    log_line("Steam UI patch failed: waitpid: %s", strerror(errno));
+    return false;
+  }
+  if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+    log_line("Steam UI patch failed: helper status=%d", status);
+    return false;
+  }
+  log_line("Steam UI patch verified");
+  return true;
 }
 
 static int exec_original_bootstrap(int argc, char **argv,
@@ -122,10 +180,23 @@ int main(int argc, char **argv) {
 
   char hook[PATH_MAX];
   char compat_tools[PATH_MAX];
+  char patcher[PATH_MAX];
+  char ui_source[PATH_MAX];
+  char allowlist[PATH_MAX];
+  char runtime_directory[PATH_MAX];
+  char steamui[PATH_MAX];
   if (!build_path(hook, sizeof(hook), support,
                   "libRealSteamCompatGate.dylib") ||
       !build_path(compat_tools, sizeof(compat_tools), support,
-                  "compat-tool")) {
+                  "compat-tool") ||
+      !build_path(patcher, sizeof(patcher), support,
+                  "patch_steamui.py") ||
+      !build_path(ui_source, sizeof(ui_source), support,
+                  "ui/realsteamonmac_ui.js") ||
+      !build_path(allowlist, sizeof(allowlist), support,
+                  "allowlist.txt") ||
+      !parent_path(runtime_directory, sizeof(runtime_directory), runtime) ||
+      !build_path(steamui, sizeof(steamui), runtime_directory, "steamui")) {
     return exec_original_bootstrap(argc, argv, "support path is too long");
   }
 
@@ -133,9 +204,17 @@ int main(int argc, char **argv) {
     return exec_original_bootstrap(argc, argv,
                                    "Steam runtime is unavailable");
   }
-  if (access(hook, R_OK) != 0 || access(compat_tools, R_OK) != 0) {
+  if (access(hook, R_OK) != 0 ||
+      access(compat_tools, R_OK) != 0 ||
+      access(patcher, X_OK) != 0 ||
+      access(ui_source, R_OK) != 0 ||
+      access(allowlist, R_OK) != 0) {
     return exec_original_bootstrap(argc, argv,
                                    "RealSteamOnMac support files are missing");
+  }
+  if (!install_steamui_patch(patcher, steamui, ui_source, allowlist)) {
+    return exec_original_bootstrap(argc, argv,
+                                   "Steam UI resource patch failed");
   }
 
   if (setenv("DYLD_INSERT_LIBRARIES", hook, 1) != 0 ||
@@ -165,6 +244,7 @@ int main(int argc, char **argv) {
 
   const char *dry_run = getenv("REALSTEAMONMAC_LAUNCHER_DRY_RUN");
   if (dry_run != NULL && strcmp(dry_run, "1") == 0) {
+    printf("steamui=verified\n");
     printf("dyld=%s\n", getenv("DYLD_INSERT_LIBRARIES"));
     printf("enabled=%s\n", getenv("REALSTEAMONMAC_FORCE_COMPAT"));
     printf("tools=%s\n", getenv("STEAM_EXTRA_COMPAT_TOOLS_PATHS"));

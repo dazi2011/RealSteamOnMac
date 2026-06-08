@@ -24,10 +24,17 @@ HOME_ROOT="$TMP_ROOT/home"
 SUPPORT="$TMP_ROOT/support"
 RUNTIME="$TMP_ROOT/fake-runtime"
 CAPTURE="$TMP_ROOT/capture.txt"
-mkdir -p "$HOME_ROOT" "$SUPPORT/compat-tool"
+STEAMUI="$TMP_ROOT/steamui"
+mkdir -p "$HOME_ROOT" "$SUPPORT/compat-tool" "$SUPPORT/ui" "$STEAMUI"
 touch "$SUPPORT/libRealSteamCompatGate.dylib"
+cp "$ROOT/script/patch_steamui.py" "$SUPPORT/patch_steamui.py"
+cp "$ROOT/ui/realsteamonmac_ui.js" "$SUPPORT/ui/realsteamonmac_ui.js"
+printf '%s\n' 1118200 >"$SUPPORT/allowlist.txt"
 printf '%s\n' '#!/bin/sh' 'exit 0' >"$RUNTIME"
 chmod +x "$RUNTIME"
+printf '%s' \
+    '<!doctype html><html style="width: 100%; height: 100%"><head><title>SharedJSContext</title><meta charset="utf-8"><script defer="defer" src="/libraries/libraries~00299a408.js"></script><script defer="defer" src="/library.js"></script><link href="/css/library.css" rel="stylesheet"></head><body style="width: 100%; height: 100%; margin: 0; overflow: hidden;"><div id="root" style="height:100%; width: 100%"></div><div style="display:none"></div></body></html>' \
+    >"$STEAMUI/index.html"
 
 HOME="$HOME_ROOT" \
 REALSTEAMONMAC_RUNTIME_EXECUTABLE="$RUNTIME" \
@@ -39,5 +46,8 @@ grep -Fq "dyld=$SUPPORT/libRealSteamCompatGate.dylib" "$CAPTURE"
 grep -Fq "enabled=1" "$CAPTURE"
 grep -Fq "tools=$SUPPORT/compat-tool" "$CAPTURE"
 grep -Fq "args=-skipinitialbootstrap -cef-enable-debugging" "$CAPTURE"
+grep -Fq "steamui=verified" "$CAPTURE"
+grep -Fq '/realsteamonmac/ui.js' "$STEAMUI/index.html"
+test -f "$STEAMUI/index.html.realsteamonmac.original"
 
 echo "Steam launcher contract: PASS"
