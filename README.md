@@ -16,9 +16,14 @@ planner for allowlisted AppIDs without globally changing the client platform.
 - Steam calculated `455945761` bytes through its original install planner.
 - The verification cancelled at state `16` before `ContinueInstall`; no
   download started.
+- People Playground now exposes Steam's original `兼容性` properties page.
+- The native checkbox and dropdown select `RealSteamOnMac Experimental`.
+- That selection survives property-window closure and complete Steam restarts.
+- A non-allowlisted game keeps the original macOS properties pages without a
+  compatibility tab.
 
-The compatibility properties page, completed depot download, CrossOver launch,
-and renderer/package management are Phase 2 work.
+Completed depot download, CrossOver launch, and renderer/package management
+remain future work.
 
 ## How It Works
 
@@ -27,9 +32,14 @@ and renderer/package management are Phase 2 work.
   every `15 s`.
 - A guarded Steam UI resource patch synchronizes only backend-ready allowlisted
   overview state.
+- The same known-build patch extends Steam's native compatibility-page gate
+  from Linux to explicit allowlisted AppIDs.
 - The shared UI context refreshes Steam's own matching React action components
   through `SteamUIStore.WindowStore`; it does not create or restyle a custom
   button.
+- Steam's native `SpecifyCompatTool` remains the write path. A small
+  allowlist-scoped state bridge mirrors the persistent selection into the
+  macOS app-details store so the original checkbox and dropdown stay accurate.
 - The launcher reapplies the known-build UI patch before every Steam start and
   fails back to the original bootstrap on a signature mismatch.
 
@@ -64,6 +74,19 @@ Verify the installed UI resources while Steam is stopped:
 python3 script/patch_steamui.py verify \
   --steamui-root \
   "$HOME/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/steamui"
+```
+
+With the People Playground properties window open:
+
+```sh
+node script/steam_cdp.mjs \
+  --target-title "People Playground" \
+  --expression-file \
+  probes/verify_people_playground_compatibility_page.js
+
+node script/steam_cdp.mjs \
+  --expression-file \
+  probes/verify_people_playground_compatibility_state.js
 ```
 
 ## Roll Back

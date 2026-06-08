@@ -24,6 +24,24 @@ lDiskSpaceRequiredBytes = 455945761
 The verification called `CancelInstall()` and reached state `16`.
 `ContinueInstall()` was not called.
 
+## Phase 2 Result
+
+People Playground now exposes Steam's original per-game `兼容性` page on
+macOS. The page uses the unmodified native checkbox, dropdown, localization,
+`GetAvailableCompatTools`, and `SpecifyCompatTool` flow.
+
+Verified live behavior:
+
+- the checkbox is selected;
+- the dropdown shows `RealSteamOnMac Experimental`;
+- the app details report tool priority `250`;
+- disabling clears both native mapping and the displayed selection;
+- enabling restores both;
+- closing and reopening the properties window preserves the selection;
+- a complete Steam quit and restart preserves the selection;
+- No Man's Sky (`AppID 275850`), which is outside the allowlist, has no
+  compatibility tab.
+
 ## Installed Architecture
 
 ```text
@@ -43,13 +61,22 @@ Steam SharedJSContext UI patch
   -> normalizes only allowlisted overview status 14 to status 9
   -> enumerates SteamUIStore.WindowStore.SteamUIWindows
   -> force-updates only matching native React action components
+  -> wraps SpecifyCompatTool only for allowlisted AppIDs
+  -> persists the selected tool in Steam UI local storage
+  -> mirrors priority 250 into the macOS app-details object
+
+Guarded Steam UI compatibility resource patch
+  -> validates chunk~2dcc5aaf7.js by SHA-256
+  -> changes only module 73291's two compatibility-page registration gates
+  -> preserves the original Linux condition
+  -> additionally accepts AppIDs from __REALSTEAMONMAC_CONFIG__
 ```
 
 The UI patch status is:
 
 ```text
-version = 3
-mode = shared-app-store-native-actions
+version = 4
+mode = shared-app-store-native-actions-and-compatibility
 lastError = null
 ```
 
@@ -67,6 +94,8 @@ No custom install button or replacement click handler is used.
   `/Users/wudazi/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z`
 - Guarded clean `steamui/index.html` SHA-256:
   `55ced284314dbc65bff38fb1333d4f4bd617635895e2c0e2197b05028c243282`
+- Guarded clean `steamui/chunk~2dcc5aaf7.js` SHA-256:
+  `6d28c06fafb32f99c695f4bc4d1b8a8b8fb5bc1efc425f2a78abb8697af81349`
 
 ## Verification
 
@@ -85,6 +114,15 @@ node script/steam_cdp.mjs \
 node script/steam_cdp.mjs \
   --target-title Steam \
   --expression-file probes/verify_people_playground_persistent_ui.js
+
+node script/steam_cdp.mjs \
+  --target-title "People Playground" \
+  --expression-file \
+  probes/verify_people_playground_compatibility_page.js
+
+node script/steam_cdp.mjs \
+  --expression-file \
+  probes/verify_people_playground_compatibility_state.js
 ```
 
 The guarded real-button probe never confirms a download:
@@ -113,13 +151,11 @@ Unknown Steam builds remain fail-closed. A Steam update requires revalidating
 the native UUID/offset fingerprints and the UI index hash before enabling the
 project again.
 
-## Phase 2 Entry Point
+## Next Phase
 
-1. Generalize live validation beyond the People Playground fixture while
-   retaining the explicit allowlist.
-2. Locate and expose Steam's existing per-game Compatibility properties page
-   on macOS.
-3. Keep `GetAvailableCompatTools` and `SpecifyCompatTool` behind the same
-   allowlist and known-build checks.
-4. Verify completed Windows depot download/update behavior before implementing
-   CrossOver launch routing.
+1. Confirm a completed Windows depot download and Steam validation cycle.
+2. Generalize the allowlist management UI beyond the People Playground
+   fixture.
+3. Implement CrossOver launch routing without opening a second Steam frontend.
+4. Add runtime and renderer package management only after launch routing is
+   stable.

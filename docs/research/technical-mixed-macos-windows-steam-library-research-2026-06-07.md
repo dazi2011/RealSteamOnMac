@@ -883,3 +883,75 @@ Steam 的原生对象和按钮，同时通过 Steam 自己登记的 BrowserWindo
 document 找到匹配 AppID 的 action component 并触发 React 重渲染。该
 方案不硬编码 webpack module ID，因此比直接调用压缩 bundle 内部导出
 更能抵抗小版本漂移。
+
+## 2026-06-08 Native Compatibility Properties Update
+
+方案 2 已在 Steam Public Beta build `1780705203` 上完成实机验证。
+
+### 原生页面门槛
+
+Steam 的属性页实现位于：
+
+```text
+steamui/chunk~2dcc5aaf7.js
+webpack module 73291
+clean SHA-256:
+6d28c06fafb32f99c695f4bc4d1b8a8b8fb5bc1efc425f2a78abb8697af81349
+```
+
+模块内 `dt(e)` 构造属性页列表。快捷方式与普通游戏各有一处完全相同的
+兼容性页注册门槛：
+
+```text
+(0,f.CI)() && o.push(...)
+```
+
+`f` 对应 module `72476`，`CI` 是 Linux 平台判断。项目没有把整个 macOS
+客户端伪装为 Linux，而是守护式地把两处判断扩展为：
+
+```text
+Linux || __REALSTEAMONMAC_CONFIG__.appids.includes(appid)
+```
+
+因此原有 Linux 行为不变，macOS 上只有显式 allowlist AppID 会注册原版
+`St` Compatibility component。未知 chunk 哈希、锚点数量不是精确两处、
+备份不匹配或补丁不一致时均失败关闭。
+
+### 原生选择与 macOS 详情状态
+
+原生页面使用：
+
+- `SteamClient.Apps.GetAvailableCompatTools(appid)`
+- `SteamClient.Apps.SpecifyCompatTool(appid, tool)`
+- `details.strCompatToolName`
+- `details.nCompatToolPriority == 250`
+
+实测原生 `SpecifyCompatTool` 会把映射永久写入 `config.vdf`，但 macOS 的
+`appDetailsStore` 仍把工具名和优先级报告为空。这会导致属性窗口重开后
+原版复选框视觉上恢复为未选中，即使后端映射已经存在。
+
+最终实现保留 `SpecifyCompatTool` 作为唯一后端写入路径，并增加一个仅限
+allowlist 的前端状态桥：
+
+1. 选择写入 `__REALSTEAMONMAC_COMPAT_SELECTIONS_V1__` 本地存储；
+2. Steam 启动时重新确认原生 per-AppID 映射；
+3. 只对白名单详情对象镜像工具名、显示名和优先级 `250`；
+4. 取消选择时恢复原始详情字段并调用原生取消映射；
+5. 非白名单 AppID 直接调用未包装 API，页面也不会注册。
+
+### 实机证据
+
+People Playground (`1118200`)：
+
+- 属性页显示 `兼容性`；
+- 复选框 `aria-checked = true`；
+- 下拉框显示 `RealSteamOnMac Experimental`；
+- 详情工具名为 `realsteamonmac-experimental`；
+- 优先级为 `250`；
+- 取消后工具名为空、优先级为 `0`；
+- 再启用后恢复；
+- 完整退出并重启 Steam 后仍保持选中。
+
+反向验证使用 No Man's Sky (`275850`)：属性页只显示原有 macOS 页面，
+没有 `兼容性` 标签。随后重新验证 People Playground 蓝色安装按钮，
+仍进入原生安装状态 `7`、错误码 `0`，取消后状态为 `16`。
