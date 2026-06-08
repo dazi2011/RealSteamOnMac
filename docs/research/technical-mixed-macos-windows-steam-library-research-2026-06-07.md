@@ -817,14 +817,22 @@ rgApps[0].lDiskSpaceRequiredBytes = 455945761
 
 ### Chosen Injection Model
 
-最终实验实现不修改 SteamUI 代码段，也不使用 LLDB 常驻附加：
+2026-06-07 的短生命周期 worker 模型已被 2026-06-08 的持久化实现取代。
+当前实现仍不修改 SteamUI 代码段，也不使用 LLDB 常驻附加：
 
 1. `Steam.app` 的 universal launcher 由 LaunchServices 正常启动。
-2. launcher 给官方 runtime 设置进程级 hook 与 compatibility tool 路径。
-3. runtime 主程序使用带最小 DYLD 权限的 ad-hoc 签名。
-4. hook 跨过 Steam 最早的一次 self-exec。
-5. 短生命周期 worker 等待目标对象，只修改 allowlist AppID 数据。
-6. 修改成功后清除注入环境并退出 worker。
+2. launcher 在每次启动前验证或重装已知哈希的 Steam UI 资源补丁。
+3. launcher 给官方 runtime 设置进程级 hook 与 compatibility tool 路径。
+4. runtime 主程序使用带最小 DYLD 权限的 ad-hoc 签名。
+5. hook 跨过 Steam 最早的一次 self-exec，并在首次完整扫描后清除注入
+   环境。
+6. worker 在进程生命周期内每 `250 ms` 刷新已追踪对象，每 `15 s` 做一次
+   完整扫描，只修改 allowlist AppID 数据。
+7. SharedJSContext 仅在 backend details 为状态 `9` 时把 allowlist overview
+   从状态 `14` 同步为 `9`。
+8. UI 补丁通过 `SteamUIStore.WindowStore.SteamUIWindows` 访问真实窗口，
+   只对匹配 AppID 的 Steam 原生 React action component 执行
+   `forceUpdate()`。
 
 LLDB 方案被否决，因为暂停主进程会让 `ipcserver` 断开；SteamClient
 异步 API 随后超时。直接 patch getter text 的方案也因延迟 IPC 故障被
@@ -840,3 +848,38 @@ LLDB 方案被否决，因为暂停主进程会让 `ipcserver` 断开；SteamCli
 - `script/restore_steam_from_backup.sh` 会保留被替换文件，再恢复
   `Steam.app`、runtime 主程序和原版 `steamclient.dylib`。
 - Steam 更新后 UUID、偏移和签名全部视为未知，必须重新验证。
+
+## 2026-06-08 Persistent Native UI Update
+
+People Playground 的持久前台链路已完成实机验证：
+
+- 冷启动后 `overview.display_status = 9`；
+- backend `details.eDisplayStatus = 9`；
+- 可见按钮 `pointer-events = auto`；
+- 可见按钮使用 Steam 原生蓝色渐变
+  `rgb(71, 191, 255) -> rgb(26, 68, 194)`；
+- 离开详情页再返回仍保持蓝色；
+- 运行超过 30 秒仍保持蓝色；
+- 完全退出 Steam 并直接重启后仍自动恢复；
+- UI patch 状态为 `version 3`、
+  `mode shared-app-store-native-actions`、`lastError = null`。
+
+真实点击前台按钮后，原生安装管理器返回：
+
+```text
+eInstallState = 7
+currentAppID = 1118200
+eAppError = 0
+nDiskSpaceRequired = 455945761
+```
+
+随后调用 `CancelInstall()`，状态进入 `16`。项目中用于该验证的点击探针
+不包含 `ContinueInstall`、`OpenInstallWizard`、`RunGame` 或
+`SpecifyCompatTool` 调用。
+
+关键新结论是：只修改 SharedJSContext 中的 app overview 数据不足以让
+已经挂载的主窗口 React action component 重算样式。稳定做法是继续使用
+Steam 的原生对象和按钮，同时通过 Steam 自己登记的 BrowserWindow
+document 找到匹配 AppID 的 action component 并触发 React 重渲染。该
+方案不硬编码 webpack module ID，因此比直接调用压缩 bundle 内部导出
+更能抵抗小版本漂移。
