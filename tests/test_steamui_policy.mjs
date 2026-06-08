@@ -7,6 +7,7 @@ const {
   decideOverviewPatch,
   findAppActionComponents,
   refreshAppActionComponents,
+  reconcileCompatDetails,
   reconcileAppState,
 } = require("../ui/realsteamonmac_ui.js");
 
@@ -205,6 +206,93 @@ test("retains the original state through an active install and restores if backe
   assert.equal(selected.display_status, 14);
   assert.equal(selected.is_available_on_current_platform, false);
   assert.equal(selected.is_invalid_os_type, true);
+});
+
+test("mirrors an allowlisted selected compatibility tool into app details", () => {
+  const details = {
+    unAppID: 1118200,
+    strCompatToolName: "",
+    strCompatToolDisplayName: "",
+    nCompatToolPriority: 0,
+  };
+  const originalCompatStates = new WeakMap();
+
+  assert.equal(
+    reconcileCompatDetails({
+      details,
+      allowlist: new Set([1118200]),
+      selectedTool: "realsteamonmac-experimental",
+      availableTools: [
+        {
+          strToolName: "realsteamonmac-experimental",
+          strDisplayName: "RealSteamOnMac Experimental",
+        },
+      ],
+      originalCompatStates,
+    }),
+    "normalized",
+  );
+  assert.equal(details.strCompatToolName, "realsteamonmac-experimental");
+  assert.equal(
+    details.strCompatToolDisplayName,
+    "RealSteamOnMac Experimental",
+  );
+  assert.equal(details.nCompatToolPriority, 250);
+});
+
+test("restores compatibility details when the allowlisted selection is cleared", () => {
+  const details = {
+    unAppID: 1118200,
+    strCompatToolName: "",
+    strCompatToolDisplayName: "",
+    nCompatToolPriority: 0,
+  };
+  const originalCompatStates = new WeakMap();
+  const state = {
+    details,
+    allowlist: new Set([1118200]),
+    selectedTool: "realsteamonmac-experimental",
+    availableTools: [
+      {
+        strToolName: "realsteamonmac-experimental",
+        strDisplayName: "RealSteamOnMac Experimental",
+      },
+    ],
+    originalCompatStates,
+  };
+  reconcileCompatDetails(state);
+
+  state.selectedTool = "";
+  assert.equal(reconcileCompatDetails(state), "restored");
+  assert.equal(details.strCompatToolName, "");
+  assert.equal(details.strCompatToolDisplayName, "");
+  assert.equal(details.nCompatToolPriority, 0);
+});
+
+test("does not mirror compatibility state for a non-allowlisted app", () => {
+  const details = {
+    unAppID: 42,
+    strCompatToolName: "",
+    strCompatToolDisplayName: "",
+    nCompatToolPriority: 0,
+  };
+
+  assert.equal(
+    reconcileCompatDetails({
+      details,
+      allowlist: new Set([1118200]),
+      selectedTool: "realsteamonmac-experimental",
+      availableTools: [
+        {
+          strToolName: "realsteamonmac-experimental",
+          strDisplayName: "RealSteamOnMac Experimental",
+        },
+      ],
+      originalCompatStates: new WeakMap(),
+    }),
+    "unchanged",
+  );
+  assert.equal(details.strCompatToolName, "");
 });
 
 function createActionDocument(appid) {

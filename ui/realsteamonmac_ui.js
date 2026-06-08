@@ -5,6 +5,9 @@
   const READY_TO_INSTALL = 9;
   const STATUS_KEY = "__REALSTEAMONMAC_UI_STATUS__";
   const CONFIG_KEY = "__REALSTEAMONMAC_CONFIG__";
+  const COMPAT_SELECTIONS_KEY =
+    "__REALSTEAMONMAC_COMPAT_SELECTIONS_V1__";
+  const COMPAT_TOOL_PRIORITY = 250;
   const RECONCILE_INTERVAL_MS = 1000;
 
   function decideOverviewPatch(state) {
@@ -197,6 +200,52 @@
     return "normalized";
   }
 
+  function reconcileCompatDetails({
+    details,
+    allowlist,
+    selectedTool,
+    availableTools,
+    originalCompatStates,
+  }) {
+    if (!details || !allowlist.has(details.unAppID)) {
+      return "unchanged";
+    }
+
+    const selected = availableTools.find(
+      (tool) => tool.strToolName === selectedTool,
+    );
+    const original = originalCompatStates.get(details);
+    if (!selected) {
+      if (!original) {
+        return "unchanged";
+      }
+      details.strCompatToolName = original.toolName;
+      details.strCompatToolDisplayName = original.displayName;
+      details.nCompatToolPriority = original.priority;
+      originalCompatStates.delete(details);
+      return "restored";
+    }
+
+    if (
+      details.strCompatToolName === selected.strToolName &&
+      details.strCompatToolDisplayName === selected.strDisplayName &&
+      details.nCompatToolPriority === COMPAT_TOOL_PRIORITY
+    ) {
+      return "unchanged";
+    }
+    if (!original) {
+      originalCompatStates.set(details, {
+        toolName: details.strCompatToolName,
+        displayName: details.strCompatToolDisplayName,
+        priority: details.nCompatToolPriority,
+      });
+    }
+    details.strCompatToolName = selected.strToolName;
+    details.strCompatToolDisplayName = selected.strDisplayName;
+    details.nCompatToolPriority = COMPAT_TOOL_PRIORITY;
+    return "normalized";
+  }
+
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
       decideOverviewPatch,
@@ -204,15 +253,18 @@
       getSelectedData,
       getSteamUIDocuments,
       refreshAppActionComponents,
+      reconcileCompatDetails,
       reconcileAppState,
+      COMPAT_TOOL_PRIORITY,
       INVALID_PLATFORM,
       READY_TO_INSTALL,
     };
     return;
   }
 
-  const configuredAppids = Array.isArray(globalObject[CONFIG_KEY]?.appids)
-    ? globalObject[CONFIG_KEY].appids
+  const config = globalObject[CONFIG_KEY] ?? {};
+  const configuredAppids = Array.isArray(config.appids)
+    ? config.appids
     : [];
   const allowlist = new Set(
     configuredAppids.filter(
@@ -220,13 +272,16 @@
     ),
   );
   const status = {
-    version: 3,
-    mode: "shared-app-store-native-actions",
+    version: 4,
+    mode: "shared-app-store-native-actions-and-compatibility",
     enabled: allowlist.size > 0,
     appids: [...allowlist],
     scans: 0,
     normalized: 0,
     restored: 0,
+    compatNormalized: 0,
+    compatRestored: 0,
+    compatNativeSyncs: 0,
     actionRefreshes: 0,
     missingOverview: 0,
     missingDetails: 0,
@@ -240,8 +295,110 @@
   }
 
   const originalStates = new WeakMap();
+  const originalCompatStates = new WeakMap();
   const refreshedActions = new WeakSet();
+  const availableCompatTools = new Map();
+  const compatSelections = new Map();
   let reconcileRunning = false;
+
+  function loadCompatSelections() {
+    let stored = {};
+    try {
+      stored = JSON.parse(
+        globalObject.localStorage?.getItem(COMPAT_SELECTIONS_KEY) ?? "{}",
+      );
+    } catch {
+      stored = {};
+    }
+    for (const appid of allowlist) {
+      const key = String(appid);
+      const storedTool = Object.prototype.hasOwnProperty.call(stored, key)
+        ? stored[key]
+        : config.compatTools?.[key];
+      compatSelections.set(
+        appid,
+        typeof storedTool === "string" ? storedTool : "",
+      );
+    }
+  }
+
+  function persistCompatSelections() {
+    const serialized = {};
+    for (const [appid, tool] of compatSelections) {
+      serialized[String(appid)] = tool;
+    }
+    globalObject.localStorage?.setItem(
+      COMPAT_SELECTIONS_KEY,
+      JSON.stringify(serialized),
+    );
+  }
+
+  async function getAvailableCompatTools(appid) {
+    if (availableCompatTools.has(appid)) {
+      return availableCompatTools.get(appid);
+    }
+    const tools =
+      await globalObject.SteamClient.Apps.GetAvailableCompatTools(appid);
+    const normalized = Array.isArray(tools) ? tools : [];
+    availableCompatTools.set(appid, normalized);
+    return normalized;
+  }
+
+  function installCompatToolBridge() {
+    const apps = globalObject.SteamClient?.Apps;
+    if (
+      !apps ||
+      typeof apps.SpecifyCompatTool !== "function" ||
+      typeof apps.GetAvailableCompatTools !== "function"
+    ) {
+      throw new Error("Steam compatibility tool APIs are unavailable");
+    }
+
+    const originalSpecifyCompatTool =
+      apps.SpecifyCompatTool.bind(apps);
+    apps.SpecifyCompatTool = async (appid, requestedTool) => {
+      if (!allowlist.has(appid)) {
+        return originalSpecifyCompatTool(appid, requestedTool);
+      }
+
+      const tool =
+        typeof requestedTool === "string" ? requestedTool : "";
+      if (tool) {
+        const tools = await getAvailableCompatTools(appid);
+        if (!tools.some((candidate) => candidate.strToolName === tool)) {
+          throw new Error(
+            `compatibility tool ${tool} is unavailable for AppID ${appid}`,
+          );
+        }
+      }
+
+      const result = await originalSpecifyCompatTool(appid, tool);
+      compatSelections.set(appid, tool);
+      persistCompatSelections();
+      void reconcile();
+      return result;
+    };
+    return originalSpecifyCompatTool;
+  }
+
+  async function syncNativeCompatSelections(originalSpecifyCompatTool) {
+    for (const [appid, selectedTool] of compatSelections) {
+      if (!selectedTool) {
+        continue;
+      }
+      const tools = await getAvailableCompatTools(appid);
+      if (
+        !tools.some((tool) => tool.strToolName === selectedTool)
+      ) {
+        throw new Error(
+          `configured compatibility tool ${selectedTool} is unavailable ` +
+            `for AppID ${appid}`,
+        );
+      }
+      await originalSpecifyCompatTool(appid, selectedTool);
+      status.compatNativeSyncs += 1;
+    }
+  }
 
   async function reconcile() {
     if (reconcileRunning) {
@@ -274,6 +431,19 @@
           continue;
         }
 
+        const compatResult = reconcileCompatDetails({
+          details,
+          allowlist,
+          selectedTool: compatSelections.get(appid) ?? "",
+          availableTools: await getAvailableCompatTools(appid),
+          originalCompatStates,
+        });
+        if (compatResult === "normalized") {
+          status.compatNormalized += 1;
+        } else if (compatResult === "restored") {
+          status.compatRestored += 1;
+        }
+
         const result = reconcileAppState({
           overview,
           details,
@@ -299,6 +469,13 @@
     }
   }
 
+  loadCompatSelections();
+  persistCompatSelections();
+  const originalSpecifyCompatTool = installCompatToolBridge();
   globalObject.setInterval(reconcile, RECONCILE_INTERVAL_MS);
-  void reconcile();
+  void syncNativeCompatSelections(originalSpecifyCompatTool)
+    .then(reconcile)
+    .catch((error) => {
+      status.lastError = String(error);
+    });
 })(globalThis);

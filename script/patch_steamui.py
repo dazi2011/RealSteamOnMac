@@ -33,6 +33,7 @@ END_MARKER = "<!-- RealSteamOnMac UI end -->"
 CONFIG_TAG = '<script defer="defer" src="/realsteamonmac/config.js"></script>'
 UI_TAG = '<script defer="defer" src="/realsteamonmac/ui.js"></script>'
 CONFIG_PREFIX = "globalThis.__REALSTEAMONMAC_CONFIG__ = Object.freeze("
+DEFAULT_COMPAT_TOOL = "realsteamonmac-experimental"
 COMPAT_PAGE_ANCHOR = (
     '(0,f.CI)()&&o.push({title:(0,A.we)'
     '("#AppProperties_CompatibilityPage")'
@@ -116,7 +117,15 @@ def atomic_write(path, content):
 
 
 def config_bytes(appids):
-    payload = json.dumps({"appids": appids}, separators=(",", ":"))
+    payload = json.dumps(
+        {
+            "appids": appids,
+            "compatTools": {
+                str(appid): DEFAULT_COMPAT_TOOL for appid in appids
+            },
+        },
+        separators=(",", ":"),
+    )
     return f"{CONFIG_PREFIX}{payload});\n".encode("utf-8")
 
 
@@ -262,6 +271,16 @@ def verify_steamui(steamui_root):
         or len(appids) != len(set(appids))
     ):
         raise ValueError("Steam UI config allowlist is invalid")
+    compat_tools = parsed.get("compatTools")
+    if (
+        not isinstance(compat_tools, dict)
+        or set(compat_tools) != {str(appid) for appid in appids}
+        or any(
+            not isinstance(tool, str) or not tool
+            for tool in compat_tools.values()
+        )
+    ):
+        raise ValueError("Steam UI compatibility tool config is invalid")
     return appids
 
 

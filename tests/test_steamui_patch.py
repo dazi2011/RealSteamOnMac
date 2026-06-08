@@ -88,7 +88,15 @@ class SteamUIPatchTests(unittest.TestCase):
         config_path = self.steamui / "realsteamonmac" / "config.js"
         config_text = config_path.read_text(encoding="utf-8")
         payload = config_text.split("Object.freeze(", 1)[1].rsplit(");", 1)[0]
-        self.assertEqual(json.loads(payload), {"appids": [1118200]})
+        self.assertEqual(
+            json.loads(payload),
+            {
+                "appids": [1118200],
+                "compatTools": {
+                    "1118200": "realsteamonmac-experimental",
+                },
+            },
+        )
 
         self.patcher.install_steamui(
             self.steamui,
