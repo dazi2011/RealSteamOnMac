@@ -1,0 +1,6 @@
+.DS_Store
+.playwright-mcp/
+.superpowers/
+artifacts/
+backups/
+

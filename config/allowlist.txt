@@ -1,0 +1,2 @@
+# One Windows-only Steam AppID per line.
+1118200

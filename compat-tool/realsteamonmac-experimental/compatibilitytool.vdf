@@ -1,0 +1,14 @@
+"compatibilitytools"
+{
+    "compat_tools"
+    {
+        "realsteamonmac-experimental"
+        {
+            "install_path" "."
+            "display_name" "RealSteamOnMac Experimental"
+            "from_oslist" "windows"
+            "to_oslist" "macos"
+        }
+    }
+}
+
