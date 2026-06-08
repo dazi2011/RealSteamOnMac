@@ -44,6 +44,26 @@ grep -q 'mach_vm_protect' "$SOURCE"
 grep -q 'VM_PROT_COPY' "$SOURCE"
 grep -q 'steam_osx' "$SOURCE"
 
+# GetAppForInstallation platform gate redirect (the install-time counterpart to
+# the data overrides): allowlist-gated trampoline at 0x62505c that lets an
+# allowlisted Install click reach the real depot download path instead of
+# failing with error 29 ("Invalid platform").
+grep -q 'STEAMCLIENT_INSTALL_GATE_OFFSET' "$SOURCE"
+grep -q '0x0062505C' "$SOURCE"
+grep -q '0x00625060' "$SOURCE"
+grep -q '0x0062508C' "$SOURCE"
+grep -q '0x37200188' "$SOURCE"
+grep -q '0x6B0A02BF' "$SOURCE"
+grep -q 'build_install_gate_trampoline' "$SOURCE"
+grep -q 'patch_steamclient_install_gate' "$SOURCE"
+grep -q 'gSteamClientInstallGatePatched' "$SOURCE"
+grep -q 'steamclient: install gate patched' "$SOURCE"
+# The gate redirect must be driven by the proven-active data override worker,
+# not only the (currently dormant) dyld image-added callback. The worker calls
+# it with an explicit zero slide (resolved image), unlike the image_added path.
+grep -q 'patch_steamclient_install_gate(steamclient, 0)' "$SOURCE"
+grep -q 'patch_steamclient_install_gate(header, slide)' "$SOURCE"
+
 "$BUILD_SCRIPT"
 
 test -f "$OUTPUT"

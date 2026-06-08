@@ -11,25 +11,40 @@ planner for allowlisted AppIDs without globally changing the client platform.
 - Native macOS games remain outside the allowlist.
 - People Playground permanently renders Steam's native blue `安装` action
   after page navigation and full Steam restarts.
-- Clicking that visible button reaches install state `7` (`ShowConfig`) with
-  error `0`; the click is not replaced by a project-owned handler.
-- Steam calculated `455945761` bytes through its original install planner.
-- The verification cancelled at state `16` before `ContinueInstall`; no
-  download started.
+- Clicking that visible button starts Steam's real Windows-depot download and
+  runs it to completion; the click is not replaced by a project-owned handler.
+- People Playground reached **Fully Installed** on macOS through the native
+  client: `appmanifest_1118200.acf` reports `StateFlags 4`, `UpdateResult 0`,
+  `SizeOnDisk 455945761`, with depot `1118201` installed. The ~436 MB Windows
+  build (`People Playground.exe`, `UnityPlayer.dll`, …) is on disk.
+- This works with no debugger: the hook redirects steamclient's
+  `GetAppForInstallation` platform gate (`0x62505c`) through an allowlist-gated
+  trampoline, so an allowlisted Install click reaches the depot path instead of
+  failing with error 29. The redirect re-applies automatically on every Steam
+  restart.
 - People Playground now exposes Steam's original `兼容性` properties page.
 - The native checkbox and dropdown select `RealSteamOnMac Experimental`.
 - That selection survives property-window closure and complete Steam restarts.
 - A non-allowlisted game keeps the original macOS properties pages without a
   compatibility tab.
 
-Completed depot download, CrossOver launch, and renderer/package management
-remain future work.
+Launching the installed Windows binary (CrossOver/Proton routing) and
+renderer/package management remain future work. A download may briefly park as
+`Disabled (Suspended)` — that is Steam's normal client-side download scheduler,
+not a project limit; resuming it (or relaunching Steam) lets it finish, as it
+did here.
 
 ## How It Works
 
 - A process-lifetime native worker keeps only allowlisted app objects eligible.
   It refreshes known objects every `250 ms` and performs a bounded full rescan
   every `15 s`.
+- The same worker one-shot redirects steamclient's `GetAppForInstallation`
+  platform gate (`tbnz w8, #4` at `0x62505c`) through an allowlist-gated
+  trampoline. Allowlisted AppIDs (matched on the `w21` AppID register) fall
+  through to the real ownership/depot path; every other title keeps the original
+  veto. The redirect is guarded by the steamclient UUID and an exact
+  expected-bytes check, so unknown Steam builds stay fail-closed.
 - A guarded Steam UI resource patch synchronizes only backend-ready allowlisted
   overview state.
 - The same known-build patch extends Steam's native compatibility-page gate

@@ -14,6 +14,14 @@
 #include <unistd.h>
 
 #define STEAMCLIENT_COMPAT_GATE_OFFSET ((uintptr_t)0x00A012D0)
+// GetAppForInstallation platform gate: `tbnz w8, #4, 0x62508c` selects the
+// "Invalid platform" (error 29) branch when the app's platform-flags word has
+// bit 4 set. The fall-through at 0x625060 leads to the real ownership/depot
+// success path. We redirect this single instruction through an allowlist-gated
+// trampoline so only RealSteamOnMac AppIDs skip the bit-4 platform veto.
+#define STEAMCLIENT_INSTALL_GATE_OFFSET ((uintptr_t)0x0062505C)
+#define STEAMCLIENT_INSTALL_GATE_FALLTHROUGH_OFFSET ((uintptr_t)0x00625060)
+#define STEAMCLIENT_INSTALL_GATE_INVALID_OFFSET ((uintptr_t)0x0062508C)
 #define STEAMUI_PLATFORM_FLAGS_GETTER_OFFSET ((uintptr_t)0x005EAC3C)
 #define PLATFORM_INVALID_BIT ((uint32_t)0x10)
 #define MAX_ALLOWLIST_APPIDS ((size_t)256)
@@ -38,6 +46,8 @@ static const uint32_t kSteamClientForcedTrue[2] = {
     0x52800020,  // mov w0, #1
     0xD65F03C0,  // ret
 };
+static const uint32_t kSteamClientInstallGateExpected =
+    0x37200188;  // tbnz w8, #4, 0x62508c
 static const uint32_t kSteamUIExpected[2] = {
     0xB9401C00,  // ldr w0, [x0, #0x1c]
     0xD65F03C0,  // ret
@@ -50,6 +60,7 @@ static size_t gTrackedObjectCount = 0;
 static bool gAllowlistLoaded = false;
 static bool gRegistered = false;
 static bool gSteamClientPatched = false;
+static bool gSteamClientInstallGatePatched = false;
 static bool gSteamUIPatched = false;
 static bool gDataScanStartedLogged = false;
 static bool gDataScanSummaryLogged = false;
@@ -464,6 +475,167 @@ static void *build_platform_filter_trampoline(void *target) {
   return memory;
 }
 
+// Builds a near branch island that reproduces `tbnz w8, #4, <invalid>` for
+// non-allowlisted AppIDs while forcing allowlisted AppIDs straight to the
+// gate's fall-through (the real ownership/depot path). The AppID being
+// validated lives in w21 throughout GetAppForInstallation (confirmed via the
+// runtime breakpoint diagnostics), so we compare against it directly.
+//
+// Trampoline layout (per allowlisted AppID, then a shared tail):
+//   movz w10, #<appid_lo>
+//   movk w10, #<appid_hi>, lsl #16
+//   cmp  w21, w10
+//   b.eq skip                ; allowlisted -> behave as if bit 4 were clear
+//   ... (repeat per AppID) ...
+//   tbnz w8, #4, invalid     ; original veto for everyone else
+// skip:
+//   b    <module + 0x625060> ; fall-through / continue installing
+// invalid:
+//   b    <module + 0x62508c> ; original "Invalid platform" branch target
+static void *build_install_gate_trampoline(void *target,
+                                           uintptr_t module_base) {
+  if (gAllowlistCount == 0) {
+    return NULL;
+  }
+
+  size_t page_size = 0;
+  void *memory = allocate_near_page(target, &page_size);
+  if (memory == NULL) {
+    return NULL;
+  }
+
+  size_t required_words = (gAllowlistCount * 4) + 3;
+  if (required_words > page_size / sizeof(uint32_t)) {
+    (void)munmap(memory, page_size);
+    return NULL;
+  }
+
+  uint32_t *instructions = (uint32_t *)memory;
+  size_t branch_indices[MAX_ALLOWLIST_APPIDS];
+  size_t cursor = 0;
+  for (size_t index = 0; index < gAllowlistCount; ++index) {
+    uint32_t appid = gAllowlist[index];
+    uint32_t low = appid & 0xFFFF;
+    uint32_t high = appid >> 16;
+    instructions[cursor++] = 0x5280000A | (low << 5);   // movz w10, #low
+    instructions[cursor++] = 0x72A0000A | (high << 5);  // movk w10, #high, lsl 16
+    instructions[cursor++] = 0x6B0A02BF;                // cmp w21, w10
+    branch_indices[index] = cursor;
+    instructions[cursor++] = 0;  // b.eq skip (patched below)
+  }
+
+  size_t tbnz_index = cursor;
+  instructions[cursor++] = 0;  // tbnz w8, #4, invalid (patched below)
+  size_t skip_index = cursor;
+  instructions[cursor++] = 0;  // b <module + fall-through> (patched below)
+  size_t invalid_index = cursor;
+  instructions[cursor++] = 0;  // b <module + invalid> (patched below)
+
+  for (size_t index = 0; index < gAllowlistCount; ++index) {
+    intptr_t delta = (intptr_t)skip_index - (intptr_t)branch_indices[index];
+    if (delta < -(1 << 18) || delta >= (1 << 18)) {
+      (void)munmap(memory, page_size);
+      return NULL;
+    }
+    uint32_t immediate = (uint32_t)delta & 0x7FFFF;
+    instructions[branch_indices[index]] =
+        0x54000000 | (immediate << 5);  // b.eq skip
+  }
+
+  {
+    intptr_t delta = (intptr_t)invalid_index - (intptr_t)tbnz_index;
+    uint32_t imm14 = (uint32_t)delta & 0x3FFF;
+    instructions[tbnz_index] =
+        0x37200008 | (imm14 << 5);  // tbnz w8, #4, invalid
+  }
+
+  uint32_t branch = 0;
+  if (!encode_branch(
+          &instructions[skip_index],
+          (void *)(module_base + STEAMCLIENT_INSTALL_GATE_FALLTHROUGH_OFFSET),
+          &branch)) {
+    (void)munmap(memory, page_size);
+    return NULL;
+  }
+  instructions[skip_index] = branch;
+
+  if (!encode_branch(
+          &instructions[invalid_index],
+          (void *)(module_base + STEAMCLIENT_INSTALL_GATE_INVALID_OFFSET),
+          &branch)) {
+    (void)munmap(memory, page_size);
+    return NULL;
+  }
+  instructions[invalid_index] = branch;
+
+  size_t code_size = cursor * sizeof(uint32_t);
+  sys_icache_invalidate(memory, code_size);
+  if (mprotect(memory, page_size, PROT_READ | PROT_EXEC) != 0) {
+    (void)munmap(memory, page_size);
+    return NULL;
+  }
+  return memory;
+}
+
+static void patch_steamclient_install_gate(const struct mach_header *header,
+                                           intptr_t slide) {
+  if (gSteamClientInstallGatePatched ||
+      !image_uuid_matches(header, kSteamClientUUID)) {
+    return;
+  }
+
+  ensure_allowlist_loaded();
+  if (gAllowlistCount == 0) {
+    log_line("steamclient: install gate skipped (empty allowlist)");
+    return;
+  }
+
+  uint8_t *target =
+      (uint8_t *)((uintptr_t)header + STEAMCLIENT_INSTALL_GATE_OFFSET);
+  uint32_t current = 0;
+  memcpy(&current, target, sizeof(current));
+  if (current != kSteamClientInstallGateExpected) {
+    if ((current & 0xFC000000) == 0x14000000) {
+      gSteamClientInstallGatePatched = true;
+      log_line("steamclient: install gate already redirected");
+      return;
+    }
+    log_line("steamclient: refused unexpected install gate bytes");
+    return;
+  }
+
+  void *branch_target =
+      build_install_gate_trampoline(target, (uintptr_t)header);
+  if (branch_target == NULL) {
+    log_line("steamclient: could not build install gate filter");
+    return;
+  }
+
+  uint32_t branch = 0;
+  if (!encode_branch(target, branch_target, &branch)) {
+    log_line("steamclient: generated install gate filter is not reachable");
+    return;
+  }
+
+  uintptr_t page = 0;
+  size_t protected_size = 0;
+  if (!make_text_writable(target, sizeof(branch), &page, &protected_size)) {
+    log_line("steamclient: could not make install gate writable");
+    return;
+  }
+  memcpy(target, &branch, sizeof(branch));
+  sys_icache_invalidate(target, sizeof(branch));
+  restore_text_protection(page, protected_size);
+  gSteamClientInstallGatePatched = true;
+
+  char message[224];
+  snprintf(message, sizeof(message),
+           "steamclient: install gate patched slide=%p target=%p "
+           "trampoline=%p appids=%zu",
+           (void *)slide, (void *)target, branch_target, gAllowlistCount);
+  log_line(message);
+}
+
 static void patch_steamclient(const struct mach_header *header,
                               intptr_t slide) {
   if (gSteamClientPatched ||
@@ -552,6 +724,7 @@ static void patch_steamui(const struct mach_header *header,
 
 static void image_added(const struct mach_header *header, intptr_t slide) {
   patch_steamclient(header, slide);
+  patch_steamclient_install_gate(header, slide);
   patch_steamui(header, slide);
 }
 
@@ -790,6 +963,19 @@ static void *data_override_worker(void *context) {
   unsigned int ticks_since_full_scan = EMPTY_RESCAN_INTERVAL_TICKS;
   bool environment_cleared = false;
   while (is_steam_runtime_process()) {
+    // Redirect the steamclient GetAppForInstallation platform gate as soon as
+    // the dylib is mapped. This is the install-time counterpart to the data
+    // overrides below: the data layer makes the Install button appear, while
+    // this text patch lets the click reach the real download path instead of
+    // failing with error 29 ("Invalid platform"). One-shot; the guard makes
+    // every later tick a no-op.
+    if (!gSteamClientInstallGatePatched) {
+      const struct mach_header *steamclient =
+          find_image_by_uuid(kSteamClientUUID);
+      if (steamclient != NULL) {
+        patch_steamclient_install_gate(steamclient, 0);
+      }
+    }
     if (find_image_by_uuid(kSteamUIUUID) != NULL) {
       tracked_refresh_result refresh = refresh_tracked_objects();
       if (refresh.patched > 0) {

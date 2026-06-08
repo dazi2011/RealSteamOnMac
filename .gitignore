@@ -3,4 +3,6 @@
 .superpowers/
 artifacts/
 backups/
+__pycache__/
+*.pyc
 

@@ -4,25 +4,82 @@ Date: 2026-06-08
 
 ## Phase 1 Result
 
-People Playground (`AppID 1118200`) now permanently exposes Steam's native
-blue install action on macOS. The behavior survived:
+People Playground (`AppID 1118200`, a Windows-only title) now installs on macOS
+through the unmodified native Steam client: the blue `安装` action appears,
+clicking it starts Steam's real Windows-depot download, and the download runs to
+**Fully Installed**. No lldb, no manual patching, no project-owned button.
 
-- leaving the details page and returning;
-- more than 30 seconds of runtime;
-- a complete Steam quit and direct restart without rerunning the installer;
-- Steam rebuilding the app overview and details objects.
-
-A real click on the visible Steam button produced:
+Authoritative end state from Steam's own
+`appmanifest_1118200.acf` (on the active `/Volumes/990pro` library):
 
 ```text
-eInstallState = 7
-eAppError = 0
-rgApps[0].nAppID = 1118200
-lDiskSpaceRequiredBytes = 455945761
+StateFlags        4            (Fully Installed)
+UpdateResult      0            (No Error)
+SizeOnDisk        455945761    (full 456 MB)
+BytesToDownload   61705504  == BytesDownloaded 61705504
+BytesToStage      168049276 == BytesStaged 168049276
+InstalledDepots { 1118201 -> manifest 9210503819883706733, size 455945761 }
 ```
 
-The verification called `CancelInstall()` and reached state `16`.
-`ContinueInstall()` was not called.
+On disk: `common/People Playground/` holds the real Windows build
+(`People Playground.exe`, `UnityPlayer.dll`, `People Playground_Data/`,
+`MonoBleedingEdge/`) at ~436 MB. Steam's content log recorded the genuine
+download and commit:
+
+```text
+Downloading 796 chunks for depot 1118201
+AppID 1118200 update started : download 0/61705504, stage 0/168049276
+AppID 1118200 state changed : Fully Installed,
+AppID 1118200 scheduler finished : removed from schedule (result No Error, state 0xc)
+```
+
+### Two-layer fix
+
+The button and the download are two separate native gates:
+
+1. **Button visibility** — the data-override worker clears only the
+   `InvalidPlatform` bit (`0x10`) on validated allowlisted app objects, so Steam
+   renders its own `安装` action (display status 9).
+2. **Install gate** — `GetAppForInstallation` in `steamclient.dylib` (arm64 slice
+   vmaddr `0x62505c`) runs `tbnz w8, #4, 0x62508c`: if the app's platform-flags
+   word has bit 4 set it jumps to the "Invalid platform" branch and the click
+   fails with **error 29**. Clearing the data bit was not enough on its own — the
+   click still hit this text gate. The hook now redirects that single instruction
+   through an allowlist-gated trampoline (`build_install_gate_trampoline`): for
+   AppIDs in the allowlist (compared against `w21`, which carries the AppID
+   through the function) it falls through to the real ownership/depot path
+   (`0x625060`); everyone else keeps the original veto (`0x62508c`).
+
+The redirect is applied by the **already-active** `data_override_worker` thread
+(the `image_added` dyld callback is currently dormant — its only registrar,
+`realsteamonmac_apply_text_hooks`, is never called at runtime). The worker
+one-shots the patch as soon as `steamclient.dylib` is mapped, guarded by
+`gSteamClientInstallGatePatched`, the steamclient UUID, the empty-allowlist
+check, and a strict expected-bytes check (`0x37200188`); unexpected bytes are
+refused, so an unknown Steam build stays fail-closed.
+
+### Persistence (no lldb)
+
+Verified by a full launcher restart (`open -a /Applications/Steam.app`):
+
+```text
+steamclient: install gate patched slide=0x0 target=0x129ed105c trampoline=0x12b290000 appids=1
+```
+
+The fresh process auto-installed the trampoline and a subsequent `安装` click
+drove the download to Fully Installed — entirely from the deployed hook, with no
+debugger attached. The deployed dylib is byte-identical to a fresh build of the
+committed source.
+
+### Download suspension (transient, not a blocker)
+
+An earlier attempt showed Steam parking the download as `Disabled (Suspended)`
+~3 s into the first burst (StateFlags `1026`), which looked like a hard limit.
+It is not: on continuation Steam reused the staged partial and downloaded only
+the remaining delta to reach Fully Installed. The suspend is a normal
+client-side download-scheduler / auto-update-window behavior, independent of the
+install gate, and it is not specific to RealSteamOnMac. If a download parks,
+resuming it (or relaunching Steam) lets it finish.
 
 ## Phase 2 Result
 
@@ -55,6 +112,9 @@ Native hook
   -> refreshes tracked app objects every 250 ms
   -> performs a full readable/writable-region scan every 15 s
   -> clears only the InvalidPlatform bit for validated allowlisted objects
+  -> one-shot redirects the steamclient GetAppForInstallation gate (0x62505c)
+     through an allowlist-gated trampoline so an allowlisted Install click
+     reaches the real depot download instead of failing with error 29
 
 Steam SharedJSContext UI patch
   -> waits for backend details status 9
@@ -125,14 +185,29 @@ node script/steam_cdp.mjs \
   probes/verify_people_playground_compatibility_state.js
 ```
 
-The guarded real-button probe never confirms a download:
+Install-gate live confirmation (needs the patched runtime; no lldb):
 
 ```sh
+# 1. The hook logs the redirect once steamclient.dylib is mapped:
+grep "install gate patched" \
+  "$HOME/Library/Logs/RealSteamOnMac/platform-hook.log"
+
+# 2. Trigger Steam's own install planner, then click the native button:
+open "steam://install/1118200"
 node script/steam_cdp.mjs \
   --target-title Steam \
   --expression-file \
   probes/click_people_playground_native_install_button_experiment.js
 
+# 3. Steam's authoritative state file reports a real, error-free install:
+grep -E '"StateFlags"|"UpdateResult"|"InstalledDepots"' \
+  "<library>/steamapps/appmanifest_1118200.acf"   # StateFlags 4, UpdateResult 0
+```
+
+The guarded cancel probe remains available to back out an in-progress install
+without touching any other AppID:
+
+```sh
 node script/steam_cdp.mjs \
   --expression-file probes/cancel_people_playground_install_experiment.js
 ```
@@ -153,9 +228,11 @@ project again.
 
 ## Next Phase
 
-1. Confirm a completed Windows depot download and Steam validation cycle.
-2. Generalize the allowlist management UI beyond the People Playground
-   fixture.
-3. Implement CrossOver launch routing without opening a second Steam frontend.
+1. Done — a completed Windows depot download and Steam validation cycle
+   (People Playground reached Fully Installed, `UpdateResult 0`).
+2. Launch the installed Windows binary via CrossOver/Proton routing without
+   opening a second Steam frontend. The 436 MB Windows build is on disk; this is
+   now the primary frontier.
+3. Generalize the allowlist management UI beyond the People Playground fixture.
 4. Add runtime and renderer package management only after launch routing is
    stable.
