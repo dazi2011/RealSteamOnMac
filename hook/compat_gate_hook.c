@@ -17,8 +17,7 @@
 #define STEAMUI_PLATFORM_FLAGS_GETTER_OFFSET ((uintptr_t)0x005EAC3C)
 #define PLATFORM_INVALID_BIT ((uint32_t)0x10)
 #define MAX_ALLOWLIST_APPIDS ((size_t)256)
-#define DATA_OVERRIDE_ATTEMPTS 30
-#define DATA_OVERRIDE_DELAY_US 1000000
+#define DATA_OVERRIDE_RECONCILE_DELAY_US 1000000
 
 static const uint8_t kSteamClientUUID[16] = {
     0xB2, 0x95, 0x06, 0x28, 0x80, 0x3A, 0x3E, 0xFD,
@@ -43,6 +42,7 @@ static const uint32_t kSteamUIExpected[2] = {
 
 static uint32_t gAllowlist[MAX_ALLOWLIST_APPIDS];
 static size_t gAllowlistCount = 0;
+static bool gAllowlistLoaded = false;
 static bool gRegistered = false;
 static bool gSteamClientPatched = false;
 static bool gSteamUIPatched = false;
@@ -268,6 +268,13 @@ static void load_allowlist(void) {
   snprintf(message, sizeof(message), "allowlist: loaded %zu AppID(s)",
            gAllowlistCount);
   log_line(message);
+  gAllowlistLoaded = true;
+}
+
+static void ensure_allowlist_loaded(void) {
+  if (!gAllowlistLoaded) {
+    load_allowlist();
+  }
 }
 
 __attribute__((noinline, visibility("default")))
@@ -487,7 +494,7 @@ static void image_added(const struct mach_header *header, intptr_t slide) {
 
 __attribute__((visibility("default")))
 void realsteamonmac_apply_text_hooks(void) {
-  load_allowlist();
+  ensure_allowlist_loaded();
   if (!gRegistered) {
     gRegistered = true;
     _dyld_register_func_for_add_image(image_added);
@@ -505,7 +512,7 @@ static bool read_process_memory(mach_vm_address_t address,
 
 __attribute__((visibility("default")))
 size_t realsteamonmac_apply_data_overrides(void) {
-  load_allowlist();
+  ensure_allowlist_loaded();
   const struct mach_header *steamui = find_image_by_uuid(kSteamUIUUID);
   if (steamui == NULL) {
     log_line("data override: matching steamui image was not found");
@@ -600,10 +607,12 @@ size_t realsteamonmac_apply_data_overrides(void) {
   }
 
   free(chunk);
-  char message[160];
-  snprintf(message, sizeof(message),
-           "data override: patched %zu object(s)", patched);
-  log_line(message);
+  if (patched > 0) {
+    char message[160];
+    snprintf(message, sizeof(message),
+             "data override: patched %zu object(s)", patched);
+    log_line(message);
+  }
   return patched;
 }
 
@@ -614,17 +623,13 @@ size_t realsteamonmac_apply_hooks(void) {
 
 static void *data_override_worker(void *context) {
   (void)context;
-  for (unsigned int attempt = 0; attempt < DATA_OVERRIDE_ATTEMPTS; ++attempt) {
-    if (find_image_by_uuid(kSteamUIUUID) != NULL &&
-        realsteamonmac_apply_data_overrides() > 0) {
-      clear_injection_environment();
-      log_line("data override: startup worker completed");
-      return NULL;
+  while (is_steam_runtime_process()) {
+    if (find_image_by_uuid(kSteamUIUUID) != NULL) {
+      (void)realsteamonmac_apply_data_overrides();
     }
-    usleep(DATA_OVERRIDE_DELAY_US);
+    usleep(DATA_OVERRIDE_RECONCILE_DELAY_US);
   }
-  clear_injection_environment();
-  log_line("data override: startup worker timed out");
+  log_line("data override: reconciliation worker stopped");
   return NULL;
 }
 
@@ -646,9 +651,10 @@ __attribute__((constructor)) static void initialize_platform_hook(void) {
   pthread_t worker;
   if (pthread_create(&worker, NULL, data_override_worker, NULL) != 0) {
     clear_injection_environment();
-    log_line("data override: could not start startup worker");
+    log_line("data override: could not start reconciliation worker");
     return;
   }
   (void)pthread_detach(worker);
-  log_line("data override: startup worker started");
+  clear_injection_environment();
+  log_line("data override: reconciliation worker started");
 }

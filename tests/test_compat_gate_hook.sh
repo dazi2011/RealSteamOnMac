@@ -26,6 +26,13 @@ grep -q 'is_steam_bootstrap_process' "$SOURCE"
 grep -q 'clear_injection_environment' "$SOURCE"
 grep -q 'pthread_create' "$SOURCE"
 grep -q 'data_override_worker' "$SOURCE"
+if grep -q 'DATA_OVERRIDE_ATTEMPTS' "$SOURCE"; then
+    echo "native reconciliation must not expire after a fixed attempt count" >&2
+    exit 1
+fi
+grep -q 'DATA_OVERRIDE_RECONCILE_DELAY_US' "$SOURCE"
+grep -q 'while (is_steam_runtime_process())' "$SOURCE"
+grep -q 'data override: reconciliation worker stopped' "$SOURCE"
 grep -q 'mach_vm_region' "$SOURCE"
 grep -q 'vtable + 0x68' "$SOURCE"
 grep -q 'mach_vm_protect' "$SOURCE"
