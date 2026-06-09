@@ -293,6 +293,8 @@
       ...(windowStore?.SteamUIWindows ?? []),
       windowStore?.MainWindowInstance,
     ];
+    const trackedWindows =
+      globalObject.g_FriendsUIApp?.m_IdleTracker?.m_rgWindows ?? [];
     const documents = [];
     const seen = new Set();
     for (const instance of instances) {
@@ -305,6 +307,21 @@
         documents.push(documentObject);
       } catch {
         // A Steam window can disappear while the shared context enumerates it.
+      }
+    }
+    for (const windowObject of trackedWindows) {
+      try {
+        if (windowObject?.closed) {
+          continue;
+        }
+        const documentObject = windowObject?.document;
+        if (!documentObject || seen.has(documentObject)) {
+          continue;
+        }
+        seen.add(documentObject);
+        documents.push(documentObject);
+      } catch {
+        // Steam removes popup windows asynchronously while they are closing.
       }
     }
     return documents;

@@ -11,6 +11,7 @@ const {
   decideOverviewPatch,
   discoverManagedApps,
   findAppActionComponents,
+  getSteamUIDocuments,
   isOwnedWindowsOnlyGame,
   mergeCompatTools,
   normalizeControlConfig,
@@ -43,6 +44,37 @@ const projectTools = [
     renderer: "wined3d",
   },
 ];
+
+test("discovers Steam popup documents tracked by the shared context", () => {
+  const mainDocument = { title: "Steam" };
+  const propertiesDocument = { title: "People Playground" };
+  const closedDocument = { title: "Closed" };
+
+  assert.deepEqual(
+    getSteamUIDocuments({
+      SteamUIStore: {
+        WindowStore: {
+          SteamUIWindows: [
+            { m_BrowserWindow: { document: mainDocument } },
+          ],
+          MainWindowInstance: {
+            m_BrowserWindow: { document: mainDocument },
+          },
+        },
+      },
+      g_FriendsUIApp: {
+        m_IdleTracker: {
+          m_rgWindows: [
+            { document: mainDocument, closed: false },
+            { document: propertiesDocument, closed: false },
+            { document: closedDocument, closed: true },
+          ],
+        },
+      },
+    }),
+    [mainDocument, propertiesDocument],
+  );
+});
 
 test("maps compatibility tools to runtime renderers in both directions", () => {
   assert.equal(
