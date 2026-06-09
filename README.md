@@ -71,8 +71,13 @@ download prototype to a cloud-safe, independent compatibility runtime.
   session, and completes Steam's AutoCloud exit upload.
 - DXMT now passes the same real-game boundary through its pinned Wine 11
   macdrv compatibility build: menu, Steamworks login, Workshop state, normal
-  exit, and AutoCloud all completed. GPTK + Steamworks and WineD3D live
-  acceptance remain pending.
+  exit, and AutoCloud all completed. It is the installed default.
+- GPTK now safely deactivates the Wine 11-only Steamworks bridge before
+  launch. People Playground reaches D3DMetal and its menu and exits normally;
+  in-game Steamworks remains unavailable in GPTK mode instead of crashing.
+- WineD3D selection restores the bridge and completes Steamworks, Workshop,
+  normal exit, and AutoCloud. For this title Unity falls back from failed
+  D3D11 creation to Vulkan/MoltenVK, so this is not a WineD3D rendering claim.
 - The compatibility panel now includes a bounded `运行命令` workflow and a
   searchable fixed dependency catalog. Jobs are token-authenticated, scoped
   to one managed AppID, serialized per PFX, and reported through private
@@ -118,9 +123,10 @@ download prototype to a cloud-safe, independent compatibility runtime.
   contains the AppID and the target is an existing PE `.exe`; native programs
   and unmanaged games keep the original system implementation.
 - The runtime installs only hash-recorded Steamworks bridge files into a
-  game's isolated PFX, rejects unmanaged DLL replacement, and disables Wine
-  menu integration so migrated CrossOver prefixes cannot launch old CrossOver
-  helper applications.
+  game's isolated PFX, rejects unmanaged DLL replacement, removes the managed
+  Wine 11 bridge while GPTK is selected, restores it for supported renderers,
+  and disables Wine menu integration so migrated CrossOver prefixes cannot
+  launch old CrossOver helper applications.
 - Run-command targets must be PE files below the game installation or its
   Proton-layout PFX. Reserved Steam, Wine, project, and DYLD environment
   variables cannot be overridden. Dependency installers come only from the
@@ -141,20 +147,21 @@ done
 
 ## Install
 
+Quit Steam, then run the repeatable top-level installer:
+
 ```sh
-sh script/install_steam_injection.sh \
+sh script/install_realsteamonmac.sh \
   --clean-backup \
-  /Users/wudazi/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z
+  /Users/wudazi/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z \
+  --gptk-dmg \
+  "$HOME/Downloads/Game_Porting_Toolkit_3.0.dmg"
 ```
 
-The installer refuses unknown Steam modifications, signs only the runtime main
-executable with the minimum DYLD entitlements, installs the minimal startup
-guard plus delayed native engine, creates the private registry token, installs
-the dependency catalog with mode `0600`, and installs a universal launcher in
-`Steam.app`.
+The top-level installer builds the native components and Steamworks bridge,
+installs the immutable runtime package, then installs the Steam integration.
+It refuses a running Steam client and stops on the first failed phase.
 
-Install or update the independent runtime package using an official local GPTK
-3 disk image and the reproducibly built Steamworks bridge:
+The lower-level commands remain available for development or partial updates:
 
 ```sh
 sh script/build_lsteamclient_bridge.sh
@@ -164,6 +171,10 @@ sh script/install_runtime_package.sh \
   "$HOME/Downloads/Game_Porting_Toolkit_3.0.dmg" \
   --steamworks-bridge \
   "$HOME/Library/Application Support/RealSteamOnMac/build/lsteamclient-proton11b5-macos2"
+
+sh script/install_steam_injection.sh \
+  --clean-backup \
+  /Users/wudazi/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z
 ```
 
 Apple binaries are never committed to this repository. Runtime versions are
@@ -223,4 +234,6 @@ for the technical handoff and
 [steamworks-bridge-2026-06-09.md](docs/research/steamworks-bridge-2026-06-09.md)
 for the bridge build and live acceptance evidence, and
 [run-command-dependency-workflow-2026-06-09.md](docs/research/run-command-dependency-workflow-2026-06-09.md)
-for the fixed action protocol and dependency security model.
+for the fixed action protocol and dependency security model, and
+[cross-renderer-final-acceptance-2026-06-09.md](docs/research/cross-renderer-final-acceptance-2026-06-09.md)
+for the final GPTK, WineD3D, DXMT, Cloud, and test boundaries.

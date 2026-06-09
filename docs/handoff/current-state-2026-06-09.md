@@ -254,10 +254,14 @@ The live screenshot is
 `docs/evidence/people-playground-dxmt-live-deployed-2026-06-09.png`, SHA-256
 `3e2ed8f6ee30e060790dd30efa8750cf6d9c5521ef6659d9e75bb2523ac09978`.
 
-Still not implemented or not yet accepted:
+Later cross-renderer acceptance supersedes the earlier open items:
 
-- GPTK + Steamworks bridge acceptance;
-- WineD3D live game acceptance.
+- GPTK launches D3DMetal and reaches the menu after renderer-aware removal of
+  the incompatible managed Wine 11 bridge. In-game Steamworks remains
+  unavailable in GPTK mode.
+- WineD3D mode restores the bridge and passes Steamworks, Workshop, exit, and
+  Cloud. People Playground itself falls back to Unity Vulkan/MoltenVK after
+  its D3D11 device creation fails.
 
 The Phase 5A control surface is installed and accepted in the user's current
 Steam client. It provides four project tools, a Steam-native controls panel,
@@ -459,8 +463,8 @@ authoritative complete rollback source.
 9. Done and deployed: scoped action-panel AppID binding, run-command execution,
    private job/log reporting, pinned Visual C++ installation, receipt, and
    exact cache validation.
-10. Remaining: final dynamic-library, Cloud, renderer, game launch/exit, and
-    rollback regression, plus GPTK + Steamworks and WineD3D boundary closure.
+10. Done: final dynamic-library, Cloud, renderer, game launch/exit, rollback,
+    GPTK boundary, WineD3D boundary, and complete automated regression.
 
 ## Phase 4 Runtime Foundation Update
 
@@ -610,13 +614,29 @@ The runtime now treats shared-PFX Steamworks files as renderer state:
 - GPTK removes only files whose hashes still match the private project ledger;
 - a user-modified file aborts the transition instead of being deleted.
 
-The remaining major gates are:
+Final acceptance is complete:
 
-1. deploy the renderer-aware bridge reconciliation and accept GPTK plus
-   WineD3D through native Steam;
-2. restore the accepted DXMT default;
-3. rerun Cloud, dynamic library, full test, install, rollback, and live launch
-   acceptance before final release.
+- GPTK: D3DMetal/menu/normal exit/Cloud pass; in-game Steamworks is explicitly
+  unsupported by the current Wine 11 bridge.
+- WineD3D selection: Steamworks/Workshop/normal exit/Cloud pass; this title
+  falls back to Unity Vulkan/MoltenVK.
+- DXMT restored as default: D3D11, Steamworks login, Workshop, normal exit,
+  process cleanup, and Cloud pass.
+- live registry: 34 managed Windows-only games, 34 tool sets, zero invalid
+  platform states, and Garry's Mod excluded;
+- Cloud: `cloud_enabled=true` and CloudStorage available;
+- automated matrix: 64 Node, 40 Python, and 25 shell contracts.
+
+Detailed final evidence:
+
+```text
+docs/research/cross-renderer-final-acceptance-2026-06-09.md
+docs/evidence/people-playground-wined3d-live-2026-06-09.png
+```
+
+The temporary GPTK bridge-isolation files were moved out of the live PFX and
+preserved at
+`/Users/wudazi/RealSteamOnMac-Backups/gptk-bridge-isolation-20260609T100600Z`.
 
 Operational note: a single diagnostic Wine registry query omitted
 `WINEPREFIX` and updated the pre-existing-or-unknown default `~/.wine` at

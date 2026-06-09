@@ -426,6 +426,7 @@
 | Keep the native control API data-only | Fixed renderer/boolean fields can be validated and persisted safely; arbitrary command execution belongs to a later separately bounded workflow. |
 | Make global AppID config canonical and retain PFX config as fallback | Settings can exist before install and survive prefix replacement while old deployments remain readable. |
 | Reconcile shared-PFX Steamworks files per renderer | The Proton bridge is Wine-ABI-specific. GPTK must not inherit the Wine 11 bridge, while supported renderers must restore exactly the ledger-matched files. |
+| Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
 

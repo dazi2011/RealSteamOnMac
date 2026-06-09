@@ -219,3 +219,13 @@ The complete pre-action live snapshot is:
 1. Recheck dynamic Windows-only availability, native macOS exclusions, Cloud,
    all four renderer selections, and a real game launch/exit.
 2. Complete or record the exact GPTK + Steamworks and WineD3D live boundaries.
+
+## Subsequent Closure
+
+Both items passed on the final run. The live registry remains 34 managed
+Windows-only games with Garry's Mod excluded and Cloud healthy. GPTK now
+launches after safely deactivating the incompatible Wine 11 bridge; WineD3D
+restores that bridge and passes Steamworks/Workshop/exit/Cloud, with this title
+falling back to Unity Vulkan. DXMT is restored as the accepted default.
+
+Final matrix: 64 Node tests, 40 Python tests, and 25 shell contracts.

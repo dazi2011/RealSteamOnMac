@@ -425,6 +425,36 @@
     `docs/evidence/people-playground-controls-live-2026-06-09.png`, SHA-256
     `daffe76b2d410377dfe5cf76897478a10f279a3ecdccf6b1311a23aa94042a10`.
 
+### Phase 5B And Phase 6: Actions, Cross-Renderer Closure, And Release
+
+- **Status:** complete; deployed and accepted in live Steam
+- Actions taken:
+  - Accepted token-authenticated run-command and pinned Visual C++ dependency
+    installation with private jobs, logs, cache validation, and PFX receipts.
+  - Added a Windows `WM_CLOSE` helper and guarded renderer-selection CLI for
+    repeatable live acceptance.
+  - Diagnosed GPTK exit code `3` to a Wine 11 Proton bridge DLL remaining in
+    the shared PFX. Added hash-ledger reconciliation so GPTK deactivates only
+    managed bridge files and supported renderers restore them atomically.
+  - Deployed runtime SHA-256
+    `5faa1e6bc7bcef72d8116c5218ae80c9ac4ca92c2d17aad9cb41b71575d7d1a1`.
+  - Accepted GPTK D3DMetal/menu/normal-exit/Cloud behavior. Game-internal
+    Steamworks remains unavailable under GPTK and is documented as a boundary.
+  - Accepted WineD3D selection, bridge restoration, Steamworks, Workshop,
+    normal exit, and Cloud. People Playground fell back to Unity
+    Vulkan/MoltenVK after D3D11 creation failed.
+  - Restored DXMT/MSync as the final default and reaccepted D3D11,
+    Steamworks login, Workshop, process cleanup, and AutoCloud.
+  - Added `script/install_realsteamonmac.sh`, which refuses a running Steam
+    client and orchestrates native builds, bridge preparation, immutable
+    runtime installation, and Steam integration as one fail-fast operation.
+  - Final live registry: 34 Windows-only games managed, all four tools
+    available for all 34, zero invalid-platform states, and Garry's Mod
+    excluded.
+  - Final Cloud state: `cloud_enabled=true`; CloudStorage available.
+  - Final complete matrix: 64 Node tests, 40 Python tests, and all 25 shell
+    contracts passed.
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -507,6 +537,13 @@
 | GPTK managed bridge diagnosis | GPTK run-command plus private task log | Explain exit code 3 without guessing | Unity reached D3DMetal, then asserted in managed `lsteamclient` line 375 | PASS |
 | GPTK bridge isolation experiment | Move only ledger-matched bridge DLLs out of the shared PFX | GPTK must launch without corrupting the prefix | Menu/map loading continued for 43 seconds; `WM_CLOSE` exit 0 | PASS |
 | Steamworks renderer reconciliation | DXMT -> GPTK -> DXMT unit fixture | Remove incompatible managed bridge and restore it atomically | Two focused state-transition tests passed | PASS |
+| GPTK native Steam launch | Renderer-aware bridge deactivation | D3DMetal/menu without bridge assertion | Menu reached; normal exit and AutoCloud completed at 18:11:28 | PASS |
+| WineD3D native Steam launch | Bridge restoration plus WineD3D selection | Visible game, Steamworks, normal exit, Cloud | Unity used Vulkan fallback; Steamworks and Cloud passed at 18:13:20 | PASS |
+| Final DXMT default | Restored DXMT/MSync configuration | D3D11, Steamworks, Workshop, clean exit | Accepted in 18 seconds; Cloud upload completed at 18:14:35 | PASS |
+| Final complete matrix | All Node, Python, and shell tests | Release regression remains green | 64 Node, 40 Python, 25 shell contracts | PASS |
+| Final live registry and Cloud | Read-only CDP probes | Dynamic eligibility and Cloud remain healthy | 34/34 managed, Garry's Mod excluded, Cloud enabled | PASS |
+| One-click installer | Isolated component recorders | Build/install order and argument propagation | Hook -> launcher -> bridge -> runtime -> injection | PASS |
+| One-click live preflight | Run top-level installer while Steam is active | Refuse before builds or file mutation | Exit 1 with explicit quit-Steam message | PASS |
 
 ## Error Log
 
@@ -543,7 +580,7 @@
 | Question | Answer |
 |----------|--------|
 | Where am I? | The formal DXMT package and per-game Steam compatibility controls are active and accepted in the user's existing Steam. |
-| Where am I going? | Implement bounded run-command, dependency installation, and final cross-renderer regression. |
+| Where am I going? | Final documentation, commit, and remote push. |
 | What's the goal? | Native macOS Steam downloads and launches Windows-only games through independent selectable compatibility tools. |
-| What have I learned? | DXMT v0.80 needs both Wine 11 client-surface adaptation and global visibility forwarding; Wine/.NET process IDs can collide with persistent macOS PIDs. |
-| What have I done? | Deployed 34-game dynamic eligibility, the formal DXMT runtime, and private per-game renderer/control persistence with live Steam UI evidence. |
+| What have I learned? | A shared PFX needs renderer-aware ABI reconciliation: GPTK Wine 7.7 must not inherit the Wine 11 Proton bridge. |
+| What have I done? | Completed dynamic downloads, controls, actions, dependencies, one-click installation, and live GPTK/WineD3D/DXMT acceptance with Cloud intact. |

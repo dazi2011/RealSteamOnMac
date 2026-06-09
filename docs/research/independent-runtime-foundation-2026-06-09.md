@@ -343,6 +343,15 @@ DXMT is not accepted. DXMT v0.80 reports that the current Wine build lacks its
 required exported symbols. GPTK + Steamworks and WineD3D live acceptance also
 remain open.
 
+## Subsequent Closure
+
+The earlier boundaries above are historical. A pinned Wine 11 macdrv
+compatibility build later accepted DXMT as the default renderer. GPTK launches
+after renderer-aware removal of the incompatible Wine 11 Steamworks bridge,
+and WineD3D selection completed Steamworks/Workshop/exit/Cloud acceptance
+while this game fell back to Unity Vulkan. See
+`docs/research/cross-renderer-final-acceptance-2026-06-09.md`.
+
 ## Diagnostic Side Effect
 
 One registry diagnostic command was initially run without the intended

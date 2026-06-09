@@ -203,3 +203,15 @@ Installed runtime-manager rollback copies:
   compilation itself needs a separate functional test.
 - Per-game Steam UI controls, run-command, and dependency installation remain
   future phases.
+
+## Subsequent Closure
+
+Later work completed those future phases and refined the renderer boundary.
+DXMT, DXVK, and WineD3D use the bridge successfully. GPTK Wine 7.7 cannot use
+this Wine 11 Unix bridge, so the runtime now removes only ledger-matched bridge
+DLLs while GPTK is selected and restores them for supported renderers. GPTK
+then launches normally without game-internal Steamworks. WineD3D completed a
+live game/Steamworks/Cloud acceptance, although People Playground selected
+Unity Vulkan after its D3D11 creation failed.
+
+See `docs/research/cross-renderer-final-acceptance-2026-06-09.md`.

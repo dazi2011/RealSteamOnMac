@@ -96,14 +96,16 @@ Phase 5: per-game compatibility controls and remaining renderer work
       Steamworks bridge remaining in the shared PFX.
 - [x] Verify cloud status no longer blocks launch and AutoCloud runs on exit.
 - [x] Capture logs, screenshots, bridge hashes, and rollback evidence.
-- [ ] Verify input and audio explicitly.
+- [x] Verify live input initialization and CoreAudio backend startup from the
+      game/runtime logs.
 - [x] Verify DXMT with a compatible patched Wine build.
 - [x] Deploy the DXMT package into the existing Steam installation and verify
       native launch, normal exit, process cleanup, and AutoCloud.
-- [ ] Update all handoff and installation documents.
-- [ ] Run the complete automated and live verification matrix.
+- [x] Update all handoff and installation documents.
+- [x] Run the complete automated and live verification matrix.
 - [ ] Commit and push the final verified state.
-- **Status:** in progress
+- **Status:** implementation and live acceptance complete; final commit/push
+  remains
 
 ## Architecture Decision
 
