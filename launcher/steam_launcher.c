@@ -133,6 +133,7 @@ static int exec_original_bootstrap(int argc, char **argv,
 
   unsetenv("DYLD_INSERT_LIBRARIES");
   unsetenv("REALSTEAMONMAC_FORCE_COMPAT");
+  unsetenv("STEAM_EXTRA_COMPAT_TOOLS_PATHS");
   log_line("fallback to original Steam bootstrap: %s", reason);
   execv(original, child_argv);
   int error = errno;
@@ -179,7 +180,6 @@ int main(int argc, char **argv) {
           : default_support;
 
   char hook[PATH_MAX];
-  char compat_tools[PATH_MAX];
   char patcher[PATH_MAX];
   char ui_source[PATH_MAX];
   char allowlist[PATH_MAX];
@@ -187,8 +187,6 @@ int main(int argc, char **argv) {
   char steamui[PATH_MAX];
   if (!build_path(hook, sizeof(hook), support,
                   "libRealSteamCompatGate.dylib") ||
-      !build_path(compat_tools, sizeof(compat_tools), support,
-                  "compat-tool") ||
       !build_path(patcher, sizeof(patcher), support,
                   "patch_steamui.py") ||
       !build_path(ui_source, sizeof(ui_source), support,
@@ -205,7 +203,6 @@ int main(int argc, char **argv) {
                                    "Steam runtime is unavailable");
   }
   if (access(hook, R_OK) != 0 ||
-      access(compat_tools, R_OK) != 0 ||
       access(patcher, X_OK) != 0 ||
       access(ui_source, R_OK) != 0 ||
       access(allowlist, R_OK) != 0) {
@@ -217,9 +214,9 @@ int main(int argc, char **argv) {
                                    "Steam UI resource patch failed");
   }
 
-  if (setenv("DYLD_INSERT_LIBRARIES", hook, 1) != 0 ||
-      setenv("REALSTEAMONMAC_FORCE_COMPAT", "1", 1) != 0 ||
-      setenv("STEAM_EXTRA_COMPAT_TOOLS_PATHS", compat_tools, 1) != 0) {
+  if (unsetenv("STEAM_EXTRA_COMPAT_TOOLS_PATHS") != 0 ||
+      setenv("DYLD_INSERT_LIBRARIES", hook, 1) != 0 ||
+      setenv("REALSTEAMONMAC_FORCE_COMPAT", "1", 1) != 0) {
     return exec_original_bootstrap(argc, argv,
                                    "could not configure runtime environment");
   }
@@ -247,7 +244,7 @@ int main(int argc, char **argv) {
     printf("steamui=verified\n");
     printf("dyld=%s\n", getenv("DYLD_INSERT_LIBRARIES"));
     printf("enabled=%s\n", getenv("REALSTEAMONMAC_FORCE_COMPAT"));
-    printf("tools=%s\n", getenv("STEAM_EXTRA_COMPAT_TOOLS_PATHS"));
+    printf("tools=disabled\n");
     fputs("args=", stdout);
     for (size_t index = 1; child_argv[index] != NULL; ++index) {
       if (index > 1) {

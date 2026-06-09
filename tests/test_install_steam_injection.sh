@@ -64,6 +64,7 @@ ditto "$RUNTIME_APP" "$BACKUP/SteamRuntime.app"
     --support-root "$SUPPORT" >/dev/null
 
 test -f "$SUPPORT/libRealSteamCompatGate.dylib"
+test -f "$SUPPORT/libRealSteamNativeEngine.dylib"
 test -x "$SUPPORT/compat-tool/realsteamonmac-experimental/run"
 test -f "$SUPPORT/allowlist.txt"
 test -x "$SUPPORT/patch_steamui.py"

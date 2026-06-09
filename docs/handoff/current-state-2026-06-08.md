@@ -2,6 +2,9 @@
 
 Date: 2026-06-08
 
+> Historical snapshot. For the deployed cloud-safe state and current next
+> steps, use `current-state-2026-06-09.md`.
+
 ## Phase 1 Result
 
 People Playground (`AppID 1118200`, a Windows-only title) now installs on macOS

@@ -12,7 +12,13 @@ test -x "$BUILD_SCRIPT"
 test -f "$SOURCE"
 grep -q 'DYLD_INSERT_LIBRARIES' "$SOURCE"
 grep -q 'REALSTEAMONMAC_FORCE_COMPAT' "$SOURCE"
-grep -q 'STEAM_EXTRA_COMPAT_TOOLS_PATHS' "$SOURCE"
+grep -q 'unsetenv("STEAM_EXTRA_COMPAT_TOOLS_PATHS")' "$SOURCE"
+if grep -Eq \
+    '(^|[^[:alnum:]_])setenv\("STEAM_EXTRA_COMPAT_TOOLS_PATHS"' \
+    "$SOURCE"; then
+    echo "launcher must not activate Steam's macOS compatibility-tool path" >&2
+    exit 1
+fi
 grep -q 'exec_original_bootstrap' "$SOURCE"
 
 "$BUILD_SCRIPT"
@@ -48,7 +54,7 @@ REALSTEAMONMAC_LAUNCHER_DRY_RUN=1 \
 
 grep -Fq "dyld=$SUPPORT/libRealSteamCompatGate.dylib" "$CAPTURE"
 grep -Fq "enabled=1" "$CAPTURE"
-grep -Fq "tools=$SUPPORT/compat-tool" "$CAPTURE"
+grep -Fq "tools=disabled" "$CAPTURE"
 grep -Fq "args=-skipinitialbootstrap -cef-enable-debugging" "$CAPTURE"
 grep -Fq "steamui=verified" "$CAPTURE"
 grep -Fq '/realsteamonmac/ui.js' "$STEAMUI/index.html"

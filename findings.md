@@ -109,6 +109,49 @@
 - The active Steam process was not launched with `-cef-enable-debugging`, so a
   controlled restart is required to capture the settings page's live JS and
   backend state through CDP.
+- A controlled restart with `-cef-enable-debugging` exposed the settings page
+  and shared Steam UI context on `127.0.0.1:8080`.
+- The cloud settings DOM renders the sidebar and `云` heading, but its
+  `DialogBody` is empty. Reloading the page produced no JavaScript exception.
+- Steam UI's protobuf schema still defines `cloud_enabled` as boolean field
+  `10000` and `show_screenshot_manager` as field `10001`.
+- The live native settings store omits both fields from `m_ClientSettings`;
+  `cloud_enabled` is absent rather than present with the value `false`.
+- The per-game cloud component reads the same `cloud_enabled` setting. Its
+  missing value follows the disabled fallback, which explains the misleading
+  “Steam 云已在 Steam 全局设置中被禁用” message.
+- CloudStorage namespaces resumed and no remote-storage failure was observed.
+  The evidence therefore points to missing native capability/settings data,
+  not damaged cloud saves or an account sanction.
+- RealSteamOnMac's injected UI code does not read or write Steam cloud settings.
+  Controlled clean-versus-injected A/B testing proved that the native startup
+  injection was the indirect cause.
+- A clean runtime and a minimal hook that only clears
+  `DYLD_INSERT_LIBRARIES`/`REALSTEAMONMAC_FORCE_COMPAT` both return
+  `cloud_enabled=true`, `show_screenshot_manager=false`, and render the Cloud
+  controls.
+- Leaving the injection environment inherited by Steam Helper breaks the
+  websocket/settings bridge.
+- Starting a pthread from the injected dylib constructor omits both settings
+  even when that worker initially sleeps and performs no patch.
+- Early tests that appeared to blame the full engine's import/load surface were
+  confounded by the launcher's valid compatibility-tool path. A strict
+  single-variable retest loaded the full `arm64` engine with an environment-only
+  constructor and no valid tool path; both Cloud fields remained healthy.
+- The full engine's presence is therefore not independently causal. Constructor
+  thread creation and valid native compatibility-tool discovery are the proven
+  triggers.
+- `STEAM_EXTRA_COMPAT_TOOLS_PATHS` pointing to an empty directory preserves the
+  Cloud fields. Pointing the same variable to the real
+  `compatibilitytool.vdf` directory removes both fields.
+- The production architecture must split startup injection into a minimal
+  environment guard and keep the full native patch engine out of the process
+  until an explicit post-initialization activation path exists.
+- Historical People Playground logs contain
+  `Inhibiting sync requests for pending platform change` and
+  `Sync Failed, no user set`, but the guarded 10:39 startup produced neither.
+  It completed a normal People Playground cloud evaluation and roaming config
+  later reported `PerformSyncCloud - all sync'd up`.
 
 ### Screenshot 2026-06-09 09:26:10
 
@@ -128,10 +171,12 @@
 | Scope every setting to AppID and tool version | Prevents one game's experimental option from contaminating another prefix. |
 | Use manifests and checksums for dependencies | Arbitrary remote installers are a supply-chain and reproducibility risk. |
 | Diagnose cloud with read-only probes first | Remote saves and account state must not be changed during root-cause collection. |
+| Split the injected guard from the native engine | The split makes it structurally impossible to start the patch worker during dyld construction and preserves a clean post-initialization activation boundary. |
 | Reject Claude's global NOP as the production design | It broadens the backend gate beyond proven Windows-only games and is not paired with a complete UI predicate. |
 | Preserve Claude's prototype on a recovery branch | It protects interrupted work while keeping incomplete behavior out of the verified mainline. |
 | Identify targets from Steam app/depot metadata | A title must have a Windows launch/depot path and no usable macOS launch/depot path; `InvalidPlatform` alone is insufficient. |
 | Restore Steam UI before any other rollback mutation | A failed UI restore now aborts before Steam.app, runtime binaries, or support files are moved. |
+| Treat missing `cloud_enabled` as the primary cloud symptom | The blank page and false “globally disabled” state share this backend omission; changing account/cloud data would hide evidence without proving a cause. |
 
 ## Issues Encountered
 
@@ -141,6 +186,8 @@
 | The user requested uninterrupted autonomous execution while the brainstorming skill normally asks for approval | Treat the user's detailed architecture and explicit delegation of decisions as authorization; document decisions and proceed without pausing for approval. |
 | The full test suite passed while the UI target predicate was missing | Add an integration contract that loads `config.js` and `ui.js` together and proves the compatibility-page predicate exists before accepting dynamic enablement. |
 | Rollback tests did not cover Steam UI resource restoration | Resolved with a real patch-install/restore fixture in `tests/test_restore_steam_from_backup.sh`. |
+| Steam cloud UI showed no console exception | Traced the rendered DOM, protobuf schema, settings store, and CloudStorage state; the deterministic failure is an omitted native setting field. |
+| Computer Use could not start ScreenCaptureKit | Two element-aware session attempts returned `SCStreamErrorDomain -3811`; no coordinate fallback was used, and CDP supplied exact DOM/state evidence. |
 
 ## Resources
 

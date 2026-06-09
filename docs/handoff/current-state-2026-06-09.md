@@ -14,7 +14,8 @@ changes.
 - The recovery prototype is intentionally not merged into the active branch.
   It globally NOPs the install platform veto, treats every `InvalidPlatform`
   app overview as a target, and references an unimplemented browser predicate.
-- The full Node, Python, and shell test suite passes at active head `be55b6a`.
+- The full Node, Python, and shell test suite passes with the cloud-safe startup
+  changes in the working tree.
 
 Persistent working context is maintained in:
 
@@ -51,13 +52,21 @@ Manifest        9210503819883706733
 - Steam runtime build: `1780705203`
 - Support root:
   `~/Library/Application Support/RealSteamOnMac`
-- Compatibility tool:
-  `~/Library/Application Support/Steam/compatibilitytools.d/realsteamonmac-experimental`
+- Startup guard:
+  `~/Library/Application Support/RealSteamOnMac/libRealSteamCompatGate.dylib`
+- Dormant native engine:
+  `~/Library/Application Support/RealSteamOnMac/libRealSteamNativeEngine.dylib`
+- Dormant compatibility-tool package:
+  `~/Library/Application Support/RealSteamOnMac/compat-tool`
 - Current target registry: one-entry allowlist containing `1118200`
 
-The installed Python patcher and browser UI asset are byte-identical to the
-active repository source. The deployed native hook logs successful
-allowlist-gated installation-gate redirection.
+The launcher does not set `STEAM_EXTRA_COMPAT_TOOLS_PATHS`. The valid tool
+package remains on disk for later project-owned discovery, but native macOS
+Steam is not asked to discover it during startup.
+
+The installed startup guard, dormant engine, launcher, Python patcher, and
+browser UI asset were rebuilt from the active working tree and deployed on
+2026-06-09 at 10:39 Asia/Shanghai.
 
 ## What Is Not Implemented
 
@@ -73,28 +82,53 @@ It does not:
   or run-command controls.
 
 No `compatdata/1118200/pfx` exists. The independent launch path is therefore
-unimplemented, even though Steam's Play button is visible.
+unimplemented. In the current cloud-safe startup, People Playground remains
+installed but reports display status `14`; the compatibility page exists, while
+the native tool list is intentionally empty and the Play action is not forced.
 
-## Cloud Investigation State
+## Cloud Root Cause And Fix
 
-The global Steam Cloud settings page renders a blank content pane. Per-game UI
-reports that Steam Cloud is disabled globally, and People Playground can remain
-at checking cloud status.
+The blank global Cloud page and false “Steam Cloud is disabled globally”
+message were client-side regressions, not an account restriction or damaged
+remote saves.
 
-Current evidence:
+Read-only CDP probes established:
 
-- Steam's `CloudStorage` resumed successfully in earlier sessions.
-- `sharedconfig.vdf` is present, readable, and syntactically valid.
-- Steam loaded that roaming write-aside store successfully after 20:59 on
-  2026-06-08.
-- At the time of the blank-page screenshot, `webhelper_js.txt` repeatedly
-  logged `waiting for roaming storage to initialize`.
-- The active Steam process was not launched with `-cef-enable-debugging`, so
-  live settings-page JS/backend inspection has not yet been captured.
+- Steam UI still defines `cloud_enabled` and `show_screenshot_manager`;
+- the broken startup omitted both fields from `m_ClientSettings`;
+- the settings component renders nothing when those fields are absent;
+- CloudStorage and roaming configuration remained available.
 
-There is no evidence yet that RealSteamOnMac triggered a server-side account
-restriction or intentionally disabled cloud sync. Do not change cloud saves or
-remote storage until the client-side initialization failure is isolated.
+Controlled A/B testing found two independent startup hazards:
+
+1. Inheriting `DYLD_INSERT_LIBRARIES` into Steam Helper breaks the
+   websocket/settings bridge.
+2. Setting `STEAM_EXTRA_COMPAT_TOOLS_PATHS` to a directory containing a valid
+   compatibility tool makes macOS Steam omit the Cloud fields. The same
+   variable pointing at an empty directory does not reproduce the failure.
+
+The deployed correction is:
+
+- inject only a minimal environment guard during startup;
+- clear the injection variables before Helper creation;
+- do not register native compatibility tools through
+  `STEAM_EXTRA_COMPAT_TOOLS_PATHS`;
+- keep the full patch engine constructor-free and dormant.
+
+Verified after deployment:
+
+- `cloud_enabled=true`;
+- `show_screenshot_manager=false`;
+- the global Cloud page has two rendered setting groups;
+- Garry's Mod shows its normal Steam Cloud checkbox and quota;
+- People Playground shows Steam Cloud with a `953.67 MB` quota and retains its
+  `兼容性` page;
+- the 10:39 startup produced no new `pending platform change` or
+  `Sync Failed, no user set`;
+- roaming config reported `PerformSyncCloud - all sync'd up` at 10:40:23.
+
+Other Windows-only titles still report unresolved `WinAppDataLocal` cloud
+roots. That is expected until the Proton-compatible PFX path exists.
 
 ## Installer And Rollback Audit
 
@@ -117,17 +151,25 @@ The focused regression test installs the real UI patch in a temporary runtime,
 runs the rollback, and verifies exact original resources and asset removal. The
 complete repository suite passes with the fix.
 
+Cloud-fix deployment snapshot:
+
+```text
+/Users/wudazi/RealSteamOnMac-Backups/cloud-fix-20260609T103853
+```
+
+Its `SHA256SUMS` covers the prior support directory, launcher, Info.plist,
+bootstrap, and runtime executable. The full clean backup remains the
+authoritative complete rollback source.
+
 ## Next Execution Order
 
 1. Done: Steam UI restoration is covered by the rollback regression test.
-2. Relaunch Steam through the existing launcher with CEF debugging enabled.
-3. Reproduce the Cloud page failure and capture page exceptions, account
-   settings, roaming-store state, and per-game cloud state through read-only
-   CDP probes.
-4. Fix and verify Cloud behavior before broadening the native patch.
-5. Implement a generated Windows-only AppID registry from Steam platform,
+2. Done: Cloud root cause isolated and the guarded startup deployed.
+3. Implement a generated Windows-only AppID registry from Steam platform,
    launch, and depot metadata; do not use `InvalidPlatform` alone.
-6. Implement the independent versioned compatibility runtime and
+4. Restore blue download/Play presentation through the cloud-safe registry and
+   a post-initialization backend path.
+5. Implement the independent versioned compatibility runtime and
    Proton-compatible prefix path.
 
 ## Recovery And Rollback
@@ -146,3 +188,7 @@ Current clean Steam backup:
 
 The rollback is now automated-test verified, but still requires Steam to be
 fully stopped and the clean backup path above to remain intact.
+
+Computer Use was attempted for visual acceptance, but macOS ScreenCaptureKit
+returned `SCStreamErrorDomain -3811` twice. No coordinate clicks were used.
+CDP DOM/state probes supplied the exact UI evidence instead.

@@ -9,7 +9,7 @@ requiring CrossOver.
 
 ## Current Phase
 
-Phase 2: rollback safety and cloud root-cause investigation
+Phase 3: dynamic Windows-only library enablement
 
 ## Phases
 
@@ -29,13 +29,16 @@ Phase 2: rollback safety and cloud root-cause investigation
 ### Phase 2: Live Steam Health And Cloud Root Cause
 
 - [x] Fix and test complete Steam UI resource restoration in rollback.
-- [ ] Capture Steam process, build, launcher, hook, config, and log state.
-- [ ] Reproduce the blank global Cloud page and per-game cloud-status behavior.
-- [ ] Trace console errors and configuration reads without changing cloud data.
-- [ ] Add a failing regression test or deterministic diagnostic for the cause.
-- [ ] Fix the root cause and verify native macOS games and People Playground.
-- [ ] Document, commit, and push the isolated cloud fix.
-- **Status:** pending
+- [x] Capture Steam process, build, launcher, hook, config, and log state.
+- [x] Reproduce the blank global Cloud page and per-game cloud-status behavior.
+- [x] Trace console errors and configuration reads without changing cloud data.
+- [x] Add a failing regression test and deterministic A/B diagnostic.
+- [x] Split startup injection into a minimal environment guard and dormant
+      native engine.
+- [x] Deploy the guarded startup and verify native macOS games and People
+      Playground.
+- [x] Document, commit, and push the isolated cloud fix.
+- **Status:** complete
 
 ### Phase 3: Dynamic Windows-Only Library Enablement
 
@@ -117,8 +120,8 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 
 1. Did Claude's final commit fully download the Windows depot and update every
    handoff/install document?
-2. Is the cloud failure caused by Steam configuration, an injected UI exception,
-   a backend call failure, or an unrelated current Steam client defect?
+2. Which post-initialization activation mechanism can expose native install
+   behavior without constructor threads or native macOS tool discovery?
 3. Which Steam-owned data source can identify owned Windows-only games without
    globally changing platform semantics?
 4. Which current macOS-compatible Wine/GPTK combinations can launch 32-bit and
@@ -135,6 +138,8 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Use thin compatibility wrappers | Multiple runtime versions can coexist and wrappers can translate Steam arguments into backend-specific commands. |
 | Diagnose cloud before expanding patches | Cloud behavior affects native titles too and may indicate a global UI or configuration regression. |
 | Treat visible UI and backend behavior as separate acceptance criteria | A blue button or dropdown is not proof that install or launch paths work. |
+| Never start the native worker from a dyld constructor | A delayed no-op worker still removes Cloud settings before patching anything. |
+| Do not set `STEAM_EXTRA_COMPAT_TOOLS_PATHS` to a valid tool on macOS | A/B testing proves valid native tool discovery removes the Cloud settings fields on build `1780705203`. |
 
 ## Errors Encountered
 

@@ -64,6 +64,7 @@ static bool gSteamClientInstallGatePatched = false;
 static bool gSteamUIPatched = false;
 static bool gDataScanStartedLogged = false;
 static bool gDataScanSummaryLogged = false;
+static bool gWorkerStarted = false;
 
 static void log_line(const char *message) {
   const char *home = getenv("HOME");
@@ -118,17 +119,6 @@ static bool is_steam_runtime_process(void) {
   }
   bool matches =
       strstr(path, "/Steam.AppBundle/Steam/Contents/MacOS/steam_osx") != NULL;
-  free(path);
-  return matches;
-}
-
-static bool is_steam_bootstrap_process(void) {
-  char *path = NULL;
-  if (!get_executable_path(&path)) {
-    return false;
-  }
-  bool matches =
-      strstr(path, "/Applications/Steam.app/Contents/MacOS/steam_osx") != NULL;
   free(path);
   return matches;
 }
@@ -1011,24 +1001,16 @@ static void *data_override_worker(void *context) {
   return NULL;
 }
 
-__attribute__((constructor)) static void initialize_platform_hook(void) {
-  const char *enabled = getenv("REALSTEAMONMAC_FORCE_COMPAT");
-  bool should_enable = enabled != NULL && strcmp(enabled, "1") == 0;
-  if (!should_enable) {
-    return;
-  }
-  if (is_steam_bootstrap_process()) {
-    log_line("data override: waiting for Steam runtime exec");
-    return;
-  }
-  if (!is_steam_runtime_process()) {
-    clear_injection_environment();
+__attribute__((visibility("default")))
+void realsteamonmac_start_native_worker(void) {
+  if (gWorkerStarted || !is_steam_runtime_process()) {
     return;
   }
 
+  gWorkerStarted = true;
   pthread_t worker;
   if (pthread_create(&worker, NULL, data_override_worker, NULL) != 0) {
-    clear_injection_environment();
+    gWorkerStarted = false;
     log_line("data override: could not start reconciliation worker");
     return;
   }

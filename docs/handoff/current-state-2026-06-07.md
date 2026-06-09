@@ -1,5 +1,8 @@
 # RealSteamOnMac Current State
 
+> Historical snapshot. For the deployed cloud-safe state and current next
+> steps, use `current-state-2026-06-09.md`.
+
 Date: 2026-06-07
 
 ## Scope And Result

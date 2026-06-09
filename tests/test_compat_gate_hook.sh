@@ -4,7 +4,8 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 SOURCE="$ROOT/hook/compat_gate_hook.c"
 BUILD_SCRIPT="$ROOT/script/build_compat_gate_hook.sh"
-OUTPUT="$ROOT/artifacts/compat-gate-hook/libRealSteamCompatGate.dylib"
+GUARD="$ROOT/artifacts/compat-gate-hook/libRealSteamCompatGate.dylib"
+OUTPUT="$ROOT/artifacts/compat-gate-hook/libRealSteamNativeEngine.dylib"
 
 test -f "$SOURCE"
 test -x "$BUILD_SCRIPT"
@@ -22,10 +23,14 @@ grep -q 'realsteamonmac_platform_flags' "$SOURCE"
 grep -q 'unsetenv("DYLD_INSERT_LIBRARIES")' "$SOURCE"
 grep -q 'realsteamonmac_apply_data_overrides' "$SOURCE"
 grep -q 'is_steam_runtime_process' "$SOURCE"
-grep -q 'is_steam_bootstrap_process' "$SOURCE"
 grep -q 'clear_injection_environment' "$SOURCE"
+grep -q 'realsteamonmac_start_native_worker' "$SOURCE"
 grep -q 'pthread_create' "$SOURCE"
 grep -q 'data_override_worker' "$SOURCE"
+if grep -q '__attribute__((constructor))' "$SOURCE"; then
+    echo "native engine must be loaded explicitly after Steam initialization" >&2
+    exit 1
+fi
 if grep -Eq 'DATA_OVERRIDE_ATTEMPTS|DATA_OVERRIDE_RECONCILE_DELAY_US' "$SOURCE"; then
     echo "native reconciliation must use tracked objects, not repeated full scans" >&2
     exit 1
@@ -67,9 +72,11 @@ grep -q 'patch_steamclient_install_gate(header, slide)' "$SOURCE"
 "$BUILD_SCRIPT"
 
 test -f "$OUTPUT"
+test -f "$GUARD"
 file "$OUTPUT" | grep -q 'arm64'
 file "$OUTPUT" | grep -q 'arm64e'
 file "$OUTPUT" | grep -q 'x86_64'
 codesign --verify --strict "$OUTPUT"
+codesign --verify --strict "$GUARD"
 
 echo "compat gate hook contract: PASS"
