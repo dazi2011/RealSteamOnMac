@@ -11,6 +11,8 @@ shift || true
 {
     printf '%s\n' "---"
     printf 'timestamp=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf 'tool=%s\n' "realsteamonmac-wined3d"
+    printf 'renderer=%s\n' "wined3d"
     printf 'verb=%s\n' "$VERB"
     printf 'SteamAppId=%s\n' "${SteamAppId:-}"
     printf 'SteamGameId=%s\n' "${SteamGameId:-}"
@@ -26,4 +28,3 @@ shift || true
 } >>"$LOG_FILE"
 
 exit 0
-

@@ -258,10 +258,22 @@ Still not implemented or not yet accepted:
 
 - GPTK + Steamworks bridge acceptance;
 - WineD3D live game acceptance;
-- the per-game Steam UI controls for renderer, MSync, Retina, Metal HUD,
-  MetalFX, DXR, and AVX;
+- live Steam acceptance of the new per-game renderer, MSync, Retina, Metal HUD,
+  MetalFX, DXR, and AVX controls;
 - dependency search/install;
 - run-command UI and logging controls.
+
+The Phase 5A control candidate is implemented but not yet installed into the
+running Steam client. It provides four project tools, a Steam-native controls
+panel, and a token-authenticated native config endpoint. Canonical settings
+live at:
+
+```text
+~/Library/Application Support/RealSteamOnMac/apps/<appid>.json
+```
+
+The full pre-deployment control matrix passes with 54 Node tests, 27 Python
+tests, and all 22 shell contracts.
 
 DXMT implementation and acceptance details:
 
@@ -357,7 +369,8 @@ authoritative complete rollback source.
    launch, Steamworks bridge, normal exit, and AutoCloud closure.
 7. Done and deployed: DXMT-compatible Wine 11 build, real menu, Steamworks,
    normal exit, AutoCloud, rollback, and idempotent installer cleanup.
-8. In progress: per-game controls, run-command, and dependency workflows.
+8. Automated candidate complete: per-game renderer and advanced controls.
+9. In progress: live control deployment, run-command, and dependency workflows.
 
 ## Phase 4 Runtime Foundation Update
 

@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-SOURCE="$ROOT/compat-tool/realsteamonmac-experimental"
+SOURCE="$ROOT/compat-tool"
 TARGET_ROOT=""
 
 usage() {
@@ -24,15 +24,19 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "$TARGET_ROOT" ] || usage
-[ -d "$SOURCE" ] || {
+[ -d "$SOURCE/realsteamonmac-dxmt" ] || {
     echo "missing source compat tool: $SOURCE" >&2
     exit 1
 }
 
 mkdir -p "$TARGET_ROOT"
-DESTINATION="$TARGET_ROOT/realsteamonmac-experimental"
-rm -rf "$DESTINATION"
-cp -R "$SOURCE" "$DESTINATION"
-chmod +x "$DESTINATION/run"
+DESTINATION="$TARGET_ROOT"
+for tool in "$SOURCE"/*; do
+    [ -f "$tool/run" ] || continue
+    name=$(basename "$tool")
+    rm -rf "$DESTINATION/$name"
+    cp -R "$tool" "$DESTINATION/$name"
+    chmod +x "$DESTINATION/$name/run"
+done
 
 echo "$DESTINATION"

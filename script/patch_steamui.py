@@ -34,8 +34,31 @@ END_MARKER = "<!-- RealSteamOnMac UI end -->"
 CONFIG_TAG = '<script defer="defer" src="/realsteamonmac/config.js"></script>'
 UI_TAG = '<script defer="defer" src="/realsteamonmac/ui.js"></script>'
 CONFIG_PREFIX = "globalThis.__REALSTEAMONMAC_CONFIG__ = Object.freeze("
-DEFAULT_COMPAT_TOOL = "realsteamonmac-experimental"
+DEFAULT_COMPAT_TOOL = "realsteamonmac-dxmt"
 REGISTRY_ENDPOINT = "http://127.0.0.1:57344/registry"
+CONTROL_ENDPOINT = "http://127.0.0.1:57344/config"
+COMPAT_TOOLS = [
+    {
+        "strToolName": "realsteamonmac-gptk",
+        "strDisplayName": "RealSteamOnMac - GPTK 3",
+        "renderer": "gptk",
+    },
+    {
+        "strToolName": "realsteamonmac-dxmt",
+        "strDisplayName": "RealSteamOnMac - DXMT 0.80",
+        "renderer": "dxmt",
+    },
+    {
+        "strToolName": "realsteamonmac-dxvk",
+        "strDisplayName": "RealSteamOnMac - DXVK macOS 1.10.3",
+        "renderer": "dxvk",
+    },
+    {
+        "strToolName": "realsteamonmac-wined3d",
+        "strDisplayName": "RealSteamOnMac - WineD3D 11.10",
+        "renderer": "wined3d",
+    },
+]
 COMPAT_PAGE_ANCHOR = (
     '(0,f.CI)()&&o.push({title:(0,A.we)'
     '("#AppProperties_CompatibilityPage")'
@@ -139,13 +162,9 @@ def config_bytes(appids, registry_token):
             "appids": appids,
             "defaultCompatTool": DEFAULT_COMPAT_TOOL,
             "registryEndpoint": REGISTRY_ENDPOINT,
+            "controlEndpoint": CONTROL_ENDPOINT,
             "registryToken": registry_token,
-            "compatTools": [
-                {
-                    "strToolName": DEFAULT_COMPAT_TOOL,
-                    "strDisplayName": "RealSteamOnMac Experimental",
-                }
-            ],
+            "compatTools": COMPAT_TOOLS,
         },
         separators=(",", ":"),
     )
@@ -308,6 +327,7 @@ def verify_steamui(steamui_root):
     compat_tools = parsed.get("compatTools")
     default_compat_tool = parsed.get("defaultCompatTool")
     registry_endpoint = parsed.get("registryEndpoint")
+    control_endpoint = parsed.get("controlEndpoint")
     registry_token = parsed.get("registryToken")
     if (
         not isinstance(compat_tools, list)
@@ -318,14 +338,19 @@ def verify_steamui(steamui_root):
             or not tool["strToolName"]
             or not isinstance(tool.get("strDisplayName"), str)
             or not tool["strDisplayName"]
+            or tool.get("renderer")
+            not in {"gptk", "dxmt", "dxvk", "wined3d"}
             for tool in compat_tools
         )
         or len({tool["strToolName"] for tool in compat_tools})
+        != len(compat_tools)
+        or len({tool["renderer"] for tool in compat_tools})
         != len(compat_tools)
         or not isinstance(default_compat_tool, str)
         or default_compat_tool
         not in {tool["strToolName"] for tool in compat_tools}
         or registry_endpoint != REGISTRY_ENDPOINT
+        or control_endpoint != CONTROL_ENDPOINT
         or not isinstance(registry_token, str)
         or re.fullmatch(r"[0-9A-Fa-f]{32,64}", registry_token) is None
     ):

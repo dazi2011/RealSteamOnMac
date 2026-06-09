@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+
+LOG_ROOT=${REALSTEAMONMAC_LOG_ROOT:-"$HOME/Library/Logs/RealSteamOnMac"}
+LOG_FILE="$LOG_ROOT/compat-tool.log"
+mkdir -p "$LOG_ROOT"
+
+VERB=${1:-unknown}
+shift || true
+
+{
+    printf '%s\n' "---"
+    printf 'timestamp=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf 'tool=%s\n' "realsteamonmac-gptk"
+    printf 'renderer=%s\n' "gptk"
+    printf 'verb=%s\n' "$VERB"
+    printf 'SteamAppId=%s\n' "${SteamAppId:-}"
+    printf 'SteamGameId=%s\n' "${SteamGameId:-}"
+    printf 'STEAM_COMPAT_APP_ID=%s\n' "${STEAM_COMPAT_APP_ID:-}"
+    printf 'STEAM_COMPAT_DATA_PATH=%s\n' "${STEAM_COMPAT_DATA_PATH:-}"
+    printf 'STEAM_COMPAT_INSTALL_PATH=%s\n' "${STEAM_COMPAT_INSTALL_PATH:-}"
+    printf 'argc=%s\n' "$#"
+    index=0
+    for argument in "$@"; do
+        printf 'arg_%s=%s\n' "$index" "$argument"
+        index=$((index + 1))
+    done
+} >>"$LOG_FILE"
+
+exit 0

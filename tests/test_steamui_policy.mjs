@@ -5,16 +5,104 @@ import test from "node:test";
 const require = createRequire(import.meta.url);
 const {
   buildManagedAppSet,
+  buildControlPayload,
+  buildControlUrl,
+  compatToolForRenderer,
   decideOverviewPatch,
   discoverManagedApps,
   findAppActionComponents,
   isOwnedWindowsOnlyGame,
   mergeCompatTools,
+  normalizeControlConfig,
   refreshAppActionComponents,
   reconcileCompatDetails,
   reconcileAppState,
+  rendererForCompatTool,
   DETAILS_REFRESH_INTERVAL_MS,
 } = require("../ui/realsteamonmac_ui.js");
+
+const projectTools = [
+  {
+    strToolName: "realsteamonmac-gptk",
+    strDisplayName: "RealSteamOnMac - GPTK 3",
+    renderer: "gptk",
+  },
+  {
+    strToolName: "realsteamonmac-dxmt",
+    strDisplayName: "RealSteamOnMac - DXMT 0.80",
+    renderer: "dxmt",
+  },
+  {
+    strToolName: "realsteamonmac-dxvk",
+    strDisplayName: "RealSteamOnMac - DXVK macOS 1.10.3",
+    renderer: "dxvk",
+  },
+  {
+    strToolName: "realsteamonmac-wined3d",
+    strDisplayName: "RealSteamOnMac - WineD3D 11.10",
+    renderer: "wined3d",
+  },
+];
+
+test("maps compatibility tools to runtime renderers in both directions", () => {
+  assert.equal(
+    rendererForCompatTool("realsteamonmac-dxvk", projectTools),
+    "dxvk",
+  );
+  assert.equal(
+    compatToolForRenderer("wined3d", projectTools),
+    "realsteamonmac-wined3d",
+  );
+  assert.equal(rendererForCompatTool("unknown", projectTools), null);
+});
+
+test("normalizes controls and disables GPTK-only features elsewhere", () => {
+  assert.deepEqual(
+    normalizeControlConfig({
+      renderer: "dxmt",
+      msync: false,
+      retina: true,
+      metal_hud: true,
+      metalfx: true,
+      dxr: true,
+      avx: true,
+    }),
+    {
+      renderer: "dxmt",
+      msync: false,
+      retina: true,
+      metal_hud: true,
+      metalfx: false,
+      dxr: false,
+      avx: true,
+    },
+  );
+});
+
+test("builds the fixed native control request shape", () => {
+  assert.equal(
+    buildControlPayload({
+      renderer: "gptk",
+      msync: true,
+      retina: false,
+      metal_hud: true,
+      metalfx: true,
+      dxr: false,
+      avx: true,
+    }),
+    "renderer=gptk&msync=1&retina=0&metal_hud=1&" +
+      "metalfx=1&dxr=0&avx=1",
+  );
+  assert.equal(
+    buildControlUrl(
+      "http://127.0.0.1:57344/config",
+      "0123456789abcdef",
+      1118200,
+    ),
+    "http://127.0.0.1:57344/config" +
+      "?token=0123456789abcdef&appid=1118200",
+  );
+});
 
 function gameOverview(appid, overrides = {}) {
   return {

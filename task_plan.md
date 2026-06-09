@@ -72,15 +72,16 @@ Phase 5: per-game compatibility controls and remaining renderer work
 
 ### Phase 5: Per-Game Compatibility Controls
 
-- [ ] Expose installed compatibility tools in Steam's per-game dropdown.
-- [ ] Add persistent per-AppID controls for MSync, high-resolution mode,
+- [x] Expose installed compatibility tools in Steam's per-game dropdown.
+- [x] Add persistent per-AppID controls for MSync, high-resolution mode,
       Metal HUD, and supported MetalFX/DLSS translation settings.
 - [ ] Add a run-command workflow scoped to the selected game's prefix.
 - [ ] Add dependency search/install with manifests, checksums, and uninstall logs.
-- [ ] Ensure settings survive Steam and machine restarts.
+- [x] Ensure settings survive Steam and machine restarts.
 - [ ] Test each control against the actual generated environment.
 - [ ] Document, commit, and push each control group.
-- **Status:** pending
+- **Status:** renderer and runtime-control implementation accepted by the full
+  automated matrix; live Steam interaction acceptance pending
 
 ### Phase 6: End-To-End Game Launch
 

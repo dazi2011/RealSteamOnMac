@@ -3,6 +3,5 @@
     "version" "2"
     "commandline" "/run %verb%"
     "use_sessions" "1"
-    "compatmanager_layer_name" "realsteamonmac"
+    "compatmanager_layer_name" "realsteamonmac-wined3d"
 }
-

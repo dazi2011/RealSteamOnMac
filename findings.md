@@ -348,6 +348,27 @@
   Detaching installer-owned unique mount points directly is reliable; a
   mount-list precondition was unnecessary and failed in the live path.
 
+## Per-Game Control Findings
+
+- Native startup discovery through `STEAM_EXTRA_COMPAT_TOOLS_PATHS` remains
+  prohibited because it removes Cloud settings on this Steam build. Four
+  project tools can instead be injected only into managed compatibility pages
+  while actual PE launch stays on the proven spawn dispatcher.
+- A global per-AppID config is necessary before a game has a PFX and for newly
+  purchased games. The canonical path is
+  `~/Library/Application Support/RealSteamOnMac/apps/<appid>.json`; the
+  PFX-local config remains a migration and inspection copy.
+- The loopback control endpoint reuses the existing private registry token and
+  rejects non-managed AppIDs. It accepts no command strings or filesystem
+  paths, only renderer plus six booleans.
+- The accepted renderer mapping is one-to-one:
+  `realsteamonmac-gptk -> gptk`, `realsteamonmac-dxmt -> dxmt`,
+  `realsteamonmac-dxvk -> dxvk`, and
+  `realsteamonmac-wined3d -> wined3d`.
+- MetalFX and DXR are GPTK-only. Presenting these switches as active under
+  DXMT/DXVK/WineD3D would be a false UI contract, so both frontend and backend
+  reject that state.
+
 ## Technical Decisions
 
 | Decision | Rationale |
@@ -376,6 +397,8 @@
 | Inject the DXMT shim only from the per-renderer runtime environment | Steam and non-DXMT Wine processes must never inherit the visibility shim. |
 | Build the DXMT driver from exact Wine plus complete Wine-Staging sources | A live-compatible but source-mixed driver is not a maintainable release boundary. |
 | Detach installer-owned GPTK mount points unconditionally during cleanup | The paths are unique to the installer, detach is idempotent, and cleanup must not depend on a separate mount-list probe. |
+| Keep the native control API data-only | Fixed renderer/boolean fields can be validated and persisted safely; arbitrary command execution belongs to a later separately bounded workflow. |
+| Make global AppID config canonical and retain PFX config as fallback | Settings can exist before install and survive prefix replacement while old deployments remain readable. |
 
 ## Issues Encountered
 

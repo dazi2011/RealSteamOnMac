@@ -1,0 +1,13 @@
+"compatibilitytools"
+{
+    "compat_tools"
+    {
+        "realsteamonmac-dxvk"
+        {
+            "install_path" "."
+            "display_name" "RealSteamOnMac - DXVK macOS 1.10.3"
+            "from_oslist" "windows"
+            "to_oslist" "macos"
+        }
+    }
+}

@@ -60,18 +60,36 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   const nativeDetailRegistrations = [];
   const nativeDetailUnregistrations = [];
   const registryRequests = [];
+  const controlRequests = [];
   const intervalCallbacks = new Map();
   const storage = new Map();
   const context = vm.createContext({
     __REALSTEAMONMAC_CONFIG__: Object.freeze({
       appids: [1118200],
-      defaultCompatTool: "realsteamonmac-experimental",
+      defaultCompatTool: "realsteamonmac-dxmt",
       registryEndpoint: "http://127.0.0.1:57344/registry",
+      controlEndpoint: "http://127.0.0.1:57344/config",
       registryToken: "0123456789abcdef0123456789abcdef",
       compatTools: [
         {
-          strToolName: "realsteamonmac-experimental",
-          strDisplayName: "RealSteamOnMac Experimental",
+          strToolName: "realsteamonmac-gptk",
+          strDisplayName: "RealSteamOnMac - GPTK 3",
+          renderer: "gptk",
+        },
+        {
+          strToolName: "realsteamonmac-dxmt",
+          strDisplayName: "RealSteamOnMac - DXMT 0.80",
+          renderer: "dxmt",
+        },
+        {
+          strToolName: "realsteamonmac-dxvk",
+          strDisplayName: "RealSteamOnMac - DXVK macOS 1.10.3",
+          renderer: "dxvk",
+        },
+        {
+          strToolName: "realsteamonmac-wined3d",
+          strDisplayName: "RealSteamOnMac - WineD3D 11.10",
+          renderer: "wined3d",
         },
       ],
     }),
@@ -135,6 +153,26 @@ test("installs the predicate before dynamically replacing the bootstrap registry
       return 1;
     },
     async fetch(url, options) {
+      if (url.startsWith("http://127.0.0.1:57344/config")) {
+        controlRequests.push({ url, options });
+        if (options.method === "GET") {
+          return {
+            ok: true,
+            async json() {
+              return {
+                renderer: "dxmt",
+                msync: true,
+                retina: false,
+                metal_hud: false,
+                metalfx: false,
+                dxr: false,
+                avx: false,
+              };
+            },
+          };
+        }
+        return { ok: true, status: 204 };
+      }
       registryRequests.push({ url, options });
       if (registryRequests.length === 1) {
         throw new Error("registry server is not ready");
@@ -150,7 +188,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     typeof context.__REALSTEAMONMAC_IS_MANAGED_APP__,
     "function",
   );
-  assert.equal(context.__REALSTEAMONMAC_UI_STATUS__.version, 7);
+  assert.equal(context.__REALSTEAMONMAC_UI_STATUS__.version, 8);
   assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(1118200), true);
 
   await waitFor(
@@ -214,17 +252,23 @@ test("installs the predicate before dynamically replacing the bootstrap registry
 
   const tools =
     await context.SteamClient.Apps.GetAvailableCompatTools(990080);
-  assert.equal(tools.length, 1);
+  assert.equal(tools.length, 4);
   assert.equal(
-    tools[0].strToolName,
-    "realsteamonmac-experimental",
+    tools[1].strToolName,
+    "realsteamonmac-dxmt",
   );
 
   await context.SteamClient.Apps.SpecifyCompatTool(
     990080,
-    "realsteamonmac-experimental",
+    "realsteamonmac-dxvk",
   );
   assert.deepEqual(nativeSpecifyCalls, []);
+  assert.equal(controlRequests.at(-1).options.method, "POST");
+  assert.equal(
+    controlRequests.at(-1).options.body,
+    "renderer=dxvk&msync=1&retina=0&metal_hud=0&" +
+      "metalfx=0&dxr=0&avx=0",
+  );
 
   overviews[1].subscribed_to = false;
   await intervalCallbacks.get(5000)();

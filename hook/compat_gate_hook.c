@@ -1,6 +1,7 @@
 #include <arpa/inet.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <libkern/OSCacheControl.h>
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
@@ -45,6 +46,18 @@
 #define REGISTRY_SERVER_PORT 57344
 #define REGISTRY_REQUEST_CAPACITY 16384
 #define REGISTRY_TOKEN_CAPACITY 128
+#define RUNTIME_CONFIG_CAPACITY 1024
+#define RUNTIME_CONFIG_RENDERER_CAPACITY 16
+
+typedef struct {
+  char renderer[RUNTIME_CONFIG_RENDERER_CAPACITY];
+  bool msync;
+  bool retina;
+  bool metal_hud;
+  bool metalfx;
+  bool dxr;
+  bool avx;
+} runtime_config;
 
 static const uint8_t kSteamClientUUID[16] = {
     0xB2, 0x95, 0x06, 0x28, 0x80, 0x3A, 0x3E, 0xFD,
@@ -1313,7 +1326,9 @@ bool realsteamonmac_is_managed_app(uint32_t appid) {
 }
 
 static bool parse_content_length(
-    const char *headers, size_t *length_out) {
+    const char *headers, size_t *length_out, bool *found_out) {
+  *length_out = 0;
+  *found_out = false;
   const char *cursor = headers;
   while (*cursor != '\0') {
     const char *line_end = strstr(cursor, "\r\n");
@@ -1341,29 +1356,368 @@ static bool parse_content_length(
         return false;
       }
       *length_out = (size_t)parsed;
+      *found_out = true;
       return true;
     }
     cursor = line_end + 2;
   }
-  return false;
+  return true;
 }
 
-static void send_registry_response(int connection, int status) {
-  const char *reason =
-      status == 204 ? "No Content" :
-      status == 403 ? "Forbidden" : "Bad Request";
-  char response[256];
+static const char *http_reason(int status) {
+  switch (status) {
+    case 200:
+      return "OK";
+    case 204:
+      return "No Content";
+    case 400:
+      return "Bad Request";
+    case 403:
+      return "Forbidden";
+    case 500:
+      return "Internal Server Error";
+    default:
+      return "Error";
+  }
+}
+
+static void send_http_response(
+    int connection,
+    int status,
+    const char *content_type,
+    const char *body) {
+  size_t body_length = body != NULL ? strlen(body) : 0;
+  const char *type =
+      content_type != NULL ? content_type : "text/plain";
+  char response[1024];
   int length = snprintf(
       response, sizeof(response),
       "HTTP/1.1 %d %s\r\n"
       "Connection: close\r\n"
-      "Content-Length: 0\r\n"
-      "Cache-Control: no-store\r\n\r\n",
-      status, reason);
-  if (length > 0 && length < (int)sizeof(response)) {
-    (void)send(
-        connection, response, (size_t)length, MSG_NOSIGNAL);
+      "Content-Type: %s\r\n"
+      "Content-Length: %zu\r\n"
+      "Cache-Control: no-store\r\n"
+      "Access-Control-Allow-Origin: *\r\n"
+      "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+      "Access-Control-Allow-Headers: Content-Type\r\n"
+      "Access-Control-Allow-Private-Network: true\r\n\r\n",
+      status, http_reason(status), type, body_length);
+  if (length <= 0 || length >= (int)sizeof(response)) {
+    return;
   }
+  if (send(
+          connection, response, (size_t)length,
+          MSG_NOSIGNAL) != length) {
+    return;
+  }
+  if (body_length > 0) {
+    (void)send(connection, body, body_length, MSG_NOSIGNAL);
+  }
+}
+
+static bool parse_positive_appid(
+    const char *text, uint32_t *appid_out) {
+  if (text == NULL || *text == '\0') {
+    return false;
+  }
+  errno = 0;
+  char *end = NULL;
+  unsigned long value = strtoul(text, &end, 10);
+  if (
+      errno != 0 || end == text || *end != '\0' ||
+      value == 0 || value > UINT32_MAX
+  ) {
+    return false;
+  }
+  *appid_out = (uint32_t)value;
+  return true;
+}
+
+static bool parse_config_target(
+    const char *target,
+    const char *token,
+    uint32_t *appid_out) {
+  char prefix[256];
+  int prefix_length = snprintf(
+      prefix, sizeof(prefix), "/config?token=%s&appid=", token);
+  if (
+      prefix_length <= 0 ||
+      prefix_length >= (int)sizeof(prefix) ||
+      strncmp(target, prefix, (size_t)prefix_length) != 0
+  ) {
+    return false;
+  }
+  return parse_positive_appid(target + prefix_length, appid_out);
+}
+
+static void default_runtime_config(runtime_config *config) {
+  memset(config, 0, sizeof(*config));
+  strcpy(config->renderer, "dxmt");
+  config->msync = true;
+}
+
+static bool parse_boolean_value(
+    const char *value, bool *result_out) {
+  if (strcmp(value, "1") == 0) {
+    *result_out = true;
+    return true;
+  }
+  if (strcmp(value, "0") == 0) {
+    *result_out = false;
+    return true;
+  }
+  return false;
+}
+
+static bool is_supported_renderer(const char *renderer) {
+  return
+      strcmp(renderer, "gptk") == 0 ||
+      strcmp(renderer, "dxmt") == 0 ||
+      strcmp(renderer, "dxvk") == 0 ||
+      strcmp(renderer, "wined3d") == 0;
+}
+
+static bool parse_runtime_config_payload(
+    const char *payload, runtime_config *config_out) {
+  if (payload == NULL || strlen(payload) >= RUNTIME_CONFIG_CAPACITY) {
+    return false;
+  }
+
+  char copy[RUNTIME_CONFIG_CAPACITY];
+  strcpy(copy, payload);
+  runtime_config config;
+  default_runtime_config(&config);
+  unsigned int seen = 0;
+  char *state = NULL;
+  for (
+      char *entry = strtok_r(copy, "&", &state);
+      entry != NULL;
+      entry = strtok_r(NULL, "&", &state)
+  ) {
+    char *separator = strchr(entry, '=');
+    if (separator == NULL || separator == entry) {
+      return false;
+    }
+    *separator = '\0';
+    const char *key = entry;
+    const char *value = separator + 1;
+    unsigned int bit = 0;
+    bool *boolean_target = NULL;
+    if (strcmp(key, "renderer") == 0) {
+      bit = 1u << 0;
+      if (
+          !is_supported_renderer(value) ||
+          strlen(value) >= sizeof(config.renderer)
+      ) {
+        return false;
+      }
+      strcpy(config.renderer, value);
+    } else if (strcmp(key, "msync") == 0) {
+      bit = 1u << 1;
+      boolean_target = &config.msync;
+    } else if (strcmp(key, "retina") == 0) {
+      bit = 1u << 2;
+      boolean_target = &config.retina;
+    } else if (strcmp(key, "metal_hud") == 0) {
+      bit = 1u << 3;
+      boolean_target = &config.metal_hud;
+    } else if (strcmp(key, "metalfx") == 0) {
+      bit = 1u << 4;
+      boolean_target = &config.metalfx;
+    } else if (strcmp(key, "dxr") == 0) {
+      bit = 1u << 5;
+      boolean_target = &config.dxr;
+    } else if (strcmp(key, "avx") == 0) {
+      bit = 1u << 6;
+      boolean_target = &config.avx;
+    } else {
+      return false;
+    }
+    if ((seen & bit) != 0) {
+      return false;
+    }
+    seen |= bit;
+    if (
+        boolean_target != NULL &&
+        !parse_boolean_value(value, boolean_target)
+    ) {
+      return false;
+    }
+  }
+
+  if (
+      seen != ((1u << 7) - 1) ||
+      (strcmp(config.renderer, "gptk") != 0 &&
+       (config.metalfx || config.dxr))
+  ) {
+    return false;
+  }
+  *config_out = config;
+  return true;
+}
+
+static bool runtime_config_root(char path[1200]) {
+  const char *configured = getenv("REALSTEAMONMAC_APP_CONFIG_ROOT");
+  if (configured != NULL && *configured != '\0') {
+    if (strlen(configured) >= 1200) {
+      return false;
+    }
+    strcpy(path, configured);
+    return true;
+  }
+  const char *home = getenv("HOME");
+  if (home == NULL) {
+    return false;
+  }
+  return snprintf(
+             path, 1200,
+             "%s/Library/Application Support/RealSteamOnMac/apps",
+             home) < 1200;
+}
+
+static bool runtime_config_path(
+    uint32_t appid, char path[1400]) {
+  char root[1200];
+  if (!runtime_config_root(root)) {
+    return false;
+  }
+  return snprintf(
+             path, 1400, "%s/%u.json",
+             root, (unsigned int)appid) < 1400;
+}
+
+static bool format_runtime_config(
+    const runtime_config *config,
+    char output[RUNTIME_CONFIG_CAPACITY]) {
+  int length = snprintf(
+      output, RUNTIME_CONFIG_CAPACITY,
+      "{\n"
+      "  \"avx\": %s,\n"
+      "  \"dxr\": %s,\n"
+      "  \"metal_hud\": %s,\n"
+      "  \"metalfx\": %s,\n"
+      "  \"msync\": %s,\n"
+      "  \"renderer\": \"%s\",\n"
+      "  \"retina\": %s\n"
+      "}\n",
+      config->avx ? "true" : "false",
+      config->dxr ? "true" : "false",
+      config->metal_hud ? "true" : "false",
+      config->metalfx ? "true" : "false",
+      config->msync ? "true" : "false",
+      config->renderer,
+      config->retina ? "true" : "false");
+  return length > 0 && length < RUNTIME_CONFIG_CAPACITY;
+}
+
+static bool write_all(int descriptor, const char *bytes, size_t length) {
+  size_t written = 0;
+  while (written < length) {
+    ssize_t result = write(
+        descriptor, bytes + written, length - written);
+    if (result <= 0) {
+      return false;
+    }
+    written += (size_t)result;
+  }
+  return true;
+}
+
+static bool save_runtime_config(
+    uint32_t appid, const runtime_config *config) {
+  char root[1200];
+  char path[1400];
+  char temporary[1450];
+  char output[RUNTIME_CONFIG_CAPACITY];
+  if (
+      !runtime_config_root(root) ||
+      (mkdir(root, 0700) != 0 && errno != EEXIST) ||
+      !runtime_config_path(appid, path) ||
+      snprintf(
+          temporary, sizeof(temporary),
+          "%s/.%u.json.XXXXXX",
+          root, (unsigned int)appid) >= (int)sizeof(temporary) ||
+      !format_runtime_config(config, output)
+  ) {
+    return false;
+  }
+  struct stat root_stat;
+  if (
+      lstat(root, &root_stat) != 0 ||
+      !S_ISDIR(root_stat.st_mode) ||
+      S_ISLNK(root_stat.st_mode) ||
+      chmod(root, 0700) != 0
+  ) {
+    return false;
+  }
+
+  int descriptor = mkstemp(temporary);
+  if (descriptor < 0) {
+    return false;
+  }
+  bool success =
+      fchmod(descriptor, 0600) == 0 &&
+      write_all(descriptor, output, strlen(output)) &&
+      fsync(descriptor) == 0 &&
+      close(descriptor) == 0 &&
+      rename(temporary, path) == 0;
+  if (!success) {
+    (void)close(descriptor);
+    (void)unlink(temporary);
+  }
+  return success;
+}
+
+static bool load_runtime_config_json(
+    uint32_t appid, char output[RUNTIME_CONFIG_CAPACITY]) {
+  char path[1400];
+  if (!runtime_config_path(appid, path)) {
+    return false;
+  }
+  int descriptor = open(path, O_RDONLY | O_NOFOLLOW);
+  if (descriptor < 0) {
+    if (errno != ENOENT) {
+      return false;
+    }
+    runtime_config config;
+    default_runtime_config(&config);
+    return format_runtime_config(&config, output);
+  }
+  struct stat file_stat;
+  if (
+      fstat(descriptor, &file_stat) != 0 ||
+      !S_ISREG(file_stat.st_mode)
+  ) {
+    close(descriptor);
+    return false;
+  }
+  FILE *stream = fdopen(descriptor, "r");
+  if (stream == NULL) {
+    close(descriptor);
+    return false;
+  }
+  size_t count = fread(
+      output, 1, RUNTIME_CONFIG_CAPACITY - 1, stream);
+  bool success =
+      !ferror(stream) &&
+      count > 0 &&
+      (count < RUNTIME_CONFIG_CAPACITY - 1 || feof(stream));
+  fclose(stream);
+  if (!success) {
+    return false;
+  }
+  output[count] = '\0';
+  return true;
+}
+
+static bool parse_request_line(
+    const char *request,
+    char method[8],
+    char target[512]) {
+  char version[16];
+  return
+      sscanf(request, "%7s %511s %15s", method, target, version) == 3 &&
+      strcmp(version, "HTTP/1.1") == 0;
 }
 
 static void handle_registry_connection(
@@ -1391,8 +1745,21 @@ static void handle_registry_connection(
       char *header_end = strstr(request, "\r\n\r\n");
       if (header_end != NULL) {
         header_length = (size_t)(header_end - request) + 4;
-        if (!parse_content_length(request, &content_length)) {
-          send_registry_response(connection, 400);
+        bool content_length_found = false;
+        if (!parse_content_length(
+                request, &content_length,
+                &content_length_found)) {
+          send_http_response(
+              connection, 400, "text/plain", NULL);
+          return;
+        }
+        if (
+            !content_length_found &&
+            strncmp(request, "GET ", 4) != 0 &&
+            strncmp(request, "OPTIONS ", 8) != 0
+        ) {
+          send_http_response(
+              connection, 400, "text/plain", NULL);
           return;
         }
         headers_parsed = true;
@@ -1409,38 +1776,84 @@ static void handle_registry_connection(
       !headers_parsed ||
       total < header_length + content_length
   ) {
-    send_registry_response(connection, 400);
+    send_http_response(connection, 400, "text/plain", NULL);
     return;
   }
 
-  char expected_request_line[256];
-  if (snprintf(
-          expected_request_line, sizeof(expected_request_line),
-          "POST /registry?token=%s HTTP/1.1\r\n", token) >=
-      (int)sizeof(expected_request_line)) {
-    send_registry_response(connection, 403);
+  char method[8];
+  char target[512];
+  if (!parse_request_line(request, method, target)) {
+    send_http_response(connection, 400, "text/plain", NULL);
     return;
   }
-  if (
-      strncmp(
-          request, expected_request_line,
-          strlen(expected_request_line)) != 0
-  ) {
-    send_registry_response(connection, 403);
+
+  char registry_target[256];
+  if (snprintf(
+          registry_target, sizeof(registry_target),
+          "/registry?token=%s", token) >=
+      (int)sizeof(registry_target)) {
+    send_http_response(connection, 403, "text/plain", NULL);
     return;
   }
 
   char payload[REGISTRY_REQUEST_CAPACITY];
   memcpy(payload, request + header_length, content_length);
   payload[content_length] = '\0';
-  uint32_t appids[MAX_ALLOWLIST_APPIDS];
-  size_t appid_count = 0;
-  if (!parse_registry_payload(payload, appids, &appid_count)) {
-    send_registry_response(connection, 400);
+  if (strcmp(target, registry_target) == 0) {
+    if (strcmp(method, "POST") != 0) {
+      send_http_response(connection, 403, "text/plain", NULL);
+      return;
+    }
+    uint32_t appids[MAX_ALLOWLIST_APPIDS];
+    size_t appid_count = 0;
+    if (!parse_registry_payload(payload, appids, &appid_count)) {
+      send_http_response(connection, 400, "text/plain", NULL);
+      return;
+    }
+    publish_registry(appids, appid_count);
+    send_http_response(connection, 204, "text/plain", NULL);
     return;
   }
-  publish_registry(appids, appid_count);
-  send_registry_response(connection, 204);
+
+  uint32_t appid = 0;
+  if (
+      !parse_config_target(target, token, &appid) ||
+      !is_allowlisted(appid)
+  ) {
+    send_http_response(connection, 403, "text/plain", NULL);
+    return;
+  }
+  if (strcmp(method, "OPTIONS") == 0) {
+    send_http_response(connection, 204, "text/plain", NULL);
+    return;
+  }
+  if (strcmp(method, "GET") == 0) {
+    if (content_length != 0) {
+      send_http_response(connection, 400, "text/plain", NULL);
+      return;
+    }
+    char json[RUNTIME_CONFIG_CAPACITY];
+    if (!load_runtime_config_json(appid, json)) {
+      send_http_response(connection, 500, "text/plain", NULL);
+      return;
+    }
+    send_http_response(connection, 200, "application/json", json);
+    return;
+  }
+  if (strcmp(method, "POST") == 0) {
+    runtime_config config;
+    if (!parse_runtime_config_payload(payload, &config)) {
+      send_http_response(connection, 400, "text/plain", NULL);
+      return;
+    }
+    if (!save_runtime_config(appid, &config)) {
+      send_http_response(connection, 500, "text/plain", NULL);
+      return;
+    }
+    send_http_response(connection, 204, "text/plain", NULL);
+    return;
+  }
+  send_http_response(connection, 403, "text/plain", NULL);
 }
 
 static void *registry_server_worker(void *context) {

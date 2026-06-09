@@ -102,14 +102,35 @@ class SteamUIPatchTests(unittest.TestCase):
             json.loads(payload),
             {
                 "appids": [1118200],
-                "defaultCompatTool": "realsteamonmac-experimental",
+                "defaultCompatTool": "realsteamonmac-dxmt",
                 "registryEndpoint": "http://127.0.0.1:57344/registry",
+                "controlEndpoint": "http://127.0.0.1:57344/config",
                 "registryToken": "0123456789abcdef0123456789abcdef",
                 "compatTools": [
                     {
-                        "strToolName": "realsteamonmac-experimental",
-                        "strDisplayName": "RealSteamOnMac Experimental",
-                    }
+                        "strToolName": "realsteamonmac-gptk",
+                        "strDisplayName": "RealSteamOnMac - GPTK 3",
+                        "renderer": "gptk",
+                    },
+                    {
+                        "strToolName": "realsteamonmac-dxmt",
+                        "strDisplayName": "RealSteamOnMac - DXMT 0.80",
+                        "renderer": "dxmt",
+                    },
+                    {
+                        "strToolName": "realsteamonmac-dxvk",
+                        "strDisplayName": (
+                            "RealSteamOnMac - DXVK macOS 1.10.3"
+                        ),
+                        "renderer": "dxvk",
+                    },
+                    {
+                        "strToolName": "realsteamonmac-wined3d",
+                        "strDisplayName": (
+                            "RealSteamOnMac - WineD3D 11.10"
+                        ),
+                        "renderer": "wined3d",
+                    },
                 ],
             },
         )

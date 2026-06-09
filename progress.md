@@ -378,6 +378,35 @@
     fall back to forced detach. A real idempotent reinstall left no mounted
     GPTK images.
 
+### Phase 5A: Per-Game Renderer And Runtime Controls
+
+- **Status:** automated candidate accepted; live Steam deployment pending
+- Actions taken:
+  - Replaced the single experimental compatibility entry with four explicit
+    project tools: GPTK 3, DXMT 0.80, DXVK-macOS 1.10.3, and WineD3D 11.10.
+  - Kept native Steam tool discovery disabled at startup to preserve Cloud;
+    the existing guarded UI bridge injects only project-owned tools for
+    dynamically managed Windows-only games.
+  - Added a token-authenticated `/config` endpoint to the native loopback
+    server. It accepts only current managed AppIDs and a fixed seven-field
+    configuration shape.
+  - Added atomic per-AppID configuration at
+    `~/Library/Application Support/RealSteamOnMac/apps/<appid>.json`, with
+    directory mode `0700`, file mode `0600`, symlink refusal, and
+    `fsync`/rename publication.
+  - Updated the runtime to prefer the global configuration while retaining the
+    existing PFX-local config as a migration fallback. CLI writes update both
+    locations.
+  - Changed the no-config default to the live-accepted DXMT renderer.
+  - Added a Steam-native high-contrast controls panel below the project
+    compatibility selector for MSync, Retina, Metal HUD, MetalFX, DXR, and AVX.
+  - Enforced capability boundaries: MetalFX and DXR are GPTK-only; Metal HUD is
+    disabled for WineD3D.
+  - Added config load/save status, local persistence, legacy experimental-tool
+    migration, and renderer-to-tool synchronization.
+  - Expanded the complete matrix to 54 Node tests, 27 Python tests, and all 22
+    shell contracts; all passed.
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -448,6 +477,9 @@
 | Live DXMT deployment | Existing Steam plus active immutable `dxmtmac1` package | Native launch, real menu, Steamworks, Workshop | Main menu reached in 31 seconds; all conditions passed | PASS |
 | Live DXMT exit and Cloud | Deployed package plus `WM_CLOSE` | Exit 0, process cleanup, AutoCloud upload | All conditions passed at 15:58:29 | PASS |
 | Installer mount cleanup | Real GPTK DMG and existing immutable package | Idempotent install with no residual images | Reinstall passed; no project GPTK mounts remained | PASS |
+| Runtime control API | Authorized/unauthorized AppIDs, valid/invalid settings, file permissions | Fixed schema, managed scope, atomic private persistence | Native socket harness passed every boundary | PASS |
+| Four compatibility tools | Steam config, manifests, installer, runtime mapping | Unique GPTK/DXMT/DXVK/WineD3D selections | UI, patcher, compat-tool, and installer contracts passed | PASS |
+| Full Phase 5A suite | 54 Node, 27 Python, 22 shell contracts | No regression before live control deployment | All passed | PASS |
 
 ## Error Log
 

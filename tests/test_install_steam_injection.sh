@@ -67,7 +67,9 @@ test -f "$SUPPORT/libRealSteamCompatGate.dylib"
 test -f "$SUPPORT/libRealSteamNativeEngine.dylib"
 grep -q 'REALSTEAMONMAC_DELAYED_ENGINE_PATH' \
     "$STEAM_APP/Contents/MacOS/realsteamonmac_launcher"
-test -x "$SUPPORT/compat-tool/realsteamonmac-experimental/run"
+for tool in gptk dxmt dxvk wined3d; do
+    test -x "$SUPPORT/compat-tool/realsteamonmac-$tool/run"
+done
 test -f "$SUPPORT/allowlist.txt"
 test -f "$SUPPORT/registry-token"
 test "$(stat -f '%Lp' "$SUPPORT/registry-token")" = "600"

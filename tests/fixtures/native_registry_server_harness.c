@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #define TEST_TOKEN "0123456789abcdef0123456789abcdef"
@@ -79,8 +80,12 @@ static bool send_all(int connection, const char *bytes, size_t length) {
   return true;
 }
 
-static int send_request(
-    uint16_t port, const char *request, size_t request_length) {
+static int send_request_capture(
+    uint16_t port,
+    const char *request,
+    size_t request_length,
+    char *response,
+    size_t response_capacity) {
   int connection = connect_with_retry(port);
   if (connection < 0) {
     fputs("could not connect to registry server\n", stderr);
@@ -91,19 +96,38 @@ static int send_request(
     return -1;
   }
 
-  char response[512];
-  ssize_t received = recv(connection, response, sizeof(response) - 1, 0);
+  size_t total = 0;
+  while (total + 1 < response_capacity) {
+    ssize_t received = recv(
+        connection, response + total,
+        response_capacity - total - 1, 0);
+    if (received < 0) {
+      close(connection);
+      return -1;
+    }
+    if (received == 0) {
+      break;
+    }
+    total += (size_t)received;
+  }
   close(connection);
-  if (received <= 0) {
+  if (total == 0) {
     return -1;
   }
-  response[received] = '\0';
+  response[total] = '\0';
 
   int status = 0;
   if (sscanf(response, "HTTP/1.1 %d", &status) != 1) {
     return -1;
   }
   return status;
+}
+
+static int send_request(
+    uint16_t port, const char *request, size_t request_length) {
+  char response[2048];
+  return send_request_capture(
+      port, request, request_length, response, sizeof(response));
 }
 
 static int post_registry(
@@ -140,6 +164,52 @@ static bool expect_status(
   return true;
 }
 
+static int request_config(
+    uint16_t port,
+    const char *method,
+    const char *token,
+    uint32_t appid,
+    const char *payload,
+    char *response,
+    size_t response_capacity) {
+  char request[4096];
+  size_t payload_length = payload != NULL ? strlen(payload) : 0;
+  int request_length;
+  if (strcmp(method, "POST") == 0) {
+    request_length = snprintf(
+        request, sizeof(request),
+        "POST /config?token=%s&appid=%u HTTP/1.1\r\n"
+        "Host: 127.0.0.1:%u\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: %zu\r\n"
+        "Connection: close\r\n\r\n"
+        "%s",
+        token, (unsigned int)appid, (unsigned int)port,
+        payload_length, payload != NULL ? payload : "");
+  } else {
+    request_length = snprintf(
+        request, sizeof(request),
+        "%s /config?token=%s&appid=%u HTTP/1.1\r\n"
+        "Host: 127.0.0.1:%u\r\n"
+        "Connection: close\r\n\r\n",
+        method, token, (unsigned int)appid, (unsigned int)port);
+  }
+  if (
+      request_length <= 0 ||
+      request_length >= (int)sizeof(request)
+  ) {
+    return -1;
+  }
+  return send_request_capture(
+      port, request, (size_t)request_length,
+      response, response_capacity);
+}
+
+static const char *response_body(const char *response) {
+  const char *separator = strstr(response, "\r\n\r\n");
+  return separator != NULL ? separator + 4 : NULL;
+}
+
 int main(int argc, char **argv) {
   if (argc != 2) {
     fprintf(stderr, "usage: %s NATIVE_ENGINE\n", argv[0]);
@@ -153,9 +223,18 @@ int main(int argc, char **argv) {
   }
   char port_text[16];
   snprintf(port_text, sizeof(port_text), "%u", (unsigned int)port);
+  char config_root[] =
+      "/tmp/realsteamonmac-config-harness.XXXXXX";
+  if (mkdtemp(config_root) == NULL) {
+    perror("mkdtemp");
+    return 2;
+  }
   if (
       setenv("REALSTEAMONMAC_REGISTRY_TOKEN", TEST_TOKEN, 1) != 0 ||
-      setenv("REALSTEAMONMAC_REGISTRY_PORT", port_text, 1) != 0
+      setenv("REALSTEAMONMAC_REGISTRY_PORT", port_text, 1) != 0 ||
+      setenv(
+          "REALSTEAMONMAC_APP_CONFIG_ROOT",
+          config_root, 1) != 0
   ) {
     perror("setenv");
     return 2;
@@ -185,6 +264,76 @@ int main(int argc, char **argv) {
       !is_managed(990080)
   ) {
     fputs("authorized registry publish failed\n", stderr);
+    return 1;
+  }
+
+  char response[4096];
+  int status = request_config(
+      port, "GET", TEST_TOKEN, 1118200,
+      NULL, response, sizeof(response));
+  const char *body = response_body(response);
+  if (
+      status != 200 || body == NULL ||
+      strstr(body, "\"renderer\": \"dxmt\"") == NULL ||
+      strstr(body, "\"msync\": true") == NULL
+  ) {
+    fputs("default runtime config response failed\n", stderr);
+    return 1;
+  }
+
+  const char *valid_config =
+      "renderer=dxvk&msync=1&retina=1&metal_hud=1&"
+      "metalfx=0&dxr=0&avx=1";
+  if (
+      request_config(
+          port, "POST", TEST_TOKEN, 1118200,
+          valid_config, response, sizeof(response)) != 204
+  ) {
+    fputs("authorized runtime config update failed\n", stderr);
+    return 1;
+  }
+  char config_path[1024];
+  snprintf(
+      config_path, sizeof(config_path),
+      "%s/1118200.json", config_root);
+  struct stat config_stat;
+  if (
+      stat(config_path, &config_stat) != 0 ||
+      (config_stat.st_mode & 0777) != 0600
+  ) {
+    fputs("runtime config permissions are invalid\n", stderr);
+    return 1;
+  }
+  status = request_config(
+      port, "GET", TEST_TOKEN, 1118200,
+      NULL, response, sizeof(response));
+  body = response_body(response);
+  if (
+      status != 200 || body == NULL ||
+      strstr(body, "\"renderer\": \"dxvk\"") == NULL ||
+      strstr(body, "\"retina\": true") == NULL ||
+      strstr(body, "\"avx\": true") == NULL
+  ) {
+    fputs("saved runtime config response failed\n", stderr);
+    return 1;
+  }
+
+  const char *invalid_config =
+      "renderer=dxmt&msync=1&retina=0&metal_hud=0&"
+      "metalfx=1&dxr=0&avx=0";
+  if (
+      request_config(
+          port, "POST", TEST_TOKEN, 1118200,
+          invalid_config, response, sizeof(response)) != 400 ||
+      request_config(
+          port, "GET", TEST_TOKEN, 42,
+          NULL, response, sizeof(response)) != 403 ||
+      request_config(
+          port, "GET",
+          "ffffffffffffffffffffffffffffffff",
+          1118200, NULL, response, sizeof(response)) != 403
+  ) {
+    fputs("runtime config authorization or validation failed\n", stderr);
     return 1;
   }
 
@@ -231,12 +380,17 @@ int main(int argc, char **argv) {
   if (
       !expect_status(port, TEST_TOKEN, "", 204) ||
       is_managed(1118200) ||
-      is_managed(990080)
+      is_managed(990080) ||
+      request_config(
+          port, "GET", TEST_TOKEN, 1118200,
+          NULL, response, sizeof(response)) != 403
   ) {
     fputs("authorized empty registry did not remove managed apps\n", stderr);
     return 1;
   }
 
+  (void)unlink(config_path);
+  (void)rmdir(config_root);
   (void)handle;
   puts("native registry server harness: PASS");
   return 0;

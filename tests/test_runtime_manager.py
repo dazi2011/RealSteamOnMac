@@ -18,6 +18,15 @@ class RuntimeManagerTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
+        self.environment = mock.patch.dict(
+            os.environ,
+            {
+                "REALSTEAMONMAC_APP_CONFIG_ROOT": str(
+                    self.root / "app-configs"
+                )
+            },
+        )
+        self.environment.start()
         self.steamapps = self.root / "steamapps"
         self.game = self.steamapps / "common" / "Fixture Game"
         self.game.mkdir(parents=True)
@@ -76,6 +85,7 @@ class RuntimeManagerTests(unittest.TestCase):
         self.package = package
 
     def tearDown(self):
+        self.environment.stop()
         self.temporary.cleanup()
 
     def context(self):
@@ -123,7 +133,47 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(saved["renderer"], "dxmt")
         self.assertTrue(saved["retina"])
         self.assertEqual(context["config"].stat().st_mode & 0o777, 0o600)
+        self.assertEqual(
+            context["global_config"].stat().st_mode & 0o777,
+            0o600,
+        )
+        self.assertEqual(
+            json.loads(context["global_config"].read_text(encoding="utf-8")),
+            saved,
+        )
         self.assertEqual(runtime.load_config(context), saved)
+
+    def test_global_config_precedes_legacy_prefix_config(self):
+        context = self.context()
+        runtime.atomic_write_json(
+            context["config"],
+            {
+                **runtime.DEFAULT_CONFIG,
+                "renderer": "wined3d",
+            },
+        )
+        runtime.atomic_write_json(
+            context["global_config"],
+            {
+                **runtime.DEFAULT_CONFIG,
+                "renderer": "dxvk",
+            },
+        )
+        self.assertEqual(runtime.load_config(context)["renderer"], "dxvk")
+
+    def test_legacy_prefix_config_remains_a_migration_fallback(self):
+        context = self.context()
+        runtime.atomic_write_json(
+            context["config"],
+            {
+                **runtime.DEFAULT_CONFIG,
+                "renderer": "wined3d",
+            },
+        )
+        self.assertEqual(
+            runtime.load_config(context)["renderer"],
+            "wined3d",
+        )
 
     def test_metalfx_is_gptk_only(self):
         with self.assertRaisesRegex(
@@ -416,7 +466,7 @@ class RuntimeManagerTests(unittest.TestCase):
             context, self.runtime_root, config, ["-fixture"]
         )
         self.assertEqual(result["appid"], 1118200)
-        self.assertEqual(result["renderer"], "gptk")
+        self.assertEqual(result["renderer"], "dxmt")
         self.assertEqual(result["arguments"], ["-fixture"])
         self.assertFalse(context["prefix"].exists())
 

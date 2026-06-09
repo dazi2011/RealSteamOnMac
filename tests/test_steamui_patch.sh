@@ -38,6 +38,10 @@ test "$(grep -o '/realsteamonmac/ui.js' "$STEAMUI/index.html" | wc -l)" -eq 1
 grep -q '"appids":\[1118200\]' "$STEAMUI/realsteamonmac/config.js"
 grep -q '"registryToken":"0123456789abcdef0123456789abcdef"' \
     "$STEAMUI/realsteamonmac/config.js"
+grep -q '"defaultCompatTool":"realsteamonmac-dxmt"' \
+    "$STEAMUI/realsteamonmac/config.js"
+test "$(grep -o '\"renderer\":\"' \
+    "$STEAMUI/realsteamonmac/config.js" | wc -l)" -eq 4
 test "$(stat -f '%Lp' "$STEAMUI/realsteamonmac/config.js")" = "600"
 test "$(grep -o '__REALSTEAMONMAC_IS_MANAGED_APP__' \
     "$STEAMUI/chunk~2dcc5aaf7.js" | wc -l)" -eq 2

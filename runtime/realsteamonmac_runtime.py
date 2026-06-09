@@ -19,7 +19,7 @@ STEAMWORKS_RENDERERS = ("dxmt", "dxvk", "wined3d")
 # It can therefore survive the game indefinitely and keep Steam's AppID active.
 POST_EXIT_PREFIX_KILL_APPIDS = frozenset((1118200,))
 DEFAULT_CONFIG = {
-    "renderer": "gptk",
+    "renderer": "dxmt",
     "msync": True,
     "retina": False,
     "metal_hud": False,
@@ -47,6 +47,19 @@ def default_runtime_root():
         / "Application Support"
         / "RealSteamOnMac"
         / "runtimes"
+    )
+
+
+def default_app_config_root():
+    configured = os.environ.get("REALSTEAMONMAC_APP_CONFIG_ROOT")
+    if configured:
+        return Path(configured).expanduser()
+    return (
+        Path.home()
+        / "Library"
+        / "Application Support"
+        / "RealSteamOnMac"
+        / "apps"
     )
 
 
@@ -143,6 +156,7 @@ def resolve_context(executable, explicit_appid=None, explicit_compat_data=None):
         "prefix": compat_data / "pfx",
         "state": state,
         "config": state / "config.json",
+        "global_config": default_app_config_root() / f"{appid}.json",
         "logs": state / "logs",
     }
 
@@ -179,24 +193,26 @@ def normalize_config(value):
 
 
 def load_config(context):
-    path = context["config"]
-    if not path.exists():
-        return normalize_config(None)
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        raise RuntimeErrorWithContext(
-            f"could not read per-game configuration: {path}"
-        ) from error
-    if not isinstance(value, dict):
-        raise RuntimeErrorWithContext(
-            f"per-game configuration must be an object: {path}"
-        )
-    return normalize_config(value)
+    for path in (context["global_config"], context["config"]):
+        if not path.exists():
+            continue
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise RuntimeErrorWithContext(
+                f"could not read per-game configuration: {path}"
+            ) from error
+        if not isinstance(value, dict):
+            raise RuntimeErrorWithContext(
+                f"per-game configuration must be an object: {path}"
+            )
+        return normalize_config(value)
+    return normalize_config(None)
 
 
 def save_config(context, config):
     normalized = normalize_config(config)
+    atomic_write_json(context["global_config"], normalized)
     atomic_write_json(context["config"], normalized)
     return normalized
 

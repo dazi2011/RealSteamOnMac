@@ -80,7 +80,7 @@ done
     echo "runtime entitlements are missing: $ENTITLEMENTS" >&2
     exit 1
 }
-[ -d "$COMPAT_SOURCE/realsteamonmac-experimental" ] || {
+[ -d "$COMPAT_SOURCE/realsteamonmac-dxmt" ] || {
     echo "compatibility tool source is missing: $COMPAT_SOURCE" >&2
     exit 1
 }
@@ -210,7 +210,7 @@ cp "$HOOK_SOURCE" "$HOOK_TARGET"
 cp "$ENGINE_SOURCE" "$ENGINE_TARGET"
 rm -rf "$COMPAT_TARGET"
 cp -R "$COMPAT_SOURCE" "$COMPAT_TARGET"
-chmod +x "$COMPAT_TARGET/realsteamonmac-experimental/run"
+chmod +x "$COMPAT_TARGET"/*/run
 codesign --force --sign - "$HOOK_TARGET"
 codesign --force --sign - "$ENGINE_TARGET"
 mkdir -p "$SUPPORT_ROOT/ui"

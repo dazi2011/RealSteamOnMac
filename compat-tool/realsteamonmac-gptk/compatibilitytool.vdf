@@ -2,13 +2,12 @@
 {
     "compat_tools"
     {
-        "realsteamonmac-experimental"
+        "realsteamonmac-gptk"
         {
             "install_path" "."
-            "display_name" "RealSteamOnMac Experimental"
+            "display_name" "RealSteamOnMac - GPTK 3"
             "from_oslist" "windows"
             "to_oslist" "macos"
         }
     }
 }
-
