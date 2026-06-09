@@ -14,6 +14,10 @@ from pathlib import Path
 
 
 RENDERERS = ("gptk", "dxmt", "dxvk", "wined3d")
+STEAMWORKS_RENDERERS = ("dxmt", "dxvk", "wined3d")
+# People Playground's .NET mod compiler mistakes its Wine PID for a macOS PID.
+# It can therefore survive the game indefinitely and keep Steam's AppID active.
+POST_EXIT_PREFIX_KILL_APPIDS = frozenset((1118200,))
 DEFAULT_CONFIG = {
     "renderer": "gptk",
     "msync": True,
@@ -224,7 +228,92 @@ def load_package(runtime_root, renderer):
     return package, manifest, wine_root, wine64
 
 
-def build_environment(context, config, wine_root):
+def resolve_steam_client_install():
+    configured = os.environ.get("REALSTEAMONMAC_STEAM_CLIENT_INSTALL")
+    if configured:
+        path = Path(configured).expanduser().resolve()
+    else:
+        path = (
+            Path.home()
+            / "Library"
+            / "Application Support"
+            / "Steam"
+            / "Steam.AppBundle"
+            / "Steam"
+            / "Contents"
+            / "MacOS"
+        )
+    steamclient = path / "steamclient.dylib"
+    if not steamclient.is_file():
+        raise RuntimeErrorWithContext(
+            f"native Steam client library is unavailable: {steamclient}"
+        )
+    return path
+
+
+def load_steamworks_bridge(package, manifest, wine_root, renderer):
+    bridge = manifest.get("steamworks_bridge")
+    if bridge is None:
+        return None
+    if not isinstance(bridge, dict):
+        raise RuntimeErrorWithContext(
+            f"runtime Steamworks bridge metadata is invalid: {package}"
+        )
+    renderers = bridge.get("renderers")
+    if not isinstance(renderers, list) or renderer not in renderers:
+        return None
+    if renderer not in STEAMWORKS_RENDERERS:
+        raise RuntimeErrorWithContext(
+            f"Steamworks bridge is unsupported for renderer: {renderer}"
+        )
+
+    windows_relative = bridge.get("windows_dll")
+    unix_relative = bridge.get("unix_library")
+    if not isinstance(windows_relative, str) or not isinstance(
+        unix_relative, str
+    ):
+        raise RuntimeErrorWithContext(
+            f"runtime Steamworks bridge paths are invalid: {package}"
+        )
+
+    windows_dll = package / windows_relative
+    unix_library = package / unix_relative
+    installed_windows = (
+        wine_root
+        / "lib"
+        / "wine"
+        / "x86_64-windows"
+        / "lsteamclient.dll"
+    )
+    installed_unix = (
+        wine_root
+        / "lib"
+        / "wine"
+        / "x86_64-unix"
+        / "lsteamclient.so"
+    )
+    for path in (
+        windows_dll,
+        unix_library,
+        installed_windows,
+        installed_unix,
+    ):
+        if not path.is_file():
+            raise RuntimeErrorWithContext(
+                f"runtime Steamworks bridge payload is missing: {path}"
+            )
+
+    return {
+        "metadata": bridge,
+        "windows_dll": windows_dll,
+        "unix_library": unix_library,
+        "steam_client_install": resolve_steam_client_install(),
+    }
+
+
+def build_environment(
+    context, config, wine_root, steamworks_bridge=None
+):
     environment = dict(os.environ)
     environment["WINEPREFIX"] = str(context["prefix"])
     environment["PATH"] = (
@@ -232,6 +321,10 @@ def build_environment(context, config, wine_root):
     )
     environment["REALSTEAMONMAC_APP_ID"] = str(context["appid"])
     environment["REALSTEAMONMAC_RENDERER"] = config["renderer"]
+    environment["SteamAppId"] = str(context["appid"])
+    environment["SteamGameId"] = str(context["appid"])
+    environment["STEAM_COMPAT_APP_ID"] = str(context["appid"])
+    environment["STEAM_COMPAT_DATA_PATH"] = str(context["compat_data"])
 
     for key in (
         "WINEMSYNC",
@@ -242,6 +335,7 @@ def build_environment(context, config, wine_root):
         "ROSETTA_ADVERTISE_AVX",
         "MVK_CONFIG_RESUME_LOST_DEVICE",
         "WINEDLLOVERRIDES",
+        "STEAM_COMPAT_CLIENT_INSTALL_PATH",
     ):
         environment.pop(key, None)
 
@@ -259,6 +353,15 @@ def build_environment(context, config, wine_root):
         environment["ROSETTA_ADVERTISE_AVX"] = "1"
     if config["renderer"] == "dxvk":
         environment["MVK_CONFIG_RESUME_LOST_DEVICE"] = "1"
+    dll_overrides = ["winemenubuilder.exe=d"]
+    if steamworks_bridge is not None:
+        environment["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = str(
+            steamworks_bridge["steam_client_install"]
+        )
+        dll_overrides.extend(
+            ("steamclient64=n,b", "steamclient=n,b", "lsteamclient=n,b")
+        )
+    environment["WINEDLLOVERRIDES"] = ";".join(dll_overrides)
 
     return environment
 
@@ -385,12 +488,179 @@ def install_metalfx_files(context, package, enabled):
     atomic_write_json(marker_path, installed)
 
 
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def atomic_copy_file(source, destination):
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", dir=str(destination.parent)
+    )
+    temporary = Path(temporary_name)
+    try:
+        with source.open("rb") as input_stream:
+            with os.fdopen(descriptor, "wb") as output_stream:
+                for chunk in iter(
+                    lambda: input_stream.read(1024 * 1024), b""
+                ):
+                    output_stream.write(chunk)
+                output_stream.flush()
+                os.fsync(output_stream.fileno())
+        os.chmod(temporary, 0o644)
+        os.replace(temporary, destination)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def install_steamworks_files(context, manifest, bridge):
+    if bridge is None:
+        return
+
+    marker_path = context["state"] / "steamworks-bridge.json"
+    previous = {}
+    if marker_path.exists():
+        try:
+            previous = json.loads(marker_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise RuntimeErrorWithContext(
+                f"Steamworks bridge ledger is invalid: {marker_path}"
+            ) from error
+    previous_files = previous.get("files", {})
+    if not isinstance(previous_files, dict):
+        raise RuntimeErrorWithContext(
+            f"Steamworks bridge ledger is invalid: {marker_path}"
+        )
+
+    steam_directory = (
+        context["prefix"]
+        / "drive_c"
+        / "Program Files (x86)"
+        / "Steam"
+    )
+    source = bridge["windows_dll"]
+    source_digest = file_sha256(source)
+    installed = {}
+    for name in ("lsteamclient.dll", "steamclient64.dll"):
+        destination = steam_directory / name
+        if destination.exists():
+            current_digest = file_sha256(destination)
+            managed_digest = previous_files.get(name)
+            if current_digest != source_digest and (
+                not isinstance(managed_digest, str)
+                or current_digest != managed_digest
+            ):
+                raise RuntimeErrorWithContext(
+                    "refusing to replace an unmanaged Steamworks file: "
+                    f"{destination}"
+                )
+        if not destination.exists() or file_sha256(
+            destination
+        ) != source_digest:
+            atomic_copy_file(source, destination)
+        installed[name] = source_digest
+
+    atomic_write_json(
+        marker_path,
+        {
+            "schema": 1,
+            "package_id": manifest["package_id"],
+            "bridge": bridge["metadata"].get("name", "lsteamclient"),
+            "files": installed,
+        },
+    )
+
+
+def configure_steam_registry(context, wine64, environment, bridge):
+    if bridge is None:
+        return
+
+    steam_path = r"C:\Program Files (x86)\Steam"
+    registry_values = (
+        (
+            r"HKCU\Software\Valve\Steam",
+            "SteamPath",
+            "REG_SZ",
+            steam_path,
+        ),
+        (
+            r"HKCU\Software\Valve\Steam",
+            "SteamExe",
+            "REG_SZ",
+            rf"{steam_path}\steam.exe",
+        ),
+        (
+            r"HKCU\Software\Valve\Steam\ActiveProcess",
+            "PID",
+            "REG_DWORD",
+            "65534",
+        ),
+        (
+            r"HKCU\Software\Valve\Steam\ActiveProcess",
+            "SteamClientDll",
+            "REG_SZ",
+            rf"{steam_path}\steamclient.dll",
+        ),
+        (
+            r"HKCU\Software\Valve\Steam\ActiveProcess",
+            "SteamClientDll64",
+            "REG_SZ",
+            rf"{steam_path}\steamclient64.dll",
+        ),
+        (
+            r"HKCU\Software\Valve\Steam\ActiveProcess",
+            "SteamPath",
+            "REG_SZ",
+            steam_path,
+        ),
+        (
+            r"HKLM\Software\Wow6432Node\Valve\Steam",
+            "InstallPath",
+            "REG_SZ",
+            steam_path,
+        ),
+    )
+    for key, name, value_type, value in registry_values:
+        run_logged(
+            context,
+            [
+                wine64,
+                "reg",
+                "add",
+                key,
+                "/v",
+                name,
+                "/t",
+                value_type,
+                "/d",
+                value,
+                "/f",
+            ],
+            environment,
+            f"configure Steam registry value {name}",
+        )
+
+
 def prepare(context, runtime_root, config):
     package, manifest, wine_root, wine64 = load_package(
         runtime_root, config["renderer"]
     )
-    environment = build_environment(context, config, wine_root)
+    bridge = load_steamworks_bridge(
+        package, manifest, wine_root, config["renderer"]
+    )
+    environment = build_environment(
+        context, config, wine_root, bridge
+    )
     initialize_prefix(context, wine64, environment)
+    install_steamworks_files(context, manifest, bridge)
+    configure_steam_registry(
+        context, wine64, environment, bridge
+    )
     apply_retina_mode(
         context, wine64, environment, config["retina"]
     )
@@ -402,12 +672,25 @@ def plan(context, runtime_root, config, arguments):
     package, manifest, wine_root, wine64 = load_package(
         runtime_root, config["renderer"]
     )
-    environment = build_environment(context, config, wine_root)
+    bridge = load_steamworks_bridge(
+        package, manifest, wine_root, config["renderer"]
+    )
+    environment = build_environment(
+        context, config, wine_root, bridge
+    )
     interesting = {
         key: environment[key]
         for key in sorted(environment)
         if key.startswith(("WINE", "D3DM", "MTL_", "ROSETTA_", "MVK_"))
         or key.startswith("REALSTEAMONMAC_")
+        or key
+        in {
+            "SteamAppId",
+            "SteamGameId",
+            "STEAM_COMPAT_APP_ID",
+            "STEAM_COMPAT_DATA_PATH",
+            "STEAM_COMPAT_CLIENT_INSTALL_PATH",
+        }
     }
     return {
         "appid": context["appid"],
@@ -421,10 +704,49 @@ def plan(context, runtime_root, config, arguments):
         "package": str(package),
         "package_id": manifest["package_id"],
         "renderer": config["renderer"],
+        "steamworks_bridge": (
+            bridge["metadata"].get("name", "lsteamclient")
+            if bridge is not None
+            else None
+        ),
         "wine_root": str(wine_root),
         "wine64": str(wine64),
         "environment": interesting,
     }
+
+
+def run_game_process(context, wine_root, command, environment):
+    result = subprocess.run(
+        [str(part) for part in command],
+        cwd=str(context["install_path"]),
+        env=environment,
+        check=False,
+    )
+    if context["appid"] not in POST_EXIT_PREFIX_KILL_APPIDS:
+        return result.returncode
+
+    wineserver = wine_root / "bin" / "wineserver"
+    cleanup = subprocess.run(
+        [str(wineserver), "-k"],
+        cwd=str(context["install_path"]),
+        env=environment,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    log_event(
+        context,
+        {
+            "event": "post-exit-prefix-cleanup",
+            "game_exit_code": result.returncode,
+            "wineserver_exit_code": cleanup.returncode,
+        },
+    )
+    if cleanup.returncode != 0:
+        raise RuntimeErrorWithContext(
+            "failed to terminate the per-game Wine session after exit"
+        )
+    return result.returncode
 
 
 def launch(args):
@@ -438,7 +760,7 @@ def launch(args):
         print(json.dumps(launch_plan, indent=2, sort_keys=True))
         return 0
 
-    _, _, _, wine64, environment = prepare(
+    _, _, wine_root, wine64, environment = prepare(
         context, runtime_root, config
     )
     command = [str(wine64), str(context["executable"])] + args.arguments
@@ -451,9 +773,9 @@ def launch(args):
             "prefix": str(context["prefix"]),
         },
     )
-    os.chdir(context["install_path"])
-    os.execve(str(wine64), command, environment)
-    return 127
+    return run_game_process(
+        context, wine_root, command, environment
+    )
 
 
 def prepare_prefix(args):

@@ -61,8 +61,17 @@ download prototype to a cloud-safe, independent compatibility runtime.
   MetalFX, DXR, and AVX environment/registry mappings have automated coverage.
 - The pre-deployment native launch bridge redirects only managed PE
   executables through the project runtime while preserving Steam's spawn
-  attributes, environment, and arguments. Live Steam deployment, first prefix
-  creation, and a real game-window acceptance test are still pending.
+  attributes, environment, and arguments.
+- The reproducible Proton `lsteamclient` bridge connects Windows Steamworks
+  calls to native macOS Steam without a fake API. People Playground now reports
+  `Steamworks initialised` and `Steam login: True`, retrieves Workshop state,
+  and renders through DXVK-macOS.
+- A real `steam://rungameid/1118200` launch now creates/uses the Proton-layout
+  PFX, opens the game, exits from the game's own menu, clears the isolated Wine
+  session, and completes Steam's AutoCloud exit upload.
+- DXMT remains unverified because Wine Staging 11.10 lacks the macOS exports
+  required by DXMT v0.80. GPTK + Steamworks and WineD3D live acceptance also
+  remain pending.
 
 ## How It Works
 
@@ -97,6 +106,10 @@ download prototype to a cloud-safe, independent compatibility runtime.
   `posix_spawn` pointer. It invokes the runtime only when the live allowlist
   contains the AppID and the target is an existing PE `.exe`; native programs
   and unmanaged games keep the original system implementation.
+- The runtime installs only hash-recorded Steamworks bridge files into a
+  game's isolated PFX, rejects unmanaged DLL replacement, and disables Wine
+  menu integration so migrated CrossOver prefixes cannot launch old CrossOver
+  helper applications.
 
 ## Build And Test
 
@@ -124,12 +137,16 @@ guard plus delayed native engine, creates the private registry token, and
 installs a universal launcher in `Steam.app`.
 
 Install or update the independent runtime package using an official local GPTK
-3 disk image:
+3 disk image and the reproducibly built Steamworks bridge:
 
 ```sh
+sh script/build_lsteamclient_bridge.sh
+
 sh script/install_runtime_package.sh \
   --gptk-dmg \
-  "$HOME/Downloads/Game_Porting_Toolkit_3.0.dmg"
+  "$HOME/Downloads/Game_Porting_Toolkit_3.0.dmg" \
+  --steamworks-bridge \
+  "$HOME/Library/Application Support/RealSteamOnMac/build/lsteamclient-proton11b5-macos2"
 ```
 
 Apple binaries are never committed to this repository. Runtime versions are
@@ -175,4 +192,6 @@ The rollback keeps displaced modified files under
 offsets, and runtime signature; unknown builds must remain disabled.
 
 See [current-state-2026-06-09.md](docs/handoff/current-state-2026-06-09.md)
-for the technical handoff.
+for the technical handoff and
+[steamworks-bridge-2026-06-09.md](docs/research/steamworks-bridge-2026-06-09.md)
+for the bridge build and live acceptance evidence.

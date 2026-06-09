@@ -256,6 +256,69 @@
   - Ran the complete pre-deployment matrix: 51 Node tests, 18 Python tests,
     and all 22 shell contracts passed.
 
+### Phase 4: Steamworks Bridge And DXVK Runtime Closure
+
+- **Status:** complete for the DXVK milestone
+- Actions taken:
+  - Backed up and byte-count verified the complete People Playground PFX and
+    active runtime state at
+    `/Users/wudazi/RealSteamOnMac-Backups/pre-steamworks-bridge-20260609T051952Z`.
+  - Pinned Proton commit
+    `25880e88befb52c5aa7ff162c5b00b6b8825e494` and Valve Wine commit
+    `2f70bfd4d0f4e67a8a599c4a09760579bc2a4fa4`.
+  - Added a reproducible external `lsteamclient` build for Darwin x86_64 plus
+    the matching PE x86_64 DLL.
+  - Added macOS Steam Input keycode conversion.
+  - Confirmed native `steamclient.dylib` lacks
+    `Steam_IsKnownInterface` and `Steam_NotifyMissingInterface`.
+  - Rejected the first `CreateInterface`-only fallback after it produced
+    `VersionMismatch` for `STEAMAPPS_INTERFACE_VERSION008`.
+  - Generated a table of all 208 interfaces implemented by the pinned bridge
+    and used it for local interface validation.
+  - Built the final bridge with SHA-256:
+    `159798e1caab1102f5d51a5e15891f4d4f5cd901ed7fb54a9ae45d51bb1280ec`
+    for `lsteamclient.so` and
+    `b806f522a5e49b4b3ba9e0259e8bbf02787e7c287f4f10d880a660190c23c1ca`
+    for `lsteamclient.dll`.
+  - Extended the immutable runtime package installer with an optional,
+    hash-verified `--steamworks-bridge` payload.
+  - Installed package
+    `gptk3.0-3-wine11.10-dxmt0.80-dxvkmacos1.10.3-lsteamclient-proton11b5-macos2`.
+  - Added Steam AppID/data/client environment mapping, managed PFX DLL
+    installation, private ledgering, unmanaged-DLL refusal, and Steam registry
+    configuration.
+  - Launched People Playground directly through DXVK and proved the bridge
+    reached native macOS Steam, acquired Steam interfaces, and completed
+    callbacks.
+  - Launched again through native `steam://rungameid/1118200`.
+  - Verified `Steamworks initialised`, `Steam login: True`, Workshop
+    subscription retrieval, and subscribed content loading.
+  - Captured
+    `docs/evidence/people-playground-dxvk-steamworks-live-2026-06-09.png`.
+  - Tested DXMT v0.80 and isolated its current blocker to missing
+    DXMT-specific Wine exports, not the Steamworks bridge.
+  - Found an old CrossOver `People Playground.app/Menu Helper` launched by
+    Wine menu integration in the migrated PFX.
+  - Disabled `winemenubuilder.exe` in all RealSteamOnMac runtime environments;
+    repeat launch produced no CrossOver process.
+  - Decompiled People Playground's .NET mod-compiler lifecycle and proved its
+    default config is `127.0.0.1:32513`, so missing `config.json` is not the
+    exit root cause.
+  - Proved the actual root cause: the compiler monitors Wine PID `312`, while
+    macOS PID `312` is persistent `/usr/libexec/searchpartyd`.
+  - Added an AppID-scoped exit supervisor that terminates only People
+    Playground's isolated Wine server after its main process exits.
+  - Used the game's visible `quit` menu entry for final acceptance.
+  - Verified game exit `0`, automatic runtime cleanup `0`, no remaining game,
+    compiler, Wine, runtime, or CrossOver helper process within five seconds.
+  - Verified Steam logged `Remove 1118200 from running list`.
+  - Verified Steam Cloud logged `Starting sync (up,AC Exit,)`,
+    `AutoCloud complete`, and `Upload complete in build list`.
+  - Verified installed runtime-manager and source SHA-256 both equal
+    `88f04910d46e1f87ab6f9e9a0c9fff83c3021951b4bc84278311401a9ac08a18`.
+  - Ran 12 runtime-manager tests, the runtime installer contract, Python
+    compilation, shell syntax checks, and `git diff --check`; all passed.
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -310,6 +373,15 @@
 | People Playground dry-run | Installed runtime plus AppID 1118200 | Exact prefix and no mutation | Exact `/compatdata/1118200/pfx`; prefix remained absent | PASS |
 | Spawn redirect harness | Managed PE, unmanaged PE, native binary | Redirect only managed PE target | Decision boundary passed | PASS |
 | Full Phase 4 pre-deployment suite | 51 Node, 18 Python, 22 shell contracts | No regression before live installation | All passed | PASS |
+| Steamworks bridge build | Pinned Proton/Valve Wine plus macOS patch | Reproducible Mach-O and PE bridge | Both hashes verified | PASS |
+| DXVK Steamworks direct trace | People Playground with bridge | Reach native Steam and initialize APIs | Pipe/user/interfaces/callbacks completed | PASS |
+| Native Steam DXVK launch | `steam://rungameid/1118200` | Steam-tracked real game window | Menu rendered; Steamworks login true | PASS |
+| CrossOver independence | Repeat launch with menu integration disabled | No CrossOver executable in process tree | No CrossOver Menu Helper appeared | PASS |
+| Normal game exit | Visible in-game `quit` entry | Main process exits without force-quit | Exit code `0` | PASS |
+| PPG compiler cleanup | Wine PID collides with macOS PID 312 | AppID-scoped PFX cleanup | All managed processes gone in five seconds | PASS |
+| Steam running-list closure | Final supervised exit | Remove AppID after cleanup | `Remove 1118200 from running list` | PASS |
+| Steam Cloud exit closure | Final supervised exit | Run AutoCloud upload | `AC Exit`, complete, upload complete | PASS |
+| DXMT live launch | DXMT v0.80 plus Wine Staging 11.10 | Create Metal view | Missing required Wine exports | BLOCKED |
 
 ## Error Log
 
@@ -326,13 +398,19 @@
 | 2026-06-09 | Shell matrix was first invoked by executable bit and stopped on a non-executable probe contract | 1 | Re-ran with the documented `sh "$test_file"` invocation; all 20 shell contracts passed. |
 | 2026-06-09 | Native Play did not enter the compatibility-tool logging stub | 1 | Logs proved the request reached `CreatingProcess` and failed with `AppError_46`; mapping exists, so Phase 4 now targets post-init registration or scoped launch dispatch. |
 | 2026-06-09 | First runtime package build stopped at Wine Staging `wine64` validation | 1 | Wine 11.10 uses unified `wine`; package now supplies a local `wine64 -> wine` compatibility symlink. |
+| 2026-06-09 | First macOS bridge could not resolve `Steam_IsKnownInterface` | 1 | Added a macOS fallback instead of requiring the absent native export. |
+| 2026-06-09 | `CreateInterface` fallback caused `VersionMismatch` | 1 | Generated and validated the 208 interfaces implemented by the pinned bridge. |
+| 2026-06-09 | DXMT failed to create a Metal view | 1 | Recorded missing Wine exports; current Wine is not advertised as DXMT-capable. |
+| 2026-06-09 | CrossOver Menu Helper appeared during independent launch | 1 | Disabled Wine menu integration; repeat launch contained no CrossOver process. |
+| 2026-06-09 | PPG mod compiler survived normal game exit | 2 | Proved Wine PID 312 collided with macOS `searchpartyd`; added AppID-scoped PFX cleanup. |
+| 2026-06-09 | Steam Cloud log rotated during final exit verification | 1 | Checked both `cloud_log.txt` and `cloud_log.previous.txt`; `AC Exit` and upload completion were present. |
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phase 4, after completing and deploying dynamic Windows-only download/compatibility enablement. |
-| Where am I going? | Independent versioned runtimes, Proton-style prefixes, controls, and real launch. |
+| Where am I? | After the verified DXVK + real Steamworks + normal-exit runtime milestone. |
+| Where am I going? | DXMT-capable Wine, Steam compatibility controls, run-command, dependencies, and final cross-renderer regression. |
 | What's the goal? | Native macOS Steam downloads and launches Windows-only games through independent selectable compatibility tools. |
-| What have I learned? | Constructor threads and native tool discovery break Cloud; direct native detail subscriptions are required for current app state; the global SteamUI getter patch is unnecessary. |
-| What have I done? | Recovered Claude's work, fixed rollback and Cloud, deployed 34-game dynamic eligibility, verified native Install/Play actions, and removed the redundant getter hook. |
+| What have I learned? | Native Steam can be bridged with pinned Proton `lsteamclient`; DXMT needs patched Wine exports; Wine/.NET process IDs can collide with persistent macOS PIDs. |
+| What have I done? | Deployed 34-game dynamic eligibility, real PFX launch, DXVK rendering, Steamworks login, CrossOver-independent execution, clean exit, and Cloud closure. |

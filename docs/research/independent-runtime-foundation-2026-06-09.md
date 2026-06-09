@@ -87,8 +87,8 @@ SHA-256 940bdd1a177872020be01c5c33917cb8eecc1cc3193ad554914fb6efd90d7889
 ```
 
 That build includes the current macOS Wine driver exports, `winevulkan`, and
-MoltenVK. A real Direct3D launch is still required before DXVK-macOS can be
-declared working.
+MoltenVK. DXVK-macOS has now passed a real Direct3D game launch and Steamworks
+acceptance with People Playground.
 
 ## Package Layout
 
@@ -251,7 +251,7 @@ docs/evidence/people-playground-gptk-live-2026-06-09.png
 This passes the independent runtime, prefix, Direct3D, visible-window, Steam
 PID tracking, and clean-exit gates. It does not yet pass the Steamworks gate.
 
-## Steamworks Boundary
+## First Steamworks Boundary
 
 The visible game menu reported `Steam is not initialised`, and `Player.log`
 recorded:
@@ -271,6 +271,77 @@ to macOS Steam and could create false Cloud or entitlement behavior.
 The next gate is therefore a real Darwin-to-Windows Steamworks bridge, or a
 well-evidenced declaration of the APIs that cannot be bridged safely. No fake
 success shim may be used.
+
+## Steamworks And DXVK Acceptance
+
+The repository now builds a reproducible x86_64 bridge from pinned sources:
+
+```text
+Proton 25880e88befb52c5aa7ff162c5b00b6b8825e494
+Valve Wine 2f70bfd4d0f4e67a8a599c4a09760579bc2a4fa4
+```
+
+The macOS patch supplies Steam Input keycode conversion and handles the two
+interface helpers missing from native `steamclient.dylib` without changing the
+Linux path. The generated bridge validates against all 208 interfaces exposed
+by the pinned Proton generated source.
+
+Validated hashes:
+
+```text
+159798e1caab1102f5d51a5e15891f4d4f5cd901ed7fb54a9ae45d51bb1280ec
+  lsteamclient.so
+b806f522a5e49b4b3ba9e0259e8bbf02787e7c287f4f10d880a660190c23c1ca
+  lsteamclient.dll
+```
+
+The active package is:
+
+```text
+gptk3.0-3-wine11.10-dxmt0.80-dxvkmacos1.10.3-lsteamclient-proton11b5-macos2
+```
+
+The runtime records and verifies its managed bridge files, points the bridge at
+the real native Steam client, and refuses to overwrite unmanaged Steam DLLs in
+the PFX.
+
+A native `steam://rungameid/1118200` DXVK launch produced:
+
+```text
+Steamworks initialised
+Steam login: True
+```
+
+The bridge trace reached native `steamclient.dylib`, acquired the Steam pipe
+and user, requested the generated Steam interfaces, and completed callbacks.
+Workshop subscription retrieval also completed. The earlier
+`SteamApi_Init failed`, `VersionMismatch`, and `FailedGeneric` markers were
+absent.
+
+The migrated PFX attempted to launch an old CrossOver menu helper through Wine
+menu integration. The runtime now disables `winemenubuilder.exe`; the repeated
+launch used only the RealSteamOnMac package and native Steam.
+
+Normal exit exposed a game-specific Wine/.NET PID bug. People Playground's mod
+compiler monitored Wine PID `312`, while macOS PID `312` was the persistent
+`/usr/libexec/searchpartyd`. The runtime now supervises AppID `1118200` and
+terminates only that AppID's isolated Wine server after the main game exits.
+Other AppIDs retain normal Wine process behavior.
+
+The final menu-exit test returned game exit code `0`, cleared all related
+processes within five seconds, removed AppID `1118200` from Steam's running
+list, and completed `AC Exit` AutoCloud upload.
+
+Detailed evidence is recorded in:
+
+```text
+docs/research/steamworks-bridge-2026-06-09.md
+docs/evidence/people-playground-dxvk-steamworks-live-2026-06-09.png
+```
+
+DXMT is not accepted. DXMT v0.80 reports that the current Wine build lacks its
+required exported symbols. GPTK + Steamworks and WineD3D live acceptance also
+remain open.
 
 ## Diagnostic Side Effect
 
@@ -292,7 +363,9 @@ state was unknown. All subsequent Wine diagnostics must set both
 - A dry-run prints a lossless argument and environment plan.
 - Cloud fields remain present after runtime installation and Steam restart.
 - People Playground launches from Steam, creates its PFX, opens a real window,
-  and exits cleanly.
+  and exits cleanly. Passed for GPTK window creation and DXVK full closure.
 - The Windows game initializes Steamworks against the running macOS Steam
   client without replacing ownership or Cloud behavior with a fake API.
+  Passed with the pinned Proton bridge and DXVK-macOS.
 - At least one alternate renderer can be selected and reaches the executable.
+  Passed with DXVK-macOS. DXMT remains blocked by missing Wine exports.

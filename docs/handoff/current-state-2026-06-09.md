@@ -58,6 +58,10 @@ Manifest        9210503819883706733
   `~/Library/Application Support/RealSteamOnMac/libRealSteamNativeEngine.dylib`
 - Dormant compatibility-tool package:
   `~/Library/Application Support/RealSteamOnMac/compat-tool`
+- Active independent runtime:
+  `~/Library/Application Support/RealSteamOnMac/runtimes/current`
+- Active package:
+  `gptk3.0-3-wine11.10-dxmt0.80-dxvkmacos1.10.3-lsteamclient-proton11b5-macos2`
 - Native engine bootstrap allowlist: one entry containing `1118200`
 - Browser managed registry: generated from Steam's current owned library
 
@@ -205,24 +209,39 @@ The loader no longer requires LLDB, `task_for_pid`, `get-task-allow`, or an
 administrator prompt. Browser-to-engine synchronization is now persistently
 deployed and live-verified.
 
-## What Is Not Implemented
+## Current Runtime Boundary
 
-The installed compatibility tool's `run` script only logs Steam's verb,
-arguments, AppID, install path, and compatibility-data path, then exits `0`.
-It does not:
+The compatibility-tool `run` script remains a logging fixture because native
+tool discovery is prohibited on this Steam build. The production launch path
+does not depend on it. The delayed native engine redirects only managed PE
+processes into:
 
-- create `steamapps/compatdata/<appid>/pfx`;
-- invoke Wine, GPTK, DXMT, DXVK, or WineD3D;
-- start the game executable;
-- preserve a Steamworks process relationship;
-- expose MSync, high-resolution, Metal HUD, MetalFX, dependency installation,
-  or run-command controls.
+```text
+~/Library/Application Support/RealSteamOnMac/runtimes/bin/
+  realsteamonmac-runtime
+```
 
-No `compatdata/1118200/pfx` exists. The independent launch path is therefore
-unimplemented. People Playground now reports display status `11` and exposes
-Steam's native Play action, but the selected compatibility tool is still a
-logging stub, so clicking Play cannot yet create a prefix or launch the Windows
-executable.
+People Playground now has a real Proton-layout prefix:
+
+```text
+/Volumes/990pro/games/mac/steamapps/compatdata/1118200/pfx
+```
+
+The active runtime package contains GPTK, DXMT, DXVK-macOS, and WineD3D roots.
+DXVK-macOS is the currently accepted path: native Steam launches the Windows
+game, Proton `lsteamclient` connects it to the real macOS Steam client, the
+game reports `Steamworks initialised` and `Steam login: True`, and Steam
+completes its normal exit Cloud upload.
+
+Still not implemented or not yet accepted:
+
+- a DXMT-compatible patched Wine build;
+- GPTK + Steamworks bridge acceptance;
+- WineD3D live game acceptance;
+- the per-game Steam UI controls for renderer, MSync, Retina, Metal HUD,
+  MetalFX, DXR, and AVX;
+- dependency search/install;
+- run-command UI and logging controls.
 
 ## Cloud Root Cause And Fix
 
@@ -308,8 +327,10 @@ authoritative complete rollback source.
    native backend.
 5. Done: verified blue download/Play presentation for all current candidates,
    native-title exclusions, and Cloud health.
-6. In progress: implement the independent versioned compatibility runtime and
-   Proton-compatible prefix path.
+6. Done for DXVK: independent package, Proton-compatible PFX, real Steam
+   launch, Steamworks bridge, normal exit, and AutoCloud closure.
+7. In progress: DXMT-compatible Wine plus per-game controls, run-command, and
+   dependency workflows.
 
 ## Phase 4 Runtime Foundation Update
 
@@ -388,18 +409,68 @@ evidence is in:
 docs/evidence/people-playground-gptk-live-2026-06-09.png
 ```
 
-Do not report the complete launch goal as finished yet. The game itself showed
-`Steam is not initialised`; `Player.log` says Steamworks could not determine
-the Steam client install directory. Native Steam completed Cloud, stats,
-controller, and license work before launch, so this is specifically the
-Windows-in-process Steamworks bridge boundary. A real macOS equivalent of
-Proton's `lsteamclient` behavior must be investigated. Registry-only or fake
-Steam API workarounds are not accepted.
+That first GPTK run did not initialize Steamworks: the game showed
+`Steam is not initialised`, while native Steam had already completed Cloud,
+stats, controller, and license work. This isolated the next boundary to a real
+Windows-to-macOS Steamworks bridge; registry-only or fake API workarounds were
+rejected.
+
+That boundary has now been crossed by the next verified milestone. The
+repository builds a pinned Proton `lsteamclient` against pinned Valve Wine and
+applies a narrow macOS patch for Steam Input keycodes plus the two interface
+helpers absent from native `steamclient.dylib`. The validated bridge hashes
+are:
+
+```text
+159798e1caab1102f5d51a5e15891f4d4f5cd901ed7fb54a9ae45d51bb1280ec
+  x86_64-unix/lsteamclient.so
+b806f522a5e49b4b3ba9e0259e8bbf02787e7c287f4f10d880a660190c23c1ca
+  x86_64-windows/lsteamclient.dll
+```
+
+The DXVK live run reached native Steam, requested the expected Steamworks
+interfaces, completed callbacks, loaded Workshop subscriptions, and recorded:
+
+```text
+Steamworks initialised
+Steam login: True
+```
+
+Visual evidence:
+
+```text
+docs/evidence/people-playground-dxvk-steamworks-live-2026-06-09.png
+```
+
+The migrated PFX initially started an old CrossOver
+`People Playground.app/Menu Helper`. The runtime now disables
+`winemenubuilder.exe`; a repeat launch created no CrossOver process.
+
+People Playground also exposed a Wine/.NET PID collision: its mod compiler
+monitored Wine PID `312`, while macOS PID `312` was the persistent
+`/usr/libexec/searchpartyd`. The compiler therefore survived normal game exit.
+The runtime now supervises the main process and, only for AppID `1118200`,
+terminates that isolated Wine session after the game exits. Other AppIDs are
+not force-cleaned.
+
+Final normal-menu exit acceptance at 13:54 local time:
+
+- all managed game/Wine/compiler/runtime processes gone within five seconds;
+- runtime cleanup event recorded game exit `0` and wineserver exit `0`;
+- Steam logged `Remove 1118200 from running list`;
+- Cloud logged `Starting sync (up,AC Exit,)`, `AutoCloud complete`, and
+  `Upload complete in build list`.
+
+Detailed build and evidence:
+
+```text
+docs/research/steamworks-bridge-2026-06-09.md
+```
 
 The remaining major gates are:
 
-1. establish a verified Steamworks bridge or document a proven hard boundary;
-2. launch through at least one alternate renderer;
+1. build or obtain Wine with the exports required by DXMT v0.80;
+2. verify GPTK + Steamworks and WineD3D or record their exact boundaries;
 3. expose per-game renderer, MSync, Retina, Metal HUD, MetalFX, DXR, and AVX
    controls below the compatibility selection;
 4. add bounded run-command and dependency installation workflows;
@@ -429,5 +500,7 @@ The rollback is now automated-test verified, but still requires Steam to be
 fully stopped and the clean backup path above to remain intact.
 
 Computer Use was attempted for visual acceptance, but macOS ScreenCaptureKit
-returned `SCStreamErrorDomain -3811` twice. No coordinate clicks were used.
-CDP DOM/state probes supplied the exact UI evidence instead.
+returned `SCStreamErrorDomain -3811`. The fallback used local
+`screencapture`, process-scoped foreground activation, and a CoreGraphics click
+on the visible in-game `quit` entry. The click produced a normal game exit code
+`0`; it was not a force-quit.

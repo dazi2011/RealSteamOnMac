@@ -67,8 +67,9 @@
   `1118201`, and `SizeOnDisk 455945761`.
 - `content_log.txt` records the real download, commit, and Fully Installed
   transition on 2026-06-08 at 21:11 and again at 21:15.
-- No `compatdata/1118200/pfx` exists yet, confirming the launch/container phase
-  has not been implemented.
+- At takeover, no `compatdata/1118200/pfx` existed, confirming Claude had not
+  implemented the launch/container phase. The later Phase 4 runtime now creates
+  and uses that exact path.
 
 ## Dynamic Library Discovery Findings
 
@@ -93,10 +94,10 @@
   `1326470`, `1491000`, `1517290`, `1665460`, `1911390`, `2139460`,
   `2325290`, `2358720`, `2507950`, `2547140`, `2584990`, `2943650`,
   `2948190`, and `3983810`.
-- All 34 candidates currently report native display status `14`
-  (`InvalidPlatform`). People Playground has local content but no prefix; the
-  other installed/local candidates must follow the same installed-state policy
-  instead of being treated as ready-to-install.
+- At the initial registry scan all 34 candidates reported native display status
+  `14` (`InvalidPlatform`). People Playground had local content but no prefix;
+  the other installed/local candidates therefore required the same
+  installed-state policy instead of being treated as ready-to-install.
 - `SteamClient.Apps.GetAvailableCompatTools(1118200)` currently returns an
   empty list because the cloud-safe launcher no longer registers a valid
   `STEAM_EXTRA_COMPAT_TOOLS_PATHS`. The compatibility page and project-owned
@@ -272,6 +273,49 @@
 - RealSteamOnMac should reproduce the capability per game/prefix, not depend on
   CrossOver or copy its bottle model.
 
+## Steamworks And DXVK Findings
+
+- The native macOS Steam client exposes a real `steamclient.dylib` that Proton
+  `lsteamclient` can load when the runtime supplies the native client path and
+  the expected AppID/PFX environment.
+- Native `steamclient.dylib` does not export `Steam_IsKnownInterface` or
+  `Steam_NotifyMissingInterface`.
+- Treating every `CreateInterface` success as equivalent to
+  `Steam_IsKnownInterface` is wrong. The first fallback passed an unsupported
+  interface far enough to produce `VersionMismatch` for
+  `STEAMAPPS_INTERFACE_VERSION008`.
+- The pinned Proton generated source contains 208 bridge-supported interface
+  names. Using that generated set for local validation restored correct
+  behavior without changing the Linux code path.
+- Final bridge hashes:
+  - Unix Mach-O:
+    `159798e1caab1102f5d51a5e15891f4d4f5cd901ed7fb54a9ae45d51bb1280ec`;
+  - Windows PE:
+    `b806f522a5e49b4b3ba9e0259e8bbf02787e7c287f4f10d880a660190c23c1ca`.
+- DXVK-macOS reached native Steam, acquired the Steam pipe/user/interfaces,
+  completed callbacks, and produced `Steamworks initialised` plus
+  `Steam login: True`.
+- Workshop subscription retrieval completed in the same run. No fake API or
+  ownership bypass was used.
+- DXMT v0.80 currently fails before rendering because Wine Staging 11.10 does
+  not export the symbols DXMT needs to create a Metal view.
+- A migrated CrossOver PFX may contain menu-integration artifacts even when all
+  actual Wine binaries come from RealSteamOnMac. Disabling
+  `winemenubuilder.exe` prevents those artifacts from launching old CrossOver
+  `.app` helpers.
+- People Playground's missing `ppgModCompiler/config.json` is non-fatal:
+  `CompilerConfig` defaults to host `127.0.0.1`, port `32513`, and
+  `ShutdownWhenGameNotFound=true`.
+- The compiler's exit monitor receives Wine PID `312`. On this machine macOS
+  PID `312` is persistent `/usr/libexec/searchpartyd`, so .NET's process lookup
+  never reports the game as gone.
+- AppID-scoped Wine-server termination after the main process exits resolves
+  the collision without imposing a global policy that could break games whose
+  launchers intentionally spawn another executable.
+- The final normal-menu exit cleared all managed processes in five seconds,
+  removed AppID `1118200` from Steam's running list, and triggered a successful
+  `AC Exit` AutoCloud upload.
+
 ## Technical Decisions
 
 | Decision | Rationale |
@@ -294,6 +338,9 @@
 | Do not redirect SteamUI's platform getter | The data scan and detail stream are sufficient and allowlist-scoped; a global code hook adds ASLR allocation failure, log spam, and a wider crash surface without improving live behavior. |
 | Restore Steam UI before any other rollback mutation | A failed UI restore now aborts before Steam.app, runtime binaries, or support files are moved. |
 | Treat missing `cloud_enabled` as the primary cloud symptom | The blank page and false “globally disabled” state share this backend omission; changing account/cloud data would hide evidence without proving a cause. |
+| Build a real bridge rather than fake Steam API success | The pinned Proton bridge preserves native ownership, callbacks, Workshop, and Cloud behavior. |
+| Validate interfaces from generated bridge code | Native macOS Steam lacks Linux helper exports; generated local validation is narrower than blindly accepting `CreateInterface`. |
+| Keep People Playground cleanup AppID-scoped | Its PID collision is proven, while global post-exit kills could terminate legitimate launcher-spawned games. |
 
 ## Issues Encountered
 
@@ -304,9 +351,11 @@
 | The full test suite passed while the UI target predicate was missing | Add an integration contract that loads `config.js` and `ui.js` together and proves the compatibility-page predicate exists before accepting dynamic enablement. |
 | Rollback tests did not cover Steam UI resource restoration | Resolved with a real patch-install/restore fixture in `tests/test_restore_steam_from_backup.sh`. |
 | Steam cloud UI showed no console exception | Traced the rendered DOM, protobuf schema, settings store, and CloudStorage state; the deterministic failure is an omitted native setting field. |
-| Computer Use could not start ScreenCaptureKit | Two element-aware session attempts returned `SCStreamErrorDomain -3811`; no coordinate fallback was used, and CDP supplied exact DOM/state evidence. |
+| Computer Use could not start ScreenCaptureKit | Earlier Cloud work used CDP. The later game-exit test used local screenshots, process-scoped foreground activation, and a CoreGraphics click on the visibly confirmed in-game `quit` entry. |
 | Shared app details stayed at status `14` after native data changes | Registered direct native detail subscriptions and published callbacks into the shared details store. |
 | SteamUI getter trampoline retried continuously | Removed the redundant global getter patch and added a contract that rejects its reintroduction. |
+| Native Steamworks bridge failed on missing helper exports | Added macOS-only interface validation and local notification fallback. |
+| People Playground stayed “running” after menu exit | Proved the Wine/macOS PID collision and added an AppID-scoped PFX cleanup. |
 
 ## Resources
 

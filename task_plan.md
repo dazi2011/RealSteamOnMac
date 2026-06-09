@@ -9,7 +9,7 @@ requiring CrossOver.
 
 ## Current Phase
 
-Phase 4: independent compatibility runtime foundation
+Phase 5: per-game compatibility controls and remaining renderer work
 
 ## Phases
 
@@ -61,11 +61,14 @@ Phase 4: independent compatibility runtime foundation
 - [x] Research current upstream DXMT, DXVK, Wine, GPTK requirements and licenses.
 - [x] Define the independent package and Proton-compatible per-game layout.
 - [x] Implement a runtime registry with versioned, transactional packages.
-- [ ] Create Proton-compatible `steamapps/compatdata/<appid>/pfx` prefixes.
+- [x] Create Proton-compatible `steamapps/compatdata/<appid>/pfx` prefixes.
 - [x] Implement Steam-to-wrapper launch argument and environment propagation.
-- [ ] Add smoke-test executables and failure diagnostics.
-- [ ] Document, commit, and push each independently testable runtime milestone.
-- **Status:** pending
+- [x] Build and validate a real Proton `lsteamclient` bridge for macOS Steam.
+- [x] Pass DXVK Steamworks, normal-exit, and AutoCloud live acceptance.
+- [x] Add smoke-test fixtures, structured logs, and failure diagnostics.
+- [x] Document the independent package, GPTK window, and DXVK Steamworks
+      milestones.
+- **Status:** complete for the foundation and DXVK path
 
 ### Phase 5: Per-Game Compatibility Controls
 
@@ -81,16 +84,20 @@ Phase 4: independent compatibility runtime foundation
 
 ### Phase 6: End-To-End Game Launch
 
-- [ ] Select a known-safe runtime for People Playground.
-- [ ] Launch through Steam's original Play action.
-- [ ] Verify prefix creation, process tree, window creation, input, audio, and exit.
-- [ ] Verify at least one alternate renderer/runtime selection.
-- [ ] Verify cloud status no longer blocks launch.
-- [ ] Capture logs and rollback evidence.
+- [x] Select DXVK-macOS as the current known-safe Steamworks runtime for People
+      Playground.
+- [x] Launch through Steam's original Play action.
+- [x] Verify prefix creation, process tree, window creation, Steamworks, and
+      normal exit.
+- [x] Verify GPTK window creation and DXVK full runtime acceptance.
+- [x] Verify cloud status no longer blocks launch and AutoCloud runs on exit.
+- [x] Capture logs, screenshots, bridge hashes, and rollback evidence.
+- [ ] Verify input and audio explicitly.
+- [ ] Verify DXMT with a compatible patched Wine build.
 - [ ] Update all handoff and installation documents.
 - [ ] Run the complete automated and live verification matrix.
 - [ ] Commit and push the final verified state.
-- **Status:** pending
+- **Status:** in progress
 
 ## Architecture Decision
 
@@ -148,6 +155,9 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Keep the SteamUI platform getter unmodified | Data-object reconciliation plus native detail subscriptions passed 34/34 live; redirecting the global getter was redundant, version-sensitive, and contrary to the narrow production design. |
 | Build on Gcenx custom Wine and user-supplied official GPTK files | The independent archive contains Wine, WineD3D, winevulkan, and MoltenVK; Apple supplies D3DMetal but not Wine, and its binaries must not be committed. |
 | Keep runtimes immutable and activate them transactionally | Side-by-side package IDs support rollback and multi-version selection without deleting a working runtime or prefix. |
+| Build the Steamworks bridge from pinned Proton and Valve Wine commits | It preserves real ownership, callbacks, Workshop, and Cloud behavior and is reproducible; fake Steam API shims are rejected. |
+| Disable `winemenubuilder.exe` in the independent runtime | Migrated CrossOver prefixes otherwise recreate or launch old CrossOver menu applications. |
+| Scope forced Wine cleanup to People Playground | Its .NET helper confuses Wine PID 312 with persistent macOS PID 312; a global cleanup policy could break launcher-style games. |
 
 ## Errors Encountered
 
@@ -158,3 +168,6 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Native Play reached `CreatingProcess` but did not invoke the tool stub | 1 | Confirmed AppID mapping exists; investigate post-init native tool refresh or an allowlist-scoped launch dispatcher. |
 | Wine Staging 11.10 had no separate `wine64` executable | 1 | Added a package-local `wine64 -> wine` compatibility symlink for its unified WoW64 launcher. |
 | Upstream DXVK 2.7.1 is incompatible with current MoltenVK extensions | 1 | Replaced the active mode with Gcenx DXVK-macOS builtin; retained upstream DXVK only as research evidence. |
+| Native macOS Steam lacks two Linux `steamclient` helper exports | 2 | Added generated local interface validation and local missing-interface logging while preserving the Linux path. |
+| DXMT v0.80 cannot create its Metal view with Wine Staging 11.10 | 1 | Recorded the exact missing-export boundary; a DXMT-patched Wine build is required. |
+| People Playground's compiler kept Steam running after normal exit | 2 | Proved Wine PID `312` collided with `/usr/libexec/searchpartyd`; added an AppID-only post-exit Wine cleanup. |
