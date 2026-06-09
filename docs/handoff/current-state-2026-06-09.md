@@ -369,8 +369,47 @@ spawn actions, attributes, environment, and game arguments, then starts the
 project runtime through `/usr/bin/python3`. Unmanaged AppIDs and native
 executables retain the original system call. A dynamic engine harness verifies
 that decision boundary. The complete pre-deployment matrix passes with 51 Node
-tests, 18 Python tests, and all 22 shell contracts. Live Steam deployment is
-the next acceptance step.
+tests, 18 Python tests, and all 22 shell contracts.
+
+Live Steam deployment has now passed the first real runtime acceptance. Steam
+launched People Playground through the dispatcher, created:
+
+```text
+/Volumes/990pro/games/mac/steamapps/compatdata/1118200/pfx
+```
+
+and tracked the resulting GPTK Wine process as AppID `1118200`. CoreGraphics
+reported a real on-screen 1920x1080 `People Playground` window. Unity's
+`Player.log` confirms Direct3D 11 feature level 11.1, menu initialization, and
+map registration. Steam removed the process cleanly after the test. Screenshot
+evidence is in:
+
+```text
+docs/evidence/people-playground-gptk-live-2026-06-09.png
+```
+
+Do not report the complete launch goal as finished yet. The game itself showed
+`Steam is not initialised`; `Player.log` says Steamworks could not determine
+the Steam client install directory. Native Steam completed Cloud, stats,
+controller, and license work before launch, so this is specifically the
+Windows-in-process Steamworks bridge boundary. A real macOS equivalent of
+Proton's `lsteamclient` behavior must be investigated. Registry-only or fake
+Steam API workarounds are not accepted.
+
+The remaining major gates are:
+
+1. establish a verified Steamworks bridge or document a proven hard boundary;
+2. launch through at least one alternate renderer;
+3. expose per-game renderer, MSync, Retina, Metal HUD, MetalFX, DXR, and AVX
+   controls below the compatibility selection;
+4. add bounded run-command and dependency installation workflows;
+5. rerun Cloud, dynamic library, full test, install, rollback, and live launch
+   acceptance before final release.
+
+Operational note: a single diagnostic Wine registry query omitted
+`WINEPREFIX` and updated the pre-existing-or-unknown default `~/.wine` at
+12:42 local time. It did not modify Steam or the project prefix. It was not
+deleted because no trustworthy pre-change snapshot exists.
 
 ## Recovery And Rollback
 

@@ -211,6 +211,76 @@ This retains Steam's completed Cloud/license/controller launch pipeline and
 lets Steam track the spawned PID while avoiding startup-time compatibility
 tool discovery.
 
+## Live GPTK Acceptance
+
+At 2026-06-09 12:38 local time, Steam launched AppID `1118200` through the
+new dispatcher. The complete observed chain was:
+
+```text
+Steam
+  -> allowlist-scoped posix_spawn redirect
+  -> realsteamonmac-runtime launch
+  -> GPTK Wine
+  -> People Playground.exe
+```
+
+The launch created the requested prefix at:
+
+```text
+/Volumes/990pro/games/mac/steamapps/compatdata/1118200/pfx
+```
+
+Steam tracked PID `3159`, advanced `LaunchApp` through
+`WaitingGameWindow` to `Completed`, attached its native game overlay process,
+and removed the process cleanly after the test. CoreGraphics independently
+reported an on-screen 1920x1080 window titled `People Playground`.
+
+Unity's `Player.log` confirms:
+
+- Unity `2020.3.1f1` initialized;
+- Direct3D 11 feature level 11.1 was created through GPTK;
+- the game reached its menu initialization and registered all bundled maps;
+- the prefix contains the expected game-local `Player.log`.
+
+Visual evidence is stored at:
+
+```text
+docs/evidence/people-playground-gptk-live-2026-06-09.png
+```
+
+This passes the independent runtime, prefix, Direct3D, visible-window, Steam
+PID tracking, and clean-exit gates. It does not yet pass the Steamworks gate.
+
+## Steamworks Boundary
+
+The visible game menu reported `Steam is not initialised`, and `Player.log`
+recorded:
+
+```text
+SteamApi_Init failed with FailedGeneric
+Could not determine Steam client install directory.
+```
+
+This is not a renderer failure. The native macOS Steam client completed its
+pre-launch Cloud, stats, controller, and license tasks, while the Windows game
+could not initialize the in-process Steamworks API. Proton solves the
+equivalent cross-ABI problem with `lsteamclient`; merely inventing registry
+paths or copying a Windows Steam DLL would not establish a verified connection
+to macOS Steam and could create false Cloud or entitlement behavior.
+
+The next gate is therefore a real Darwin-to-Windows Steamworks bridge, or a
+well-evidenced declaration of the APIs that cannot be bridged safely. No fake
+success shim may be used.
+
+## Diagnostic Side Effect
+
+One registry diagnostic command was initially run without the intended
+`WINEPREFIX`. Wine updated the user's default `~/.wine` prefix at 12:42 local
+time before the error was noticed. It did not modify the project PFX or Steam
+files. The default prefix was not deleted or rolled back because its prior
+state was unknown. All subsequent Wine diagnostics must set both
+`WINEPREFIX` and the renderer's required synchronization environment.
+
 ## Acceptance Gates
 
 - Package installer is idempotent and transactional.
@@ -223,4 +293,6 @@ tool discovery.
 - Cloud fields remain present after runtime installation and Steam restart.
 - People Playground launches from Steam, creates its PFX, opens a real window,
   and exits cleanly.
+- The Windows game initializes Steamworks against the running macOS Steam
+  client without replacing ownership or Cloud behavior with a fake API.
 - At least one alternate renderer can be selected and reaches the executable.
