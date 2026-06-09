@@ -1,8 +1,8 @@
 .DS_Store
 .playwright-mcp/
 .superpowers/
+.claude/
 artifacts/
 backups/
 __pycache__/
 *.pyc
-

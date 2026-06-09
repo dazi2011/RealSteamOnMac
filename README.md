@@ -118,5 +118,5 @@ The rollback keeps displaced modified files under
 `~/RealSteamOnMac-Rollback/`. A Steam update can invalidate the verified UUIDs,
 offsets, and runtime signature; unknown builds must remain disabled.
 
-See [current-state-2026-06-08.md](docs/handoff/current-state-2026-06-08.md)
+See [current-state-2026-06-09.md](docs/handoff/current-state-2026-06-09.md)
 for the technical handoff.
