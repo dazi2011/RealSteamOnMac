@@ -103,9 +103,8 @@ Phase 5: per-game compatibility controls and remaining renderer work
       native launch, normal exit, process cleanup, and AutoCloud.
 - [x] Update all handoff and installation documents.
 - [x] Run the complete automated and live verification matrix.
-- [ ] Commit and push the final verified state.
-- **Status:** implementation and live acceptance complete; final commit/push
-  remains
+- [x] Commit and push the final verified state.
+- **Status:** complete
 
 ## Architecture Decision
 
