@@ -57,11 +57,15 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     [4000, details(4000, ["windows", "osx", "linux"])],
   ]);
   const nativeSpecifyCalls = [];
+  const registryRequests = [];
+  const intervalCallbacks = new Map();
   const storage = new Map();
   const context = vm.createContext({
     __REALSTEAMONMAC_CONFIG__: Object.freeze({
       appids: [1118200],
       defaultCompatTool: "realsteamonmac-experimental",
+      registryEndpoint: "http://127.0.0.1:57344/registry",
+      registryToken: "0123456789abcdef0123456789abcdef",
       compatTools: [
         {
           strToolName: "realsteamonmac-experimental",
@@ -107,8 +111,16 @@ test("installs the predicate before dynamically replacing the bootstrap registry
         storage.set(key, value);
       },
     },
-    setInterval() {
+    setInterval(callback, delay) {
+      intervalCallbacks.set(delay, callback);
       return 1;
+    },
+    async fetch(url, options) {
+      registryRequests.push({ url, options });
+      if (registryRequests.length === 1) {
+        throw new Error("registry server is not ready");
+      }
+      return {};
     },
     console,
   });
@@ -119,6 +131,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     typeof context.__REALSTEAMONMAC_IS_MANAGED_APP__,
     "function",
   );
+  assert.equal(context.__REALSTEAMONMAC_UI_STATUS__.version, 6);
   assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(1118200), true);
 
   await waitFor(
@@ -130,6 +143,37 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   );
   assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(990080), true);
   assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(4000), false);
+  assert.equal(registryRequests.length, 1);
+  assert.equal(
+    context.__REALSTEAMONMAC_UI_STATUS__.registryNativeSyncs,
+    0,
+  );
+  assert.match(
+    context.__REALSTEAMONMAC_UI_STATUS__.registryLastNativeSyncError,
+    /registry server is not ready/,
+  );
+
+  await intervalCallbacks.get(5000)();
+  await waitFor(
+    () => context.__REALSTEAMONMAC_UI_STATUS__.registryScans === 2,
+  );
+  assert.equal(registryRequests.length, 2);
+  assert.equal(
+    context.__REALSTEAMONMAC_UI_STATUS__.registryNativeSyncs,
+    1,
+  );
+  assert.equal(
+    context.__REALSTEAMONMAC_UI_STATUS__.registryLastNativeSyncError,
+    null,
+  );
+  assert.equal(
+    registryRequests[1].url,
+    "http://127.0.0.1:57344/registry" +
+      "?token=0123456789abcdef0123456789abcdef",
+  );
+  assert.equal(registryRequests[1].options.method, "POST");
+  assert.equal(registryRequests[1].options.mode, "no-cors");
+  assert.equal(registryRequests[1].options.body, "990080,1118200");
 
   const tools =
     await context.SteamClient.Apps.GetAvailableCompatTools(990080);

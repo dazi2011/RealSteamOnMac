@@ -51,6 +51,11 @@ class SteamUIPatchTests(unittest.TestCase):
         self.ui_source.write_text("globalThis.realSteamOnMacLoaded = true;\n")
         self.allowlist = self.root / "allowlist.txt"
         self.allowlist.write_text("1118200\n", encoding="utf-8")
+        self.registry_token = self.root / "registry-token"
+        self.registry_token.write_text(
+            "0123456789abcdef0123456789abcdef\n",
+            encoding="utf-8",
+        )
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -91,12 +96,15 @@ class SteamUIPatchTests(unittest.TestCase):
 
         config_path = self.steamui / "realsteamonmac" / "config.js"
         config_text = config_path.read_text(encoding="utf-8")
+        self.assertEqual(config_path.stat().st_mode & 0o777, 0o600)
         payload = config_text.split("Object.freeze(", 1)[1].rsplit(");", 1)[0]
         self.assertEqual(
             json.loads(payload),
             {
                 "appids": [1118200],
                 "defaultCompatTool": "realsteamonmac-experimental",
+                "registryEndpoint": "http://127.0.0.1:57344/registry",
+                "registryToken": "0123456789abcdef0123456789abcdef",
                 "compatTools": [
                     {
                         "strToolName": "realsteamonmac-experimental",
@@ -244,6 +252,27 @@ class SteamUIPatchTests(unittest.TestCase):
         (self.steamui / "realsteamonmac" / "ui.js").unlink()
 
         with self.assertRaisesRegex(ValueError, "UI asset is missing"):
+            self.patcher.verify_steamui(self.steamui)
+
+    def test_install_rejects_an_invalid_registry_token(self):
+        self.registry_token.write_text("not-a-token\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "registry token is invalid"):
+            self.patcher.install_steamui(
+                self.steamui,
+                self.ui_source,
+                self.allowlist,
+            )
+
+    def test_verify_rejects_broad_config_permissions(self):
+        self.patcher.install_steamui(
+            self.steamui,
+            self.ui_source,
+            self.allowlist,
+        )
+        (self.steamui / "realsteamonmac" / "config.js").chmod(0o644)
+
+        with self.assertRaisesRegex(ValueError, "permissions are too broad"):
             self.patcher.verify_steamui(self.steamui)
 
     def test_restore_rejects_a_missing_backup(self):

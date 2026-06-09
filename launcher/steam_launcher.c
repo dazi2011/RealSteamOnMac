@@ -187,6 +187,7 @@ int main(int argc, char **argv) {
   char patcher[PATH_MAX];
   char ui_source[PATH_MAX];
   char allowlist[PATH_MAX];
+  char registry_token[PATH_MAX];
   char runtime_directory[PATH_MAX];
   char steamui[PATH_MAX];
   if (!build_path(hook, sizeof(hook), support,
@@ -199,6 +200,8 @@ int main(int argc, char **argv) {
                   "ui/realsteamonmac_ui.js") ||
       !build_path(allowlist, sizeof(allowlist), support,
                   "allowlist.txt") ||
+      !build_path(registry_token, sizeof(registry_token), support,
+                  "registry-token") ||
       !parent_path(runtime_directory, sizeof(runtime_directory), runtime) ||
       !build_path(steamui, sizeof(steamui), runtime_directory, "steamui")) {
     return exec_original_bootstrap(argc, argv, "support path is too long");
@@ -212,7 +215,8 @@ int main(int argc, char **argv) {
       access(engine, R_OK) != 0 ||
       access(patcher, X_OK) != 0 ||
       access(ui_source, R_OK) != 0 ||
-      access(allowlist, R_OK) != 0) {
+      access(allowlist, R_OK) != 0 ||
+      access(registry_token, R_OK) != 0) {
     return exec_original_bootstrap(argc, argv,
                                    "RealSteamOnMac support files are missing");
   }

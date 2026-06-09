@@ -45,9 +45,12 @@ Phase 3: dynamic Windows-only library enablement
 - [x] Specify an exact Windows-only eligibility rule and exclusions.
 - [x] Add tests for dynamic discovery, additions, removals, and hot reload.
 - [x] Replace the single-game fixture with a generated runtime registry.
-- [ ] Keep native and dual-platform macOS titles on their original path.
+- [x] Synchronize the browser registry into the delayed native engine through
+      an authenticated loopback-only endpoint.
+- [x] Keep native and dual-platform macOS titles on their original path in
+      policy, browser, and native-registry tests.
 - [ ] Enable native blue download actions and compatibility pages dynamically.
-- [ ] Update the installer, updater, rollback, README, and handoff.
+- [x] Update the installer, README, and handoff for registry synchronization.
 - [ ] Install and verify against the current Steam library.
 - [ ] Commit and push the verified phase.
 - **Status:** in progress
@@ -140,6 +143,7 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Treat visible UI and backend behavior as separate acceptance criteria | A blue button or dropdown is not proof that install or launch paths work. |
 | Never start the native worker from a dyld constructor | A delayed no-op worker still removes Cloud settings before patching anything. |
 | Do not set `STEAM_EXTRA_COMPAT_TOOLS_PATHS` to a valid tool on macOS | A/B testing proves valid native tool discovery removes the Cloud settings fields on build `1780705203`. |
+| Synchronize AppIDs over an authenticated loopback endpoint | Steam's browser context can reach loopback with `no-cors`; a private token and strict parser avoid a global unauthenticated patch-control surface. |
 
 ## Errors Encountered
 

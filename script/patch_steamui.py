@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -34,6 +35,7 @@ CONFIG_TAG = '<script defer="defer" src="/realsteamonmac/config.js"></script>'
 UI_TAG = '<script defer="defer" src="/realsteamonmac/ui.js"></script>'
 CONFIG_PREFIX = "globalThis.__REALSTEAMONMAC_CONFIG__ = Object.freeze("
 DEFAULT_COMPAT_TOOL = "realsteamonmac-experimental"
+REGISTRY_ENDPOINT = "http://127.0.0.1:57344/registry"
 COMPAT_PAGE_ANCHOR = (
     '(0,f.CI)()&&o.push({title:(0,A.we)'
     '("#AppProperties_CompatibilityPage")'
@@ -124,11 +126,20 @@ def atomic_write(path, content):
             temporary.unlink()
 
 
-def config_bytes(appids):
+def load_registry_token(path):
+    token = Path(path).read_text(encoding="utf-8").strip()
+    if re.fullmatch(r"[0-9A-Fa-f]{32,64}", token) is None:
+        raise ValueError("RealSteamOnMac registry token is invalid")
+    return token
+
+
+def config_bytes(appids, registry_token):
     payload = json.dumps(
         {
             "appids": appids,
             "defaultCompatTool": DEFAULT_COMPAT_TOOL,
+            "registryEndpoint": REGISTRY_ENDPOINT,
+            "registryToken": registry_token,
             "compatTools": [
                 {
                     "strToolName": DEFAULT_COMPAT_TOOL,
@@ -275,6 +286,8 @@ def verify_steamui(steamui_root):
         raise ValueError("Steam UI asset is missing")
     if not paths["config"].is_file():
         raise ValueError("Steam UI config asset is missing")
+    if paths["config"].stat().st_mode & 0o077:
+        raise ValueError("Steam UI config asset permissions are too broad")
 
     config = paths["config"].read_text(encoding="utf-8")
     if not config.startswith(CONFIG_PREFIX) or not config.endswith(");\n"):
@@ -294,6 +307,8 @@ def verify_steamui(steamui_root):
         raise ValueError("Steam UI config allowlist is invalid")
     compat_tools = parsed.get("compatTools")
     default_compat_tool = parsed.get("defaultCompatTool")
+    registry_endpoint = parsed.get("registryEndpoint")
+    registry_token = parsed.get("registryToken")
     if (
         not isinstance(compat_tools, list)
         or not compat_tools
@@ -310,6 +325,9 @@ def verify_steamui(steamui_root):
         or not isinstance(default_compat_tool, str)
         or default_compat_tool
         not in {tool["strToolName"] for tool in compat_tools}
+        or registry_endpoint != REGISTRY_ENDPOINT
+        or not isinstance(registry_token, str)
+        or re.fullmatch(r"[0-9A-Fa-f]{32,64}", registry_token) is None
     ):
         raise ValueError("Steam UI compatibility tool config is invalid")
     return appids
@@ -330,6 +348,9 @@ def install_steamui(steamui_root, ui_source, allowlist):
     appids = parse_allowlist(allowlist)
     if not appids:
         raise ValueError("RealSteamOnMac allowlist is empty")
+    registry_token = load_registry_token(
+        Path(allowlist).with_name("registry-token")
+    )
 
     original, expected_index, backup_index = prepare_index(paths)
     compat_original, expected_compat, backup_compat = (
@@ -346,7 +367,8 @@ def install_steamui(steamui_root, ui_source, allowlist):
         atomic_write(paths["compat_chunk"], expected_compat)
 
     atomic_write(paths["ui"], ui_source.read_bytes())
-    atomic_write(paths["config"], config_bytes(appids))
+    atomic_write(paths["config"], config_bytes(appids, registry_token))
+    paths["config"].chmod(0o600)
     verify_steamui(paths["root"])
     return appids
 

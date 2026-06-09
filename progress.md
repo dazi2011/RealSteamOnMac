@@ -167,6 +167,30 @@
     engine automatically mapped after 30 seconds, worker/gate active, Cloud
     intact, People Playground backend status `11`, and all Helper environments
     clean.
+  - Implemented an authenticated browser-to-native AppID registry bridge on
+    `127.0.0.1:57344`.
+  - Added installer-generated 32-character hexadecimal registry tokens with
+    mode `0600`, and embedded the validated endpoint/token in generated local
+    Steam UI configuration.
+  - Restricted the generated token-bearing `config.js` to mode `0600` and made
+    verification reject broader group/other permissions.
+  - Added a bounded native HTTP parser accepting at most 16 KiB and 256 unique
+    positive AppIDs.
+  - Made native allowlist publication atomic and made the install gate rebuild
+    on additions/removals, restoring the original Steam instruction when the
+    registry becomes empty.
+  - Added an allowlist generation counter so a registry update racing with
+    trampoline replacement cannot be lost; the next worker tick rebuilds again.
+  - Kept Steam memory reconciliation on its existing single worker instead of
+    scanning concurrently from the registry server thread.
+  - Added browser retry coverage proving an unavailable delayed engine does not
+    cache the failed payload.
+  - Added a native dynamic-load harness proving authorized add/remove, `403`
+    rejection for a wrong token, and `400` rejection for malformed payloads.
+  - Ran the modified native, installer, launcher, UI patch, and browser runtime
+    tests sequentially; all passed.
+  - Ran the complete repository matrix after implementation: 43 Node tests,
+    10 Python tests, and every shell contract passed.
 
 ## Test Results
 
@@ -202,6 +226,9 @@
 | Installed state mapping | People Playground plus native installed titles | Derive correct Play state | Backend `11` + local content maps overview to `11` | PASS |
 | Delayed activation harness | Fake native engine and marker | Invoke only after configured delay | Marker written; inherited environment cleared | PASS |
 | Live automatic activation | Two-stage guard launch | Load engine after initialization without Cloud regression | Engine/gate active; Cloud intact; Helpers clean | PASS |
+| Native registry protocol | Production engine loaded by C harness | Authenticated hot add/remove with fail-closed rejection | `204` add/clear, `403` wrong token, `400` malformed body | PASS |
+| Browser registry retry | First loopback request fails | Retry unchanged payload on next five-second scan | Second request succeeds and clears error state | PASS |
+| Registry token install | Temporary Steam/support fixture | Private valid token shared by patcher and engine | 32 hex characters, mode `0600`, generated config verified | PASS |
 
 ## Error Log
 
@@ -212,13 +239,15 @@
 | 2026-06-09 | Cloud page remained blank without a JS exception | 1 | Traced the shared settings store and found the native backend omitted `cloud_enabled`. |
 | 2026-06-09 | Parallel tests raced while both built the same fat dylib | 1 | Re-ran build-writing tests sequentially; all passed. |
 | 2026-06-09 | Computer Use could not start a capture stream | 2 | Recorded ScreenCaptureKit `-3811`; retained element-aware policy and used read-only CDP evidence. |
+| 2026-06-09 | New native headers were accidentally appended after the final function | 1 | Strict `-Werror` build exposed undeclared atomic APIs; moved headers to the include block and rebuilt all three architectures. |
+| 2026-06-09 | Rollback fixture lacked the new registry token | 1 | Added the same private token fixture required by UI installation, then reran the complete suite successfully. |
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phase 3, replacing the one-game fixture with dynamic Windows-only discovery. |
+| Where am I? | Phase 3, repository implementation complete through browser-to-native hot registry; persistent live deployment is next. |
 | Where am I going? | Rollback fix, cloud root cause, dynamic Windows-only enablement, independent runtimes, controls, and real launch. |
 | What's the goal? | Native macOS Steam downloads and launches Windows-only games through independent selectable compatibility tools. |
 | What have I learned? | Constructor threads and valid native compatibility-tool discovery break the macOS settings bridge; the engine load alone does not. |
-| What have I done? | Recovered Claude's work, fixed rollback, restored/deployed Cloud health, and established a safe startup boundary. |
+| What have I done? | Recovered Claude's work, fixed rollback and Cloud, implemented dynamic eligibility, delayed native activation, and authenticated hot registry synchronization. |

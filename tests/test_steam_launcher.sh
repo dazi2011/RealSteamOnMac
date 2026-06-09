@@ -37,6 +37,8 @@ touch "$SUPPORT/libRealSteamNativeEngine.dylib"
 cp "$ROOT/script/patch_steamui.py" "$SUPPORT/patch_steamui.py"
 cp "$ROOT/ui/realsteamonmac_ui.js" "$SUPPORT/ui/realsteamonmac_ui.js"
 printf '%s\n' 1118200 >"$SUPPORT/allowlist.txt"
+printf '%s\n' 0123456789abcdef0123456789abcdef \
+    >"$SUPPORT/registry-token"
 printf '%s\n' '#!/bin/sh' 'exit 0' >"$RUNTIME"
 chmod +x "$RUNTIME"
 printf '%s' \

@@ -101,6 +101,38 @@ The known-build compatibility chunk migrates atomically from the previous
 static AppID gate to the dynamic predicate. Unit, browser-context, migration,
 installer, launcher, and rollback tests all pass.
 
+### Authenticated Native Registry Bridge
+
+The repository now also synchronizes that browser registry into the delayed
+native engine:
+
+- the installer creates
+  `~/Library/Application Support/RealSteamOnMac/registry-token` with mode
+  `0600`;
+- the same validated token and fixed loopback endpoint are written into the
+  generated local Steam UI configuration, also with mode `0600`;
+- after delayed activation, the engine listens only on
+  `127.0.0.1:57344`;
+- the browser sends a sorted comma-separated AppID list with `text/plain`
+  `POST` and retries unchanged lists after connection failures;
+- the native endpoint accepts at most 16 KiB and 256 unique positive AppIDs;
+- invalid tokens return `403`, malformed bodies return `400`, and neither can
+  change the active registry;
+- an accepted update atomically replaces the native allowlist and requests a
+  live install-gate trampoline rebuild;
+- an accepted empty registry restores Steam's original install-gate
+  instruction.
+
+The native HTTP harness dynamically loads the production engine and verifies
+authorized add/remove behavior, unauthorized rejection, malformed-payload
+rejection, and direct managed-AppID queries. The UI integration harness also
+proves that an initial connection failure does not cache the payload and that
+the next five-second scan retries it.
+
+This bridge is repository-tested but not yet installed persistently in
+`/Applications/Steam.app`. The next step is a coordinated live deployment and
+verification against all 34 current candidates while rechecking Cloud.
+
 ## Post-Initialization Native Activation Experiment
 
 LLDB was attached to the already initialized Steam PID `97776`. The dormant
@@ -121,8 +153,8 @@ The result proves late native activation is cloud-safe on the current build.
 It also proves the browser bridge must map backend-ready installed entries to
 status `11`, just as uninstalled backend-ready entries map to status `9`.
 Automated tests now cover both states and reject mismatched local-content/state
-combinations. A production post-initialization loader is still required; LLDB
-is diagnostic evidence, not the shipping mechanism.
+combinations. LLDB was diagnostic evidence only; the production delayed loader
+described below has replaced it.
 
 The production replacement for the debugger path has now also passed a live
 A/B test. The launcher supplies a `bootstrap` stage, guard path, engine path,
@@ -143,8 +175,8 @@ the worker. Verified at that point:
   activation variables.
 
 The loader no longer requires LLDB, `task_for_pid`, `get-task-allow`, or an
-administrator prompt. The next native task is synchronizing the browser's
-dynamic 34-AppID registry into the already-running engine.
+administrator prompt. Browser-to-engine synchronization is now implemented and
+automated-test verified; coordinated persistent deployment is the next task.
 
 ## What Is Not Implemented
 
@@ -244,9 +276,11 @@ authoritative complete rollback source.
 1. Done: Steam UI restoration is covered by the rollback regression test.
 2. Done: Cloud root cause isolated and the guarded startup deployed.
 3. Done: generated browser registry from Steam ownership and platform details.
-4. Restore blue download/Play presentation through the cloud-safe registry and
-   a post-initialization backend path.
-5. Implement the independent versioned compatibility runtime and
+4. Done in repository: authenticated hot synchronization into the delayed
+   native backend.
+5. Deploy and verify blue download/Play presentation for all current
+   candidates while confirming native-title exclusions and Cloud health.
+6. Implement the independent versioned compatibility runtime and
    Proton-compatible prefix path.
 
 ## Recovery And Rollback

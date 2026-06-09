@@ -223,6 +223,17 @@ if [ ! -f "$SUPPORT_ROOT/allowlist.txt" ]; then
     chmod 0600 "$SUPPORT_ROOT/allowlist.txt"
 fi
 
+REGISTRY_TOKEN="$SUPPORT_ROOT/registry-token"
+if [ ! -f "$REGISTRY_TOKEN" ]; then
+    TOKEN=$(/usr/bin/uuidgen | tr -d '-')
+    (umask 077 && printf '%s\n' "$TOKEN" >"$REGISTRY_TOKEN")
+fi
+chmod 0600 "$REGISTRY_TOKEN"
+if ! grep -Eq '^[0-9A-Fa-f]{32,64}$' "$REGISTRY_TOKEN"; then
+    echo "RealSteamOnMac registry token is invalid" >&2
+    exit 1
+fi
+
 "$PATCHER_TARGET" install \
     --steamui-root "$STEAMUI_ROOT" \
     --ui-source "$UI_TARGET" \
@@ -300,5 +311,6 @@ printf 'hook=%s\n' "$HOOK_TARGET"
 printf 'native_engine=%s\n' "$ENGINE_TARGET"
 printf 'compat_tools=%s\n' "$COMPAT_TARGET"
 printf 'allowlist=%s\n' "$SUPPORT_ROOT/allowlist.txt"
+printf 'registry_token=%s\n' "$REGISTRY_TOKEN"
 printf 'steamui=%s\n' "$STEAMUI_ROOT"
 printf 'rollback_source=%s\n' "$CLEAN_BACKUP"

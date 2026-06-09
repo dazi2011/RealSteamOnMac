@@ -69,6 +69,8 @@ grep -q 'REALSTEAMONMAC_DELAYED_ENGINE_PATH' \
     "$STEAM_APP/Contents/MacOS/realsteamonmac_launcher"
 test -x "$SUPPORT/compat-tool/realsteamonmac-experimental/run"
 test -f "$SUPPORT/allowlist.txt"
+test -f "$SUPPORT/registry-token"
+test "$(stat -f '%Lp' "$SUPPORT/registry-token")" = "600"
 test -x "$SUPPORT/patch_steamui.py"
 test -f "$SUPPORT/ui/realsteamonmac_ui.js"
 test -f \

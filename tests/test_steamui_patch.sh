@@ -20,6 +20,8 @@ printf '%s' \
     'before(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")middle(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")after' \
     >"$STEAMUI/chunk~2dcc5aaf7.js"
 printf '%s\n' 1118200 >"$TMP_ROOT/allowlist.txt"
+printf '%s\n' 0123456789abcdef0123456789abcdef \
+    >"$TMP_ROOT/registry-token"
 
 "$PATCHER" install \
     --steamui-root "$STEAMUI" \
@@ -34,6 +36,9 @@ printf '%s\n' 1118200 >"$TMP_ROOT/allowlist.txt"
 test "$(grep -o '/realsteamonmac/config.js' "$STEAMUI/index.html" | wc -l)" -eq 1
 test "$(grep -o '/realsteamonmac/ui.js' "$STEAMUI/index.html" | wc -l)" -eq 1
 grep -q '"appids":\[1118200\]' "$STEAMUI/realsteamonmac/config.js"
+grep -q '"registryToken":"0123456789abcdef0123456789abcdef"' \
+    "$STEAMUI/realsteamonmac/config.js"
+test "$(stat -f '%Lp' "$STEAMUI/realsteamonmac/config.js")" = "600"
 test "$(grep -o '__REALSTEAMONMAC_IS_MANAGED_APP__' \
     "$STEAMUI/chunk~2dcc5aaf7.js" | wc -l)" -eq 2
 

@@ -69,6 +69,19 @@ grep -q 'steamclient: install gate patched' "$SOURCE"
 grep -q 'patch_steamclient_install_gate(steamclient, 0)' "$SOURCE"
 grep -q 'patch_steamclient_install_gate(header, slide)' "$SOURCE"
 
+# The browser registry is authenticated, loopback-only, bounded, and can
+# request a live install-gate rebuild without broadening the initial allowlist.
+grep -q 'realsteamonmac_start_registry_server' "$SOURCE"
+grep -q 'realsteamonmac_is_managed_app' "$SOURCE"
+grep -q 'INADDR_LOOPBACK' "$SOURCE"
+grep -q 'registry-token' "$SOURCE"
+grep -q 'REGISTRY_REQUEST_CAPACITY' "$SOURCE"
+grep -q 'gInstallGateRefreshRequested' "$SOURCE"
+grep -q 'gAllowlistGeneration' "$SOURCE"
+grep -q 'finish_install_gate_update' "$SOURCE"
+grep -q 'memory_order_release' "$SOURCE"
+grep -q 'registry: accepted %zu managed AppID(s)' "$SOURCE"
+
 "$BUILD_SCRIPT"
 
 test -f "$OUTPUT"

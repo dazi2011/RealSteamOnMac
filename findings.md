@@ -245,6 +245,7 @@
 | Use the live app store plus requested details as the authoritative registry | It is already decoded by Steam, reflects ownership and visibility, and supports in-process hot updates without parsing binary cache files. |
 | Activate the native engine only after Steam initialization | Live LLDB loading proved the install gate can be installed without removing Cloud settings; startup-time worker creation remains forbidden. |
 | Use a two-stage guard plus one-shot dispatch timer | It survives Steam's startup fork, avoids debugger entitlements, activates after Cloud initialization, and sanitizes every Helper exec. |
+| Use an authenticated loopback registry bridge | It lets the decoded Steam library update the delayed native allowlist without restart, native tool discovery, debugger entitlements, or a global wildcard. |
 | Restore Steam UI before any other rollback mutation | A failed UI restore now aborts before Steam.app, runtime binaries, or support files are moved. |
 | Treat missing `cloud_enabled` as the primary cloud symptom | The blank page and false “globally disabled” state share this backend omission; changing account/cloud data would hide evidence without proving a cause. |
 

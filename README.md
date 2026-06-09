@@ -23,6 +23,10 @@ download prototype to a cloud-safe, independent compatibility runtime.
 - The repository's guarded UI patch now derives its managed registry from
   Steam's decoded app overview/details stores every five seconds. New purchases
   can enter the registry without reinstalling RealSteamOnMac.
+- The browser registry is synchronized to the delayed native engine through an
+  authenticated loopback-only endpoint. The installer creates a private token
+  with mode `0600`; failed browser requests are retried on the next five-second
+  scan.
 - The repository patch exposes Steam's original `兼容性` properties page for
   managed Windows-only games while leaving native and dual-platform macOS games
   on their original page set. Live deployment of this dynamic revision is
@@ -33,10 +37,14 @@ download prototype to a cloud-safe, independent compatibility runtime.
   `STEAM_EXTRA_COMPAT_TOOLS_PATHS`. On macOS build `1780705203`, pointing that
   variable at a valid compatibility tool removes native Cloud settings from the
   settings bridge.
-- The native install/data patch engine is built and installed but dormant. The
-  earlier People Playground download is preserved, while new Windows-only
-  enablement is being moved to a generated registry and post-initialization
-  controller.
+- The repository's native install/data patch engine is loaded 30 seconds after
+  the final Steam runtime starts. It accepts bounded AppID registry updates,
+  rebuilds the allowlist-gated install trampoline, and restores the original
+  instruction when the registry becomes empty.
+- The currently installed persistent Steam files remain at the earlier
+  cloud-safe baseline until the coordinated dynamic-registry deployment. The
+  newer delayed activation and registry bridge have passed isolated and live
+  A/B tests from the repository.
 - In the current cloud-safe startup, People Playground remains installed but
   reports Steam display status `14`; restoring the blue/Play action is the
   active Phase 3 task.
@@ -56,9 +64,12 @@ did here.
 - `libRealSteamNativeEngine.dylib` contains the proven allowlist-gated app-data
   and `GetAppForInstallation` patches, has no dyld constructor, and is loaded
   by the guard only after a 30-second initialization delay.
+- The engine listens only on `127.0.0.1:57344` for authenticated `text/plain`
+  AppID registry updates. Requests are capped at 16 KiB and 256 AppIDs; invalid
+  tokens and malformed payloads leave the active registry unchanged.
 - The launcher explicitly removes `STEAM_EXTRA_COMPAT_TOOLS_PATHS`. Runtime
-  packages remain installed but dormant until the project-owned registry and
-  post-initialization activation path are ready.
+  packages remain outside Steam's native discovery path; the project-owned
+  browser bridge supplies their compatibility-page entries instead.
 - A guarded Steam UI resource patch dynamically identifies owned, visible
   games whose platform list contains `windows` and not `osx`; it synchronizes
   only backend-ready managed overview state.
@@ -92,8 +103,8 @@ sh script/install_steam_injection.sh \
 
 The installer refuses unknown Steam modifications, signs only the runtime main
 executable with the minimum DYLD entitlements, installs the minimal startup
-guard plus dormant native engine, and installs a universal launcher in
-`Steam.app`.
+guard plus delayed native engine, creates the private registry token, and
+installs a universal launcher in `Steam.app`.
 
 Verify the installed UI resources while Steam is stopped:
 

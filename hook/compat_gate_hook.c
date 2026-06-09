@@ -1,15 +1,21 @@
+#include <arpa/inet.h>
+#include <errno.h>
 #include <libkern/OSCacheControl.h>
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
 #include <mach-o/dyld.h>
 #include <mach-o/loader.h>
+#include <netinet/in.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -29,6 +35,9 @@
 #define TRACKED_OBJECT_REFRESH_DELAY_US 250000
 #define EMPTY_RESCAN_INTERVAL_TICKS 8
 #define FULL_RESCAN_INTERVAL_TICKS 60
+#define REGISTRY_SERVER_PORT 57344
+#define REGISTRY_REQUEST_CAPACITY 16384
+#define REGISTRY_TOKEN_CAPACITY 128
 
 static const uint8_t kSteamClientUUID[16] = {
     0xB2, 0x95, 0x06, 0x28, 0x80, 0x3A, 0x3E, 0xFD,
@@ -55,16 +64,21 @@ static const uint32_t kSteamUIExpected[2] = {
 
 static uint32_t gAllowlist[MAX_ALLOWLIST_APPIDS];
 static size_t gAllowlistCount = 0;
+static pthread_mutex_t gAllowlistLock = PTHREAD_MUTEX_INITIALIZER;
 static mach_vm_address_t gTrackedObjects[MAX_TRACKED_APP_OBJECTS];
 static size_t gTrackedObjectCount = 0;
-static bool gAllowlistLoaded = false;
+static _Atomic bool gAllowlistLoaded = false;
+static _Atomic uint64_t gAllowlistGeneration = 0;
 static bool gRegistered = false;
 static bool gSteamClientPatched = false;
-static bool gSteamClientInstallGatePatched = false;
+static _Atomic bool gSteamClientInstallGatePatched = false;
+static _Atomic bool gInstallGateRefreshRequested = false;
 static bool gSteamUIPatched = false;
 static bool gDataScanStartedLogged = false;
 static bool gDataScanSummaryLogged = false;
 static bool gWorkerStarted = false;
+static bool gRegistryServerStarted = false;
+static pthread_mutex_t gRegistryServerLock = PTHREAD_MUTEX_INITIALIZER;
 
 static void log_line(const char *message) {
   const char *home = getenv("HOME");
@@ -251,21 +265,41 @@ static void restore_text_protection(uintptr_t page, size_t length) {
                         VM_PROT_READ | VM_PROT_EXECUTE);
 }
 
-static bool is_allowlisted(uint32_t appid) {
-  for (size_t index = 0; index < gAllowlistCount; ++index) {
-    if (gAllowlist[index] == appid) {
+static bool appid_in_list(
+    uint32_t appid, const uint32_t *appids, size_t count) {
+  for (size_t index = 0; index < count; ++index) {
+    if (appids[index] == appid) {
       return true;
     }
   }
   return false;
 }
 
+static bool is_allowlisted_unlocked(uint32_t appid) {
+  return appid_in_list(appid, gAllowlist, gAllowlistCount);
+}
+
+static bool is_allowlisted(uint32_t appid) {
+  (void)pthread_mutex_lock(&gAllowlistLock);
+  bool found = is_allowlisted_unlocked(appid);
+  (void)pthread_mutex_unlock(&gAllowlistLock);
+  return found;
+}
+
 static void add_allowlist_appid(uint32_t appid) {
-  if (appid == 0 || is_allowlisted(appid) ||
+  if (appid == 0 || is_allowlisted_unlocked(appid) ||
       gAllowlistCount >= MAX_ALLOWLIST_APPIDS) {
     return;
   }
   gAllowlist[gAllowlistCount++] = appid;
+}
+
+static size_t copy_allowlist(uint32_t destination[MAX_ALLOWLIST_APPIDS]) {
+  (void)pthread_mutex_lock(&gAllowlistLock);
+  size_t count = gAllowlistCount;
+  memcpy(destination, gAllowlist, count * sizeof(*destination));
+  (void)pthread_mutex_unlock(&gAllowlistLock);
+  return count;
 }
 
 static void parse_allowlist_text(char *text) {
@@ -300,6 +334,11 @@ static void parse_allowlist_text(char *text) {
 }
 
 static void load_allowlist(void) {
+  (void)pthread_mutex_lock(&gAllowlistLock);
+  if (atomic_load_explicit(&gAllowlistLoaded, memory_order_acquire)) {
+    (void)pthread_mutex_unlock(&gAllowlistLock);
+    return;
+  }
   gAllowlistCount = 0;
 
   const char *environment = getenv("REALSTEAMONMAC_APPIDS");
@@ -331,12 +370,14 @@ static void load_allowlist(void) {
   char message[128];
   snprintf(message, sizeof(message), "allowlist: loaded %zu AppID(s)",
            gAllowlistCount);
+  (void)pthread_mutex_unlock(&gAllowlistLock);
   log_line(message);
-  gAllowlistLoaded = true;
+  atomic_store_explicit(
+      &gAllowlistLoaded, true, memory_order_release);
 }
 
 static void ensure_allowlist_loaded(void) {
-  if (!gAllowlistLoaded) {
+  if (!atomic_load_explicit(&gAllowlistLoaded, memory_order_acquire)) {
     load_allowlist();
   }
 }
@@ -407,13 +448,15 @@ static void *allocate_near_page(void *target, size_t *page_size_out) {
 }
 
 static void *build_platform_filter_trampoline(void *target) {
+  uint32_t allowlist[MAX_ALLOWLIST_APPIDS];
+  size_t allowlist_count = copy_allowlist(allowlist);
   size_t page_size = 0;
   void *memory = allocate_near_page(target, &page_size);
   if (memory == NULL) {
     return NULL;
   }
 
-  size_t required_words = 2 + (gAllowlistCount * 4) + 2 + 4;
+  size_t required_words = 2 + (allowlist_count * 4) + 2 + 4;
   if (required_words > page_size / sizeof(uint32_t)) {
     (void)munmap(memory, page_size);
     return NULL;
@@ -425,8 +468,8 @@ static void *build_platform_filter_trampoline(void *target) {
   instructions[cursor++] = 0xB9400808;  // ldr w8, [x0, #0x08]
   instructions[cursor++] = 0xB9401C09;  // ldr w9, [x0, #0x1c]
 
-  for (size_t index = 0; index < gAllowlistCount; ++index) {
-    uint32_t appid = gAllowlist[index];
+  for (size_t index = 0; index < allowlist_count; ++index) {
+    uint32_t appid = allowlist[index];
     uint32_t low = appid & 0xFFFF;
     uint32_t high = appid >> 16;
     instructions[cursor++] = 0x5280000A | (low << 5);
@@ -444,7 +487,7 @@ static void *build_platform_filter_trampoline(void *target) {
   instructions[cursor++] = 0x2A0903E0;  // mov w0, w9
   instructions[cursor++] = 0xD65F03C0;  // ret
 
-  for (size_t index = 0; index < gAllowlistCount; ++index) {
+  for (size_t index = 0; index < allowlist_count; ++index) {
     intptr_t delta =
         (intptr_t)clear_index - (intptr_t)branch_indices[index];
     if (delta < -(1 << 18) || delta >= (1 << 18)) {
@@ -484,7 +527,9 @@ static void *build_platform_filter_trampoline(void *target) {
 //   b    <module + 0x62508c> ; original "Invalid platform" branch target
 static void *build_install_gate_trampoline(void *target,
                                            uintptr_t module_base) {
-  if (gAllowlistCount == 0) {
+  uint32_t allowlist[MAX_ALLOWLIST_APPIDS];
+  size_t allowlist_count = copy_allowlist(allowlist);
+  if (allowlist_count == 0) {
     return NULL;
   }
 
@@ -494,7 +539,7 @@ static void *build_install_gate_trampoline(void *target,
     return NULL;
   }
 
-  size_t required_words = (gAllowlistCount * 4) + 3;
+  size_t required_words = (allowlist_count * 4) + 3;
   if (required_words > page_size / sizeof(uint32_t)) {
     (void)munmap(memory, page_size);
     return NULL;
@@ -503,8 +548,8 @@ static void *build_install_gate_trampoline(void *target,
   uint32_t *instructions = (uint32_t *)memory;
   size_t branch_indices[MAX_ALLOWLIST_APPIDS];
   size_t cursor = 0;
-  for (size_t index = 0; index < gAllowlistCount; ++index) {
-    uint32_t appid = gAllowlist[index];
+  for (size_t index = 0; index < allowlist_count; ++index) {
+    uint32_t appid = allowlist[index];
     uint32_t low = appid & 0xFFFF;
     uint32_t high = appid >> 16;
     instructions[cursor++] = 0x5280000A | (low << 5);   // movz w10, #low
@@ -521,7 +566,7 @@ static void *build_install_gate_trampoline(void *target,
   size_t invalid_index = cursor;
   instructions[cursor++] = 0;  // b <module + invalid> (patched below)
 
-  for (size_t index = 0; index < gAllowlistCount; ++index) {
+  for (size_t index = 0; index < allowlist_count; ++index) {
     intptr_t delta = (intptr_t)skip_index - (intptr_t)branch_indices[index];
     if (delta < -(1 << 18) || delta >= (1 << 18)) {
       (void)munmap(memory, page_size);
@@ -567,30 +612,83 @@ static void *build_install_gate_trampoline(void *target,
   return memory;
 }
 
+static void finish_install_gate_update(
+    uint64_t generation, bool patched) {
+  atomic_store_explicit(
+      &gSteamClientInstallGatePatched, patched, memory_order_release);
+  atomic_store_explicit(
+      &gInstallGateRefreshRequested, false, memory_order_release);
+  if (
+      atomic_load_explicit(
+          &gAllowlistGeneration, memory_order_acquire) != generation
+  ) {
+    atomic_store_explicit(
+        &gSteamClientInstallGatePatched, false, memory_order_release);
+    atomic_store_explicit(
+        &gInstallGateRefreshRequested, true, memory_order_release);
+  }
+}
+
 static void patch_steamclient_install_gate(const struct mach_header *header,
                                            intptr_t slide) {
-  if (gSteamClientInstallGatePatched ||
-      !image_uuid_matches(header, kSteamClientUUID)) {
+  bool refresh_requested =
+      atomic_load_explicit(
+          &gInstallGateRefreshRequested, memory_order_acquire);
+  if (
+      (atomic_load_explicit(
+           &gSteamClientInstallGatePatched, memory_order_acquire) &&
+       !refresh_requested) ||
+      !image_uuid_matches(header, kSteamClientUUID)
+  ) {
     return;
   }
 
   ensure_allowlist_loaded();
-  if (gAllowlistCount == 0) {
-    log_line("steamclient: install gate skipped (empty allowlist)");
-    return;
-  }
+  uint64_t generation =
+      atomic_load_explicit(
+          &gAllowlistGeneration, memory_order_acquire);
+  uint32_t allowlist[MAX_ALLOWLIST_APPIDS];
+  size_t allowlist_count = copy_allowlist(allowlist);
 
   uint8_t *target =
       (uint8_t *)((uintptr_t)header + STEAMCLIENT_INSTALL_GATE_OFFSET);
   uint32_t current = 0;
   memcpy(&current, target, sizeof(current));
   if (current != kSteamClientInstallGateExpected) {
-    if ((current & 0xFC000000) == 0x14000000) {
-      gSteamClientInstallGatePatched = true;
+    if (
+        (current & 0xFC000000) == 0x14000000 &&
+        !refresh_requested
+    ) {
+      atomic_store_explicit(
+          &gSteamClientInstallGatePatched, true, memory_order_release);
       log_line("steamclient: install gate already redirected");
       return;
     }
-    log_line("steamclient: refused unexpected install gate bytes");
+    if ((current & 0xFC000000) != 0x14000000) {
+      log_line("steamclient: refused unexpected install gate bytes");
+      return;
+    }
+  }
+
+  if (allowlist_count == 0) {
+    if (current != kSteamClientInstallGateExpected) {
+      uintptr_t page = 0;
+      size_t protected_size = 0;
+      if (!make_text_writable(
+              target, sizeof(kSteamClientInstallGateExpected),
+              &page, &protected_size)) {
+        log_line("steamclient: could not restore empty install gate");
+        return;
+      }
+      memcpy(
+          target, &kSteamClientInstallGateExpected,
+          sizeof(kSteamClientInstallGateExpected));
+      sys_icache_invalidate(
+          target, sizeof(kSteamClientInstallGateExpected));
+      restore_text_protection(page, protected_size);
+    }
+    finish_install_gate_update(generation, false);
+    log_line("steamclient: install gate restored (empty allowlist)");
     return;
   }
 
@@ -616,13 +714,13 @@ static void patch_steamclient_install_gate(const struct mach_header *header,
   memcpy(target, &branch, sizeof(branch));
   sys_icache_invalidate(target, sizeof(branch));
   restore_text_protection(page, protected_size);
-  gSteamClientInstallGatePatched = true;
+  finish_install_gate_update(generation, true);
 
   char message[224];
   snprintf(message, sizeof(message),
            "steamclient: install gate patched slide=%p target=%p "
            "trampoline=%p appids=%zu",
-           (void *)slide, (void *)target, branch_target, gAllowlistCount);
+           (void *)slide, (void *)target, branch_target, allowlist_count);
   log_line(message);
 }
 
@@ -812,6 +910,8 @@ static tracked_refresh_result refresh_tracked_objects(void) {
 __attribute__((visibility("default")))
 size_t realsteamonmac_apply_data_overrides(void) {
   ensure_allowlist_loaded();
+  uint32_t allowlist[MAX_ALLOWLIST_APPIDS];
+  size_t allowlist_count = copy_allowlist(allowlist);
   const struct mach_header *steamui = find_image_by_uuid(kSteamUIUUID);
   if (steamui == NULL) {
     log_line("data override: matching steamui image was not found");
@@ -875,7 +975,7 @@ size_t realsteamonmac_apply_data_overrides(void) {
           memcpy(&vtable, chunk + offset, sizeof(vtable));
           memcpy(&appid, chunk + offset + 0x08, sizeof(appid));
           memcpy(&flags, chunk + offset + 0x1C, sizeof(flags));
-          if (!is_allowlisted(appid)) {
+          if (!appid_in_list(appid, allowlist, allowlist_count)) {
             continue;
           }
           ++allowlisted_candidates;
@@ -947,6 +1047,360 @@ size_t realsteamonmac_apply_hooks(void) {
   return realsteamonmac_apply_data_overrides();
 }
 
+static bool load_registry_token(char token[REGISTRY_TOKEN_CAPACITY]) {
+  const char *environment = getenv("REALSTEAMONMAC_REGISTRY_TOKEN");
+  if (environment != NULL && *environment != '\0') {
+    if (strlen(environment) >= REGISTRY_TOKEN_CAPACITY) {
+      return false;
+    }
+    strcpy(token, environment);
+  } else {
+    const char *home = getenv("HOME");
+    if (home == NULL) {
+      return false;
+    }
+    char path[1200];
+    if (snprintf(
+            path, sizeof(path),
+            "%s/Library/Application Support/RealSteamOnMac/registry-token",
+            home) >= (int)sizeof(path)) {
+      return false;
+    }
+    FILE *stream = fopen(path, "r");
+    if (stream == NULL) {
+      return false;
+    }
+    if (fgets(token, REGISTRY_TOKEN_CAPACITY, stream) == NULL) {
+      fclose(stream);
+      return false;
+    }
+    fclose(stream);
+    token[strcspn(token, "\r\n")] = '\0';
+  }
+
+  size_t length = strlen(token);
+  if (length < 32 || length > 64) {
+    return false;
+  }
+  for (size_t index = 0; index < length; ++index) {
+    char character = token[index];
+    bool hexadecimal =
+        (character >= '0' && character <= '9') ||
+        (character >= 'a' && character <= 'f') ||
+        (character >= 'A' && character <= 'F');
+    if (!hexadecimal) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static uint16_t registry_server_port(void) {
+  const char *raw = getenv("REALSTEAMONMAC_REGISTRY_PORT");
+  if (raw == NULL || *raw == '\0') {
+    return REGISTRY_SERVER_PORT;
+  }
+  char *end = NULL;
+  unsigned long value = strtoul(raw, &end, 10);
+  if (end == raw || *end != '\0' || value < 1024 || value > 65535) {
+    return REGISTRY_SERVER_PORT;
+  }
+  return (uint16_t)value;
+}
+
+static bool parse_registry_payload(
+    const char *text,
+    uint32_t appids[MAX_ALLOWLIST_APPIDS],
+    size_t *count_out) {
+  const char *cursor = text;
+  size_t count = 0;
+  while (*cursor == ' ' || *cursor == '\t' ||
+         *cursor == '\r' || *cursor == '\n') {
+    ++cursor;
+  }
+  if (*cursor == '\0') {
+    *count_out = 0;
+    return true;
+  }
+
+  for (;;) {
+    if (*cursor < '0' || *cursor > '9') {
+      return false;
+    }
+    errno = 0;
+    char *end = NULL;
+    unsigned long value = strtoul(cursor, &end, 10);
+    if (
+        errno != 0 || end == cursor || value == 0 ||
+        value > UINT32_MAX || count >= MAX_ALLOWLIST_APPIDS
+    ) {
+      return false;
+    }
+    uint32_t appid = (uint32_t)value;
+    if (!appid_in_list(appid, appids, count)) {
+      appids[count++] = appid;
+    }
+    cursor = end;
+    while (*cursor == ' ' || *cursor == '\t' ||
+           *cursor == '\r' || *cursor == '\n') {
+      ++cursor;
+    }
+    if (*cursor == '\0') {
+      *count_out = count;
+      return true;
+    }
+    if (*cursor != ',') {
+      return false;
+    }
+    ++cursor;
+    while (*cursor == ' ' || *cursor == '\t' ||
+           *cursor == '\r' || *cursor == '\n') {
+      ++cursor;
+    }
+    if (*cursor == '\0') {
+      return false;
+    }
+  }
+}
+
+static void publish_registry(
+    const uint32_t *appids, size_t count) {
+  (void)pthread_mutex_lock(&gAllowlistLock);
+  memcpy(gAllowlist, appids, count * sizeof(*appids));
+  gAllowlistCount = count;
+  atomic_store_explicit(
+      &gAllowlistLoaded, true, memory_order_release);
+  (void)pthread_mutex_unlock(&gAllowlistLock);
+
+  (void)atomic_fetch_add_explicit(
+      &gAllowlistGeneration, 1, memory_order_acq_rel);
+  atomic_store_explicit(
+      &gInstallGateRefreshRequested, true, memory_order_release);
+  atomic_store_explicit(
+      &gSteamClientInstallGatePatched, false, memory_order_release);
+  char message[128];
+  snprintf(
+      message, sizeof(message),
+      "registry: accepted %zu managed AppID(s)", count);
+  log_line(message);
+}
+
+__attribute__((visibility("default")))
+bool realsteamonmac_is_managed_app(uint32_t appid) {
+  ensure_allowlist_loaded();
+  return is_allowlisted(appid);
+}
+
+static bool parse_content_length(
+    const char *headers, size_t *length_out) {
+  const char *cursor = headers;
+  while (*cursor != '\0') {
+    const char *line_end = strstr(cursor, "\r\n");
+    if (line_end == NULL || line_end == cursor) {
+      break;
+    }
+    if (
+        (size_t)(line_end - cursor) >= 15 &&
+        strncasecmp(cursor, "Content-Length:", 15) == 0
+    ) {
+      const char *value = cursor + 15;
+      while (*value == ' ' || *value == '\t') {
+        ++value;
+      }
+      errno = 0;
+      char *end = NULL;
+      unsigned long parsed = strtoul(value, &end, 10);
+      while (end < line_end && (*end == ' ' || *end == '\t')) {
+        ++end;
+      }
+      if (
+          errno != 0 || end == value || end != line_end ||
+          parsed >= REGISTRY_REQUEST_CAPACITY
+      ) {
+        return false;
+      }
+      *length_out = (size_t)parsed;
+      return true;
+    }
+    cursor = line_end + 2;
+  }
+  return false;
+}
+
+static void send_registry_response(int connection, int status) {
+  const char *reason =
+      status == 204 ? "No Content" :
+      status == 403 ? "Forbidden" : "Bad Request";
+  char response[256];
+  int length = snprintf(
+      response, sizeof(response),
+      "HTTP/1.1 %d %s\r\n"
+      "Connection: close\r\n"
+      "Content-Length: 0\r\n"
+      "Cache-Control: no-store\r\n\r\n",
+      status, reason);
+  if (length > 0 && length < (int)sizeof(response)) {
+    (void)send(
+        connection, response, (size_t)length, MSG_NOSIGNAL);
+  }
+}
+
+static void handle_registry_connection(
+    int connection, const char *token) {
+  struct timeval timeout = {.tv_sec = 2, .tv_usec = 0};
+  (void)setsockopt(
+      connection, SOL_SOCKET, SO_RCVTIMEO,
+      &timeout, sizeof(timeout));
+
+  char request[REGISTRY_REQUEST_CAPACITY];
+  size_t total = 0;
+  size_t header_length = 0;
+  size_t content_length = 0;
+  bool headers_parsed = false;
+  while (total + 1 < sizeof(request)) {
+    ssize_t received = recv(
+        connection, request + total,
+        sizeof(request) - total - 1, 0);
+    if (received <= 0) {
+      break;
+    }
+    total += (size_t)received;
+    request[total] = '\0';
+    if (!headers_parsed) {
+      char *header_end = strstr(request, "\r\n\r\n");
+      if (header_end != NULL) {
+        header_length = (size_t)(header_end - request) + 4;
+        if (!parse_content_length(request, &content_length)) {
+          send_registry_response(connection, 400);
+          return;
+        }
+        headers_parsed = true;
+      }
+    }
+    if (
+        headers_parsed &&
+        total >= header_length + content_length
+    ) {
+      break;
+    }
+  }
+  if (
+      !headers_parsed ||
+      total < header_length + content_length
+  ) {
+    send_registry_response(connection, 400);
+    return;
+  }
+
+  char expected_request_line[256];
+  if (snprintf(
+          expected_request_line, sizeof(expected_request_line),
+          "POST /registry?token=%s HTTP/1.1\r\n", token) >=
+      (int)sizeof(expected_request_line)) {
+    send_registry_response(connection, 403);
+    return;
+  }
+  if (
+      strncmp(
+          request, expected_request_line,
+          strlen(expected_request_line)) != 0
+  ) {
+    send_registry_response(connection, 403);
+    return;
+  }
+
+  char payload[REGISTRY_REQUEST_CAPACITY];
+  memcpy(payload, request + header_length, content_length);
+  payload[content_length] = '\0';
+  uint32_t appids[MAX_ALLOWLIST_APPIDS];
+  size_t appid_count = 0;
+  if (!parse_registry_payload(payload, appids, &appid_count)) {
+    send_registry_response(connection, 400);
+    return;
+  }
+  publish_registry(appids, appid_count);
+  send_registry_response(connection, 204);
+}
+
+static void *registry_server_worker(void *context) {
+  (void)context;
+  char token[REGISTRY_TOKEN_CAPACITY];
+  if (!load_registry_token(token)) {
+    log_line("registry: token is missing or invalid");
+    goto stopped;
+  }
+
+  int server = socket(AF_INET, SOCK_STREAM, 0);
+  if (server < 0) {
+    log_line("registry: could not create loopback socket");
+    goto stopped;
+  }
+  int enabled = 1;
+  (void)setsockopt(
+      server, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled));
+  struct sockaddr_in address;
+  memset(&address, 0, sizeof(address));
+  address.sin_family = AF_INET;
+  address.sin_port = htons(registry_server_port());
+  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  if (
+      bind(server, (const struct sockaddr *)&address, sizeof(address)) != 0 ||
+      listen(server, 8) != 0
+  ) {
+    close(server);
+    log_line("registry: could not bind loopback endpoint");
+    goto stopped;
+  }
+  char ready_message[128];
+  snprintf(
+      ready_message, sizeof(ready_message),
+      "registry: loopback endpoint ready on 127.0.0.1:%u",
+      (unsigned int)registry_server_port());
+  log_line(ready_message);
+
+  for (;;) {
+    int connection = accept(server, NULL, NULL);
+    if (connection < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      break;
+    }
+    handle_registry_connection(connection, token);
+    close(connection);
+  }
+  close(server);
+  log_line("registry: loopback endpoint stopped");
+
+stopped:
+  (void)pthread_mutex_lock(&gRegistryServerLock);
+  gRegistryServerStarted = false;
+  (void)pthread_mutex_unlock(&gRegistryServerLock);
+  return NULL;
+}
+
+__attribute__((visibility("default")))
+void realsteamonmac_start_registry_server(void) {
+  (void)pthread_mutex_lock(&gRegistryServerLock);
+  if (gRegistryServerStarted) {
+    (void)pthread_mutex_unlock(&gRegistryServerLock);
+    return;
+  }
+  gRegistryServerStarted = true;
+  (void)pthread_mutex_unlock(&gRegistryServerLock);
+
+  pthread_t server;
+  if (pthread_create(
+          &server, NULL, registry_server_worker, NULL) != 0) {
+    (void)pthread_mutex_lock(&gRegistryServerLock);
+    gRegistryServerStarted = false;
+    (void)pthread_mutex_unlock(&gRegistryServerLock);
+    log_line("registry: could not start loopback worker");
+    return;
+  }
+  (void)pthread_detach(server);
+}
+
 static void *data_override_worker(void *context) {
   (void)context;
   unsigned int missing_image_checks = 0;
@@ -959,7 +1413,8 @@ static void *data_override_worker(void *context) {
     // this text patch lets the click reach the real download path instead of
     // failing with error 29 ("Invalid platform"). One-shot; the guard makes
     // every later tick a no-op.
-    if (!gSteamClientInstallGatePatched) {
+    if (!atomic_load_explicit(
+            &gSteamClientInstallGatePatched, memory_order_acquire)) {
       const struct mach_header *steamclient =
           find_image_by_uuid(kSteamClientUUID);
       if (steamclient != NULL) {
@@ -1003,6 +1458,7 @@ static void *data_override_worker(void *context) {
 
 __attribute__((visibility("default")))
 void realsteamonmac_start_native_worker(void) {
+  realsteamonmac_start_registry_server();
   if (gWorkerStarted || !is_steam_runtime_process()) {
     return;
   }

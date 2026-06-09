@@ -397,7 +397,7 @@
     projectCompatTools.map((tool) => tool.strToolName),
   );
   const status = {
-    version: 5,
+    version: 6,
     mode: "dynamic-owned-windows-only-registry",
     enabled: true,
     appids: [...managedAppids],
@@ -406,6 +406,9 @@
     registryRemoved: 0,
     registryLastScanAt: null,
     registryLastError: null,
+    registryNativeSyncs: 0,
+    registryLastNativeSyncAt: null,
+    registryLastNativeSyncError: null,
     scans: 0,
     normalized: 0,
     restored: 0,
@@ -430,6 +433,43 @@
   let storedCompatSelections = {};
   let reconcileRunning = false;
   let registryRefreshRunning = false;
+  let lastNativeRegistryPayload = null;
+
+  async function syncNativeRegistry() {
+    const endpoint = config.registryEndpoint;
+    const token = config.registryToken;
+    if (
+      typeof endpoint !== "string" ||
+      !endpoint ||
+      typeof token !== "string" ||
+      !token
+    ) {
+      throw new Error("native registry endpoint is unavailable");
+    }
+    const payload = [...managedAppids]
+      .sort((left, right) => left - right)
+      .join(",");
+    if (payload === lastNativeRegistryPayload) {
+      return;
+    }
+    try {
+      await globalObject.fetch(
+        `${endpoint}?token=${encodeURIComponent(token)}`,
+        {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "text/plain" },
+          body: payload,
+        },
+      );
+      lastNativeRegistryPayload = payload;
+      status.registryNativeSyncs += 1;
+      status.registryLastNativeSyncAt = new Date().toISOString();
+      status.registryLastNativeSyncError = null;
+    } catch (error) {
+      status.registryLastNativeSyncError = String(error);
+    }
+  }
 
   function loadCompatSelections() {
     try {
@@ -637,6 +677,7 @@
         loadDetails: loadAppDetails,
       });
       await applyManagedRegistry(nextManagedAppids);
+      await syncNativeRegistry();
       await reconcile();
     } catch (error) {
       status.registryLastError = String(error);
