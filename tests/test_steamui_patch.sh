@@ -34,7 +34,7 @@ printf '%s\n' 1118200 >"$TMP_ROOT/allowlist.txt"
 test "$(grep -o '/realsteamonmac/config.js' "$STEAMUI/index.html" | wc -l)" -eq 1
 test "$(grep -o '/realsteamonmac/ui.js' "$STEAMUI/index.html" | wc -l)" -eq 1
 grep -q '"appids":\[1118200\]' "$STEAMUI/realsteamonmac/config.js"
-test "$(grep -o '__REALSTEAMONMAC_CONFIG__' \
+test "$(grep -o '__REALSTEAMONMAC_IS_MANAGED_APP__' \
     "$STEAMUI/chunk~2dcc5aaf7.js" | wc -l)" -eq 2
 
 "$PATCHER" restore --steamui-root "$STEAMUI"

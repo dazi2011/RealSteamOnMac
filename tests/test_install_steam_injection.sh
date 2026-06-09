@@ -79,7 +79,7 @@ grep -q '/realsteamonmac/ui.js' \
     "$RUNTIME_APP/Contents/MacOS/steamui/index.html"
 grep -q '"appids":\[1118200\]' \
     "$RUNTIME_APP/Contents/MacOS/steamui/realsteamonmac/config.js"
-test "$(grep -o '__REALSTEAMONMAC_CONFIG__' \
+test "$(grep -o '__REALSTEAMONMAC_IS_MANAGED_APP__' \
     "$RUNTIME_APP/Contents/MacOS/steamui/chunk~2dcc5aaf7.js" |
     wc -l)" -eq 2
 test -x "$STEAM_APP/Contents/MacOS/realsteamonmac_launcher"

@@ -61,7 +61,7 @@ grep -Fq '/realsteamonmac/ui.js' "$STEAMUI/index.html"
 test -f "$STEAMUI/index.html.realsteamonmac.original"
 test -f \
     "$STEAMUI/chunk~2dcc5aaf7.js.realsteamonmac.original"
-test "$(grep -o '__REALSTEAMONMAC_CONFIG__' \
+test "$(grep -o '__REALSTEAMONMAC_IS_MANAGED_APP__' \
     "$STEAMUI/chunk~2dcc5aaf7.js" | wc -l)" -eq 2
 
 echo "Steam launcher contract: PASS"

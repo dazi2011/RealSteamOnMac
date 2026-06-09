@@ -1,15 +1,15 @@
 # RealSteamOnMac
 
-Use the native macOS Steam client as the single frontend for selected
-Windows-only games. The project is currently transitioning from the proven
-single-game download prototype to a cloud-safe, independent compatibility
-runtime.
+Use the native macOS Steam client as the single frontend for owned
+Windows-only games. The project is transitioning from the proven single-game
+download prototype to a cloud-safe, independent compatibility runtime.
 
 ## Verified State
 
 - Steam Public Beta build: `1780705203`
 - Test game: People Playground, AppID `1118200`
-- Native macOS games remain outside the allowlist.
+- Steam's live owned-library data currently identifies 34 Windows-only games;
+  native and dual-platform macOS games remain outside the managed registry.
 - The earlier allowlisted prototype proved Steam's native blue `安装` action
   could survive page navigation/restarts and drive a real Windows-depot
   download without a project-owned click handler.
@@ -20,9 +20,15 @@ runtime.
 - Steam Cloud is restored in the deployed client: the global Cloud page renders
   both controls, native macOS games expose their normal cloud state, and People
   Playground no longer enters a new pending-platform-change loop.
-- People Playground exposes Steam's original `兼容性` properties page.
-- A non-allowlisted game keeps the original macOS properties pages without a
-  compatibility tab.
+- The repository's guarded UI patch now derives its managed registry from
+  Steam's decoded app overview/details stores every five seconds. New purchases
+  can enter the registry without reinstalling RealSteamOnMac.
+- The repository patch exposes Steam's original `兼容性` properties page for
+  managed Windows-only games while leaving native and dual-platform macOS games
+  on their original page set. Live deployment of this dynamic revision is
+  pending coordinated backend activation.
+- The tested compatibility-page bridge provides a project-owned tool list
+  without invoking Steam's cloud-breaking native tool discovery path.
 - The startup path intentionally does **not** register
   `STEAM_EXTRA_COMPAT_TOOLS_PATHS`. On macOS build `1780705203`, pointing that
   variable at a valid compatibility tool removes native Cloud settings from the
@@ -52,10 +58,11 @@ did here.
 - The launcher explicitly removes `STEAM_EXTRA_COMPAT_TOOLS_PATHS`. Runtime
   packages remain installed but dormant until the project-owned registry and
   post-initialization activation path are ready.
-- A guarded Steam UI resource patch synchronizes only backend-ready allowlisted
-  overview state.
+- A guarded Steam UI resource patch dynamically identifies owned, visible
+  games whose platform list contains `windows` and not `osx`; it synchronizes
+  only backend-ready managed overview state.
 - The same known-build patch extends Steam's native compatibility-page gate
-  from Linux to explicit allowlisted AppIDs.
+  from Linux to the dynamic managed-AppID predicate.
 - The shared UI context refreshes Steam's own matching React action components
   through `SteamUIStore.WindowStore`; it does not create or restyle a custom
   button.
@@ -67,8 +74,7 @@ did here.
 ```sh
 sh script/build_compat_gate_hook.sh
 sh script/build_steam_launcher.sh
-node --test tests/steam_cdp.test.mjs
-node --test tests/test_steamui_policy.mjs
+node --test tests/*.mjs
 python3 -m unittest tests/test_steamui_patch.py
 for test_file in tests/test_*.sh; do
   sh "$test_file"

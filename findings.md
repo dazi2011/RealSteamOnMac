@@ -70,6 +70,42 @@
 - No `compatdata/1118200/pfx` exists yet, confirming the launch/container phase
   has not been implemented.
 
+## Dynamic Library Discovery Findings
+
+- Steam's live SharedJSContext exposes `appStore.allApps` and
+  `appDetailsStore.RequestAppDetails(appid)`. This is preferable to parsing the
+  binary `appcache/appinfo.vdf` because it uses Steam's already-decoded owned
+  library state and receives library updates in the running client.
+- The exact managed-game eligibility rule is:
+  - `app_type === 1` (game);
+  - `subscribed_to === true`;
+  - `visible_in_game_list === true`;
+  - `vecPlatforms` contains `windows`;
+  - `vecPlatforms` does not contain `osx`.
+- The rule deliberately excludes tools, DLC, unowned/hidden entries, native
+  macOS games, and dual-platform games. Garry's Mod AppID `4000`, whose live
+  platforms are `windows`, `osx`, and `linux`, is a confirmed exclusion.
+- A live scan completed in about 0.7 seconds. It found 49 owned/visible game
+  entries and 34 Windows-only candidates:
+  `242050`, `304390`, `359550`, `517630`, `552500`, `578080`, `622590`,
+  `623990`, `654310`, `674020`, `714010`, `729720`, `813000`, `892520`,
+  `990080`, `1118200`, `1174180`, `1237970`, `1238810`, `1286560`,
+  `1326470`, `1491000`, `1517290`, `1665460`, `1911390`, `2139460`,
+  `2325290`, `2358720`, `2507950`, `2547140`, `2584990`, `2943650`,
+  `2948190`, and `3983810`.
+- All 34 candidates currently report native display status `14`
+  (`InvalidPlatform`). People Playground has local content but no prefix; the
+  other installed/local candidates must follow the same installed-state policy
+  instead of being treated as ready-to-install.
+- `SteamClient.Apps.GetAvailableCompatTools(1118200)` currently returns an
+  empty list because the cloud-safe launcher no longer registers a valid
+  `STEAM_EXTRA_COMPAT_TOOLS_PATHS`. The compatibility page and project-owned
+  tool registry must therefore not depend on that native discovery path.
+- Hot update can be implemented by periodically rescanning
+  `appStore.allApps`, requesting details only for new or changed AppIDs, and
+  replacing the managed registry atomically. Newly purchased games then become
+  eligible without reinstalling or maintaining a static allowlist.
+
 ## Documentation Audit Findings
 
 - `docs/handoff/current-state-2026-06-07.md` is intentionally historical and
@@ -175,6 +211,7 @@
 | Reject Claude's global NOP as the production design | It broadens the backend gate beyond proven Windows-only games and is not paired with a complete UI predicate. |
 | Preserve Claude's prototype on a recovery branch | It protects interrupted work while keeping incomplete behavior out of the verified mainline. |
 | Identify targets from Steam app/depot metadata | A title must have a Windows launch/depot path and no usable macOS launch/depot path; `InvalidPlatform` alone is insufficient. |
+| Use the live app store plus requested details as the authoritative registry | It is already decoded by Steam, reflects ownership and visibility, and supports in-process hot updates without parsing binary cache files. |
 | Restore Steam UI before any other rollback mutation | A failed UI restore now aborts before Steam.app, runtime binaries, or support files are moved. |
 | Treat missing `cloud_enabled` as the primary cloud symptom | The blank page and false “globally disabled” state share this backend omission; changing account/cloud data would hide evidence without proving a cause. |
 

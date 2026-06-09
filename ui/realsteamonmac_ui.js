@@ -5,10 +5,86 @@
   const READY_TO_INSTALL = 9;
   const STATUS_KEY = "__REALSTEAMONMAC_UI_STATUS__";
   const CONFIG_KEY = "__REALSTEAMONMAC_CONFIG__";
+  const MANAGED_PREDICATE_KEY =
+    "__REALSTEAMONMAC_IS_MANAGED_APP__";
   const COMPAT_SELECTIONS_KEY =
     "__REALSTEAMONMAC_COMPAT_SELECTIONS_V1__";
   const COMPAT_TOOL_PRIORITY = 250;
+  const GAME_APP_TYPE = 1;
   const RECONCILE_INTERVAL_MS = 1000;
+  const REGISTRY_REFRESH_INTERVAL_MS = 5000;
+
+  function isOwnedVisibleGameOverview(overview) {
+    return (
+      Number.isSafeInteger(overview?.appid) &&
+      overview.appid > 0 &&
+      overview.app_type === GAME_APP_TYPE &&
+      overview.subscribed_to === true &&
+      overview.visible_in_game_list === true
+    );
+  }
+
+  function isOwnedWindowsOnlyGame(overview, details) {
+    if (
+      !isOwnedVisibleGameOverview(overview) ||
+      details?.unAppID !== overview.appid ||
+      !Array.isArray(details.vecPlatforms)
+    ) {
+      return false;
+    }
+    const platforms = new Set(
+      details.vecPlatforms.map((platform) =>
+        String(platform).toLowerCase(),
+      ),
+    );
+    return platforms.has("windows") && !platforms.has("osx");
+  }
+
+  function buildManagedAppSet(overviews, detailsByAppid) {
+    const managed = new Set();
+    for (const overview of overviews ?? []) {
+      const details = detailsByAppid?.get?.(overview?.appid) ?? null;
+      if (isOwnedWindowsOnlyGame(overview, details)) {
+        managed.add(overview.appid);
+      }
+    }
+    return managed;
+  }
+
+  async function discoverManagedApps({ overviews, loadDetails }) {
+    const candidates = (overviews ?? []).filter(
+      isOwnedVisibleGameOverview,
+    );
+    const entries = await Promise.all(
+      candidates.map(async (overview) => {
+        const details = await loadDetails(overview.appid);
+        if (!details) {
+          throw new Error(
+            `missing Steam app details for AppID ${overview.appid}`,
+          );
+        }
+        return [overview.appid, details];
+      }),
+    );
+    return buildManagedAppSet(candidates, new Map(entries));
+  }
+
+  function mergeCompatTools(nativeTools, projectTools) {
+    const merged = [];
+    const seen = new Set();
+    for (const tool of [...(nativeTools ?? []), ...(projectTools ?? [])]) {
+      if (
+        typeof tool?.strToolName !== "string" ||
+        !tool.strToolName ||
+        seen.has(tool.strToolName)
+      ) {
+        continue;
+      }
+      seen.add(tool.strToolName);
+      merged.push(tool);
+    }
+    return merged;
+  }
 
   function decideOverviewPatch(state) {
     return {
@@ -207,14 +283,25 @@
     availableTools,
     originalCompatStates,
   }) {
-    if (!details || !allowlist.has(details.unAppID)) {
+    if (!details) {
       return "unchanged";
+    }
+
+    const original = originalCompatStates.get(details);
+    if (!allowlist.has(details.unAppID)) {
+      if (!original) {
+        return "unchanged";
+      }
+      details.strCompatToolName = original.toolName;
+      details.strCompatToolDisplayName = original.displayName;
+      details.nCompatToolPriority = original.priority;
+      originalCompatStates.delete(details);
+      return "restored";
     }
 
     const selected = availableTools.find(
       (tool) => tool.strToolName === selectedTool,
     );
-    const original = originalCompatStates.get(details);
     if (!selected) {
       if (!original) {
         return "unchanged";
@@ -248,10 +335,14 @@
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
+      buildManagedAppSet,
       decideOverviewPatch,
+      discoverManagedApps,
       findAppActionComponents,
       getSelectedData,
       getSteamUIDocuments,
+      isOwnedWindowsOnlyGame,
+      mergeCompatTools,
       refreshAppActionComponents,
       reconcileCompatDetails,
       reconcileAppState,
@@ -266,16 +357,33 @@
   const configuredAppids = Array.isArray(config.appids)
     ? config.appids
     : [];
-  const allowlist = new Set(
+  const managedAppids = new Set(
     configuredAppids.filter(
       (appid) => Number.isSafeInteger(appid) && appid > 0,
     ),
   );
+  const projectCompatTools = Array.isArray(config.compatTools)
+    ? config.compatTools.filter(
+        (tool) =>
+          typeof tool?.strToolName === "string" &&
+          tool.strToolName &&
+          typeof tool.strDisplayName === "string" &&
+          tool.strDisplayName,
+      )
+    : [];
+  const projectCompatToolNames = new Set(
+    projectCompatTools.map((tool) => tool.strToolName),
+  );
   const status = {
-    version: 4,
-    mode: "shared-app-store-native-actions-and-compatibility",
-    enabled: allowlist.size > 0,
-    appids: [...allowlist],
+    version: 5,
+    mode: "dynamic-owned-windows-only-registry",
+    enabled: true,
+    appids: [...managedAppids],
+    registryScans: 0,
+    registryAdded: 0,
+    registryRemoved: 0,
+    registryLastScanAt: null,
+    registryLastError: null,
     scans: 0,
     normalized: 0,
     restored: 0,
@@ -289,37 +397,46 @@
     lastError: null,
   };
   globalObject[STATUS_KEY] = status;
-
-  if (!status.enabled) {
-    return;
-  }
+  globalObject[MANAGED_PREDICATE_KEY] = (appid) =>
+    managedAppids.has(Number(appid));
 
   const originalStates = new WeakMap();
   const originalCompatStates = new WeakMap();
   const refreshedActions = new WeakSet();
   const availableCompatTools = new Map();
   const compatSelections = new Map();
+  let storedCompatSelections = {};
   let reconcileRunning = false;
+  let registryRefreshRunning = false;
 
   function loadCompatSelections() {
-    let stored = {};
     try {
-      stored = JSON.parse(
+      storedCompatSelections = JSON.parse(
         globalObject.localStorage?.getItem(COMPAT_SELECTIONS_KEY) ?? "{}",
       );
     } catch {
-      stored = {};
+      storedCompatSelections = {};
     }
-    for (const appid of allowlist) {
-      const key = String(appid);
-      const storedTool = Object.prototype.hasOwnProperty.call(stored, key)
-        ? stored[key]
-        : config.compatTools?.[key];
-      compatSelections.set(
-        appid,
-        typeof storedTool === "string" ? storedTool : "",
-      );
+    for (const appid of managedAppids) {
+      ensureCompatSelection(appid);
     }
+  }
+
+  function ensureCompatSelection(appid) {
+    if (compatSelections.has(appid)) {
+      return;
+    }
+    const key = String(appid);
+    const storedTool = Object.prototype.hasOwnProperty.call(
+      storedCompatSelections,
+      key,
+    )
+      ? storedCompatSelections[key]
+      : config.defaultCompatTool;
+    compatSelections.set(
+      appid,
+      typeof storedTool === "string" ? storedTool : "",
+    );
   }
 
   function persistCompatSelections() {
@@ -337,12 +454,16 @@
     if (availableCompatTools.has(appid)) {
       return availableCompatTools.get(appid);
     }
-    const tools =
-      await globalObject.SteamClient.Apps.GetAvailableCompatTools(appid);
-    const normalized = Array.isArray(tools) ? tools : [];
+    const tools = await originalGetAvailableCompatTools(appid);
+    const normalized = mergeCompatTools(
+      Array.isArray(tools) ? tools : [],
+      managedAppids.has(appid) ? projectCompatTools : [],
+    );
     availableCompatTools.set(appid, normalized);
     return normalized;
   }
+
+  let originalGetAvailableCompatTools = null;
 
   function installCompatToolBridge() {
     const apps = globalObject.SteamClient?.Apps;
@@ -356,8 +477,16 @@
 
     const originalSpecifyCompatTool =
       apps.SpecifyCompatTool.bind(apps);
+    originalGetAvailableCompatTools =
+      apps.GetAvailableCompatTools.bind(apps);
+    apps.GetAvailableCompatTools = async (appid) => {
+      if (!managedAppids.has(appid)) {
+        return originalGetAvailableCompatTools(appid);
+      }
+      return getAvailableCompatTools(appid);
+    };
     apps.SpecifyCompatTool = async (appid, requestedTool) => {
-      if (!allowlist.has(appid)) {
+      if (!managedAppids.has(appid)) {
         return originalSpecifyCompatTool(appid, requestedTool);
       }
 
@@ -372,7 +501,12 @@
         }
       }
 
-      const result = await originalSpecifyCompatTool(appid, tool);
+      let result;
+      if (!tool || projectCompatToolNames.has(tool)) {
+        result = undefined;
+      } else {
+        result = await originalSpecifyCompatTool(appid, tool);
+      }
       compatSelections.set(appid, tool);
       persistCompatSelections();
       void reconcile();
@@ -395,8 +529,97 @@
             `for AppID ${appid}`,
         );
       }
-      await originalSpecifyCompatTool(appid, selectedTool);
+      if (!projectCompatToolNames.has(selectedTool)) {
+        await originalSpecifyCompatTool(appid, selectedTool);
+      }
       status.compatNativeSyncs += 1;
+    }
+  }
+
+  async function loadAppDetails(appid) {
+    let result =
+      globalObject.appDetailsStore?.GetAppDetails?.(appid) ??
+      globalObject.appDetailsStore?.m_mapAppData?.get?.(appid)?.details ??
+      null;
+    if (result && typeof result.then === "function") {
+      result = await result;
+    }
+    if (!result) {
+      result =
+        await globalObject.appDetailsStore?.RequestAppDetails?.(appid);
+    }
+    return result?.details ?? result ?? null;
+  }
+
+  async function restoreRemovedApp(appid) {
+    const overview =
+      globalObject.appStore?.GetAppOverviewByAppID?.(appid) ?? null;
+    const details = await loadAppDetails(appid);
+    if (overview && details) {
+      reconcileCompatDetails({
+        details,
+        allowlist: new Set(),
+        selectedTool: "",
+        availableTools: [],
+        originalCompatStates,
+      });
+      reconcileAppState({
+        overview,
+        details,
+        allowlist: new Set(),
+        originalStates,
+      });
+    }
+    compatSelections.delete(appid);
+    availableCompatTools.delete(appid);
+  }
+
+  async function applyManagedRegistry(nextManagedAppids) {
+    const removed = [...managedAppids].filter(
+      (appid) => !nextManagedAppids.has(appid),
+    );
+    const added = [...nextManagedAppids].filter(
+      (appid) => !managedAppids.has(appid),
+    );
+    for (const appid of removed) {
+      await restoreRemovedApp(appid);
+    }
+    managedAppids.clear();
+    for (const appid of nextManagedAppids) {
+      managedAppids.add(appid);
+      ensureCompatSelection(appid);
+    }
+    status.appids = [...managedAppids].sort((left, right) => left - right);
+    status.registryAdded += added.length;
+    status.registryRemoved += removed.length;
+    if (added.length || removed.length) {
+      persistCompatSelections();
+    }
+  }
+
+  async function refreshManagedRegistry() {
+    if (registryRefreshRunning) {
+      return;
+    }
+    registryRefreshRunning = true;
+    status.registryScans += 1;
+    status.registryLastScanAt = new Date().toISOString();
+    status.registryLastError = null;
+    try {
+      const overviews = globalObject.appStore?.allApps;
+      if (!Array.isArray(overviews)) {
+        throw new Error("Steam app overview store is unavailable");
+      }
+      const nextManagedAppids = await discoverManagedApps({
+        overviews,
+        loadDetails: loadAppDetails,
+      });
+      await applyManagedRegistry(nextManagedAppids);
+      await reconcile();
+    } catch (error) {
+      status.registryLastError = String(error);
+    } finally {
+      registryRefreshRunning = false;
     }
   }
 
@@ -410,7 +633,7 @@
     status.lastError = null;
 
     try {
-      for (const appid of allowlist) {
+      for (const appid of managedAppids) {
         const overview =
           globalObject.appStore?.GetAppOverviewByAppID?.(appid) ?? null;
         if (!overview) {
@@ -433,7 +656,7 @@
 
         const compatResult = reconcileCompatDetails({
           details,
-          allowlist,
+          allowlist: managedAppids,
           selectedTool: compatSelections.get(appid) ?? "",
           availableTools: await getAvailableCompatTools(appid),
           originalCompatStates,
@@ -447,7 +670,7 @@
         const result = reconcileAppState({
           overview,
           details,
-          allowlist,
+          allowlist: managedAppids,
           originalStates,
         });
         if (result === "normalized") {
@@ -473,8 +696,12 @@
   persistCompatSelections();
   const originalSpecifyCompatTool = installCompatToolBridge();
   globalObject.setInterval(reconcile, RECONCILE_INTERVAL_MS);
+  globalObject.setInterval(
+    refreshManagedRegistry,
+    REGISTRY_REFRESH_INTERVAL_MS,
+  );
   void syncNativeCompatSelections(originalSpecifyCompatTool)
-    .then(reconcile)
+    .then(refreshManagedRegistry)
     .catch((error) => {
       status.lastError = String(error);
     });

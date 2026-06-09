@@ -15,7 +15,7 @@ changes.
   It globally NOPs the install platform veto, treats every `InvalidPlatform`
   app overview as a target, and references an unimplemented browser predicate.
 - The full Node, Python, and shell test suite passes with the cloud-safe startup
-  changes in the working tree.
+  and dynamic-registry changes.
 
 Persistent working context is maintained in:
 
@@ -58,7 +58,8 @@ Manifest        9210503819883706733
   `~/Library/Application Support/RealSteamOnMac/libRealSteamNativeEngine.dylib`
 - Dormant compatibility-tool package:
   `~/Library/Application Support/RealSteamOnMac/compat-tool`
-- Current target registry: one-entry allowlist containing `1118200`
+- Native engine bootstrap allowlist: one entry containing `1118200`
+- Browser managed registry: generated from Steam's current owned library
 
 The launcher does not set `STEAM_EXTRA_COMPAT_TOOLS_PATHS`. The valid tool
 package remains on disk for later project-owned discovery, but native macOS
@@ -67,6 +68,38 @@ Steam is not asked to discover it during startup.
 The installed startup guard, dormant engine, launcher, Python patcher, and
 browser UI asset were rebuilt from the active working tree and deployed on
 2026-06-09 at 10:39 Asia/Shanghai.
+
+The dynamic browser registry implementation is tested in the repository but
+has not yet been deployed to the live Steam runtime. The installed browser
+assets therefore remain at the preceding cloud-safe baseline until the
+post-initialization backend design is ready for a coordinated live test.
+
+## Dynamic Windows-Only Registry
+
+Steam's SharedJSContext provides the authoritative decoded sources:
+
+- `appStore.allApps` for owned/visible overview state;
+- `appDetailsStore.RequestAppDetails(appid)` for platform details.
+
+An entry is managed only when it is an owned, visible game, its platform list
+contains `windows`, and its platform list does not contain `osx`. The current
+library has 49 owned/visible games and 34 qualifying Windows-only entries.
+Garry's Mod AppID `4000` is a confirmed dual-platform exclusion.
+
+The browser asset now:
+
+- installs `__REALSTEAMONMAC_IS_MANAGED_APP__` before property pages use it;
+- refreshes the registry every five seconds;
+- atomically adds newly purchased qualifying games and removes entries that no
+  longer qualify;
+- restores any project-normalized state before removing an AppID;
+- supplies RealSteamOnMac compatibility tools from project configuration;
+- persists per-AppID selection without calling Steam's native tool registration
+  for project-owned tools.
+
+The known-build compatibility chunk migrates atomically from the previous
+static AppID gate to the dynamic predicate. Unit, browser-context, migration,
+installer, launcher, and rollback tests all pass.
 
 ## What Is Not Implemented
 
@@ -165,8 +198,7 @@ authoritative complete rollback source.
 
 1. Done: Steam UI restoration is covered by the rollback regression test.
 2. Done: Cloud root cause isolated and the guarded startup deployed.
-3. Implement a generated Windows-only AppID registry from Steam platform,
-   launch, and depot metadata; do not use `InvalidPlatform` alone.
+3. Done: generated browser registry from Steam ownership and platform details.
 4. Restore blue download/Play presentation through the cloud-safe registry and
    a post-initialization backend path.
 5. Implement the independent versioned compatibility runtime and

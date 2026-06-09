@@ -38,6 +38,11 @@ COMPAT_PAGE_ANCHOR = (
     '(0,f.CI)()&&o.push({title:(0,A.we)'
     '("#AppProperties_CompatibilityPage")'
 )
+COMPAT_PAGE_DYNAMIC_GATE = (
+    "((0,f.CI)()||globalThis.__REALSTEAMONMAC_IS_MANAGED_APP__"
+    "?.(t))&&o.push({title:(0,A.we)"
+    '("#AppProperties_CompatibilityPage")'
+)
 COMPAT_PAGE_ALLOWLIST_GATE = (
     "((0,f.CI)()||globalThis.__REALSTEAMONMAC_CONFIG__"
     "?.appids?.includes(t))&&o.push({title:(0,A.we)"
@@ -85,11 +90,14 @@ def build_patched_compat_chunk(original):
         raise ValueError(
             "compatibility chunk does not contain two supported page gates"
         )
-    if COMPAT_PAGE_ALLOWLIST_GATE in original:
+    if (
+        COMPAT_PAGE_DYNAMIC_GATE in original
+        or COMPAT_PAGE_ALLOWLIST_GATE in original
+    ):
         raise ValueError("compatibility chunk is already partially patched")
     return original.replace(
         COMPAT_PAGE_ANCHOR,
-        COMPAT_PAGE_ALLOWLIST_GATE,
+        COMPAT_PAGE_DYNAMIC_GATE,
     )
 
 
@@ -120,9 +128,13 @@ def config_bytes(appids):
     payload = json.dumps(
         {
             "appids": appids,
-            "compatTools": {
-                str(appid): DEFAULT_COMPAT_TOOL for appid in appids
-            },
+            "defaultCompatTool": DEFAULT_COMPAT_TOOL,
+            "compatTools": [
+                {
+                    "strToolName": DEFAULT_COMPAT_TOOL,
+                    "strDisplayName": "RealSteamOnMac Experimental",
+                }
+            ],
         },
         separators=(",", ":"),
     )
@@ -192,7 +204,7 @@ def prepare_index(paths):
 def prepare_compat_chunk(paths):
     current = paths["compat_chunk"].read_bytes()
     current_text = current.decode("utf-8")
-    if COMPAT_PAGE_ALLOWLIST_GATE in current_text:
+    if COMPAT_PAGE_DYNAMIC_GATE in current_text:
         original = validated_compat_original(paths["compat_backup"])
         expected = build_patched_compat_chunk(
             original.decode("utf-8")
@@ -202,6 +214,15 @@ def prepare_compat_chunk(paths):
                 "existing compatibility chunk patch is inconsistent"
             )
         return original, expected, False
+    if COMPAT_PAGE_ALLOWLIST_GATE in current_text:
+        original = validated_compat_original(paths["compat_backup"])
+        return (
+            original,
+            build_patched_compat_chunk(
+                original.decode("utf-8")
+            ).encode("utf-8"),
+            False,
+        )
 
     if sha256_bytes(current) not in KNOWN_COMPAT_CHUNK_SHA256:
         raise ValueError("unsupported compatibility chunk hash")
@@ -245,7 +266,7 @@ def verify_steamui(steamui_root):
         )
     if (
         current_compat.count(
-            COMPAT_PAGE_ALLOWLIST_GATE.encode("utf-8")
+            COMPAT_PAGE_DYNAMIC_GATE.encode("utf-8")
         )
         != 2
     ):
@@ -272,13 +293,23 @@ def verify_steamui(steamui_root):
     ):
         raise ValueError("Steam UI config allowlist is invalid")
     compat_tools = parsed.get("compatTools")
+    default_compat_tool = parsed.get("defaultCompatTool")
     if (
-        not isinstance(compat_tools, dict)
-        or set(compat_tools) != {str(appid) for appid in appids}
+        not isinstance(compat_tools, list)
+        or not compat_tools
         or any(
-            not isinstance(tool, str) or not tool
-            for tool in compat_tools.values()
+            not isinstance(tool, dict)
+            or not isinstance(tool.get("strToolName"), str)
+            or not tool["strToolName"]
+            or not isinstance(tool.get("strDisplayName"), str)
+            or not tool["strDisplayName"]
+            for tool in compat_tools
         )
+        or len({tool["strToolName"] for tool in compat_tools})
+        != len(compat_tools)
+        or not isinstance(default_compat_tool, str)
+        or default_compat_tool
+        not in {tool["strToolName"] for tool in compat_tools}
     ):
         raise ValueError("Steam UI compatibility tool config is invalid")
     return appids

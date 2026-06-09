@@ -4,12 +4,168 @@ import test from "node:test";
 
 const require = createRequire(import.meta.url);
 const {
+  buildManagedAppSet,
   decideOverviewPatch,
+  discoverManagedApps,
   findAppActionComponents,
+  isOwnedWindowsOnlyGame,
+  mergeCompatTools,
   refreshAppActionComponents,
   reconcileCompatDetails,
   reconcileAppState,
 } = require("../ui/realsteamonmac_ui.js");
+
+function gameOverview(appid, overrides = {}) {
+  return {
+    appid,
+    app_type: 1,
+    subscribed_to: true,
+    visible_in_game_list: true,
+    ...overrides,
+  };
+}
+
+function gameDetails(appid, platforms = ["windows"]) {
+  return {
+    unAppID: appid,
+    vecPlatforms: platforms,
+  };
+}
+
+test("identifies an owned visible Windows-only game", () => {
+  assert.equal(
+    isOwnedWindowsOnlyGame(
+      gameOverview(1118200),
+      gameDetails(1118200),
+    ),
+    true,
+  );
+});
+
+for (const [label, overview, details] of [
+  [
+    "dual-platform game",
+    gameOverview(4000),
+    gameDetails(4000, ["windows", "osx", "linux"]),
+  ],
+  [
+    "macOS-only game",
+    gameOverview(275850),
+    gameDetails(275850, ["osx"]),
+  ],
+  [
+    "tool",
+    gameOverview(228980, { app_type: 4 }),
+    gameDetails(228980),
+  ],
+  [
+    "unsubscribed game",
+    gameOverview(42, { subscribed_to: false }),
+    gameDetails(42),
+  ],
+  [
+    "hidden game",
+    gameOverview(43, { visible_in_game_list: false }),
+    gameDetails(43),
+  ],
+  [
+    "mismatched details",
+    gameOverview(44),
+    gameDetails(45),
+  ],
+]) {
+  test(`excludes a ${label}`, () => {
+    assert.equal(isOwnedWindowsOnlyGame(overview, details), false);
+  });
+}
+
+test("builds a managed registry and removes entries that stop qualifying", () => {
+  const detailsByAppid = new Map([
+    [1118200, gameDetails(1118200)],
+    [4000, gameDetails(4000, ["windows", "osx", "linux"])],
+  ]);
+  assert.deepEqual(
+    buildManagedAppSet(
+      [gameOverview(1118200), gameOverview(4000)],
+      detailsByAppid,
+    ),
+    new Set([1118200]),
+  );
+
+  assert.deepEqual(
+    buildManagedAppSet(
+      [gameOverview(1118200, { subscribed_to: false })],
+      detailsByAppid,
+    ),
+    new Set(),
+  );
+});
+
+test("discovers newly added Windows-only games through the detail loader", async () => {
+  const loaded = [];
+  const result = await discoverManagedApps({
+    overviews: [
+      gameOverview(1118200),
+      gameOverview(990080),
+      gameOverview(4000),
+      gameOverview(228980, { app_type: 4 }),
+    ],
+    loadDetails: async (appid) => {
+      loaded.push(appid);
+      if (appid === 4000) {
+        return gameDetails(appid, ["windows", "osx", "linux"]);
+      }
+      return gameDetails(appid);
+    },
+  });
+
+  assert.deepEqual(loaded, [1118200, 990080, 4000]);
+  assert.deepEqual(result, new Set([1118200, 990080]));
+});
+
+test("rejects an incomplete discovery scan instead of removing known apps", async () => {
+  await assert.rejects(
+    discoverManagedApps({
+      overviews: [gameOverview(1118200), gameOverview(990080)],
+      loadDetails: async (appid) =>
+        appid === 1118200 ? gameDetails(appid) : null,
+    }),
+    /missing Steam app details for AppID 990080/,
+  );
+});
+
+test("merges project tools without duplicating native tools", () => {
+  assert.deepEqual(
+    mergeCompatTools(
+      [
+        {
+          strToolName: "native-tool",
+          strDisplayName: "Native Tool",
+        },
+      ],
+      [
+        {
+          strToolName: "realsteamonmac-experimental",
+          strDisplayName: "RealSteamOnMac Experimental",
+        },
+        {
+          strToolName: "native-tool",
+          strDisplayName: "Project Override",
+        },
+      ],
+    ),
+    [
+      {
+        strToolName: "native-tool",
+        strDisplayName: "Native Tool",
+      },
+      {
+        strToolName: "realsteamonmac-experimental",
+        strDisplayName: "RealSteamOnMac Experimental",
+      },
+    ],
+  );
+});
 
 test("normalizes an allowlisted backend-ready invalid-platform app", () => {
   assert.deepEqual(
@@ -293,6 +449,42 @@ test("does not mirror compatibility state for a non-allowlisted app", () => {
     "unchanged",
   );
   assert.equal(details.strCompatToolName, "");
+});
+
+test("restores mirrored compatibility state when an app leaves the registry", () => {
+  const details = {
+    unAppID: 1118200,
+    strCompatToolName: "",
+    strCompatToolDisplayName: "",
+    nCompatToolPriority: 0,
+  };
+  const originalCompatStates = new WeakMap();
+  reconcileCompatDetails({
+    details,
+    allowlist: new Set([1118200]),
+    selectedTool: "realsteamonmac-experimental",
+    availableTools: [
+      {
+        strToolName: "realsteamonmac-experimental",
+        strDisplayName: "RealSteamOnMac Experimental",
+      },
+    ],
+    originalCompatStates,
+  });
+
+  assert.equal(
+    reconcileCompatDetails({
+      details,
+      allowlist: new Set(),
+      selectedTool: "",
+      availableTools: [],
+      originalCompatStates,
+    }),
+    "restored",
+  );
+  assert.equal(details.strCompatToolName, "");
+  assert.equal(details.strCompatToolDisplayName, "");
+  assert.equal(details.nCompatToolPriority, 0);
 });
 
 function createActionDocument(appid) {

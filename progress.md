@@ -109,6 +109,41 @@
   - `progress.md`
   - `task_plan.md`
 
+### Phase 3: Dynamic Windows-Only Library Enablement
+
+- **Status:** in progress
+- Actions taken:
+  - Inspected Steam's live SharedJSContext application and details stores.
+  - Selected `appStore.allApps` plus
+    `appDetailsStore.RequestAppDetails(appid)` as the authoritative in-process
+    library source.
+  - Defined the strict eligibility rule: owned, visible game, Windows platform
+    present, macOS platform absent.
+  - Requested candidate details in bounded batches and completed the current
+    library scan in about 0.7 seconds.
+  - Found 49 owned/visible games and 34 Windows-only candidates.
+  - Confirmed Garry's Mod and other native/dual-platform titles remain excluded.
+  - Confirmed every candidate currently reports native
+    `InvalidPlatform`, including locally installed People Playground.
+  - Confirmed native compatibility-tool discovery is empty in the cloud-safe
+    configuration, requiring a project-owned dynamic registry.
+  - Added pure policy tests for Windows-only identification, native/dual
+    exclusion, ownership/visibility filtering, registry additions, and
+    removals.
+  - Replaced the compatibility-page chunk's static AppID check with the runtime
+    predicate `__REALSTEAMONMAC_IS_MANAGED_APP__`.
+  - Added a tested migration from the previously installed static compatibility
+    gate to the dynamic gate.
+  - Implemented a five-second live registry refresh from Steam's app overview
+    and details stores.
+  - Added a project-owned compatibility-tool bridge so the page can enumerate
+    RealSteamOnMac tools without setting `STEAM_EXTRA_COMPAT_TOOLS_PATHS`.
+  - Added a browser-context integration test proving the predicate exists
+    before property-page use, the bootstrap registry is atomically replaced,
+    dual-platform games remain excluded, and project tool selection does not
+    call Steam's native registration API.
+  - Ran 39 Node tests, 8 Python tests, and every shell contract; all passed.
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -135,6 +170,10 @@
 | Installed native title | Garry's Mod properties | Native Cloud remains intact | Checkbox text and 1,024 MB quota present | PASS |
 | Installed Windows title | People Playground properties/logs | Cloud and compatibility page coexist | 953.67 MB quota, compatibility tab, normal eval | PASS |
 | Computer Use UI session | Element-aware Steam session | Visual/accessibility tree | ScreenCaptureKit error `-3811`; CDP fallback used | BLOCKED |
+| Live Windows-only discovery | Shared app overview plus requested details | Exclude native/dual-platform titles | 34 of 49 owned/visible games qualify; Garry's Mod excluded | PASS |
+| Dynamic registry policy | Node unit tests | Add/remove candidates without broadening eligibility | 34 policy tests passed | PASS |
+| Dynamic browser runtime | VM SharedJSContext fixture | Predicate, hot registry, project tools | Integration test passed | PASS |
+| UI patch migration | Previous static compatibility gate | Upgrade atomically to dynamic predicate | Python and shell contracts passed | PASS |
 
 ## Error Log
 

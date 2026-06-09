@@ -42,15 +42,15 @@ Phase 3: dynamic Windows-only library enablement
 
 ### Phase 3: Dynamic Windows-Only Library Enablement
 
-- [ ] Specify an exact Windows-only eligibility rule and exclusions.
-- [ ] Add tests for dynamic discovery, additions, removals, and hot reload.
-- [ ] Replace the single-game fixture with a generated runtime registry.
+- [x] Specify an exact Windows-only eligibility rule and exclusions.
+- [x] Add tests for dynamic discovery, additions, removals, and hot reload.
+- [x] Replace the single-game fixture with a generated runtime registry.
 - [ ] Keep native and dual-platform macOS titles on their original path.
 - [ ] Enable native blue download actions and compatibility pages dynamically.
 - [ ] Update the installer, updater, rollback, README, and handoff.
 - [ ] Install and verify against the current Steam library.
 - [ ] Commit and push the verified phase.
-- **Status:** pending
+- **Status:** in progress
 
 ### Phase 4: Independent Compatibility Runtime Foundation
 

@@ -79,9 +79,13 @@ class SteamUIPatchTests(unittest.TestCase):
         patched_compat_chunk = self.compat_chunk.read_text(encoding="utf-8")
         self.assertEqual(
             patched_compat_chunk.count(
-                self.patcher.COMPAT_PAGE_ALLOWLIST_GATE
+                self.patcher.COMPAT_PAGE_DYNAMIC_GATE
             ),
             2,
+        )
+        self.assertIn(
+            "__REALSTEAMONMAC_IS_MANAGED_APP__",
+            patched_compat_chunk,
         )
         self.assertNotIn(COMPAT_PAGE_ANCHOR, patched_compat_chunk)
 
@@ -92,9 +96,13 @@ class SteamUIPatchTests(unittest.TestCase):
             json.loads(payload),
             {
                 "appids": [1118200],
-                "compatTools": {
-                    "1118200": "realsteamonmac-experimental",
-                },
+                "defaultCompatTool": "realsteamonmac-experimental",
+                "compatTools": [
+                    {
+                        "strToolName": "realsteamonmac-experimental",
+                        "strDisplayName": "RealSteamOnMac Experimental",
+                    }
+                ],
             },
         )
 
@@ -151,6 +159,39 @@ class SteamUIPatchTests(unittest.TestCase):
 
         self.patcher.verify_steamui(self.steamui)
         self.assertIn(b"/realsteamonmac/ui.js", self.index.read_bytes())
+
+    def test_install_migrates_the_previous_static_compatibility_gate(self):
+        self.patcher.install_steamui(
+            self.steamui,
+            self.ui_source,
+            self.allowlist,
+        )
+        backup = (
+            self.steamui
+            / "chunk~2dcc5aaf7.js.realsteamonmac.original"
+        ).read_text(encoding="utf-8")
+        previous = backup.replace(
+            self.patcher.COMPAT_PAGE_ANCHOR,
+            self.patcher.COMPAT_PAGE_ALLOWLIST_GATE,
+        )
+        self.compat_chunk.write_text(previous, encoding="utf-8")
+
+        self.patcher.install_steamui(
+            self.steamui,
+            self.ui_source,
+            self.allowlist,
+        )
+
+        current = self.compat_chunk.read_text(encoding="utf-8")
+        self.assertEqual(
+            current.count(self.patcher.COMPAT_PAGE_DYNAMIC_GATE),
+            2,
+        )
+        self.assertNotIn(
+            self.patcher.COMPAT_PAGE_ALLOWLIST_GATE,
+            current,
+        )
+        self.patcher.verify_steamui(self.steamui)
 
     def test_unknown_clean_index_is_rejected_without_changes(self):
         self.index.write_text(
