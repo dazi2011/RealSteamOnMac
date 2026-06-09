@@ -142,7 +142,17 @@
     before property-page use, the bootstrap registry is atomically replaced,
     dual-platform games remain excluded, and project tool selection does not
     call Steam's native registration API.
-  - Ran 39 Node tests, 8 Python tests, and every shell contract; all passed.
+  - Ran 43 Node tests, 8 Python tests, and every shell contract; all passed.
+  - Captured a healthy Cloud baseline, then attached LLDB to the running Steam
+    process, loaded the dormant native engine, called its explicit worker
+    entrypoint, and detached successfully.
+  - Verified the late-loaded engine remained mapped, Steam stayed alive, the
+    install-gate trampoline was installed, and Cloud settings remained intact.
+  - Observed People Playground backend details transition to status `11` while
+    its cached overview stayed at status `14`.
+  - Added policy and reconciliation coverage for mapping installed managed
+    games to native ready-to-launch status `11`, while rejecting inconsistent
+    local-content/status combinations.
 
 ## Test Results
 
@@ -174,6 +184,8 @@
 | Dynamic registry policy | Node unit tests | Add/remove candidates without broadening eligibility | 34 policy tests passed | PASS |
 | Dynamic browser runtime | VM SharedJSContext fixture | Predicate, hot registry, project tools | Integration test passed | PASS |
 | UI patch migration | Previous static compatibility gate | Upgrade atomically to dynamic predicate | Python and shell contracts passed | PASS |
+| Post-init engine load | LLDB load plus explicit worker call | Install backend gate without breaking Cloud | Engine mapped, gate patched, Cloud fields preserved | PASS |
+| Installed state mapping | People Playground plus native installed titles | Derive correct Play state | Backend `11` + local content maps overview to `11` | PASS |
 
 ## Error Log
 

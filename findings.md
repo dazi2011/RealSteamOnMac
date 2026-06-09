@@ -105,6 +105,19 @@
   `appStore.allApps`, requesting details only for new or changed AppIDs, and
   replacing the managed registry atomically. Newly purchased games then become
   eligible without reinstalling or maintaining a static allowlist.
+- A controlled LLDB experiment loaded `libRealSteamNativeEngine.dylib` into the
+  already initialized Steam PID `97776` and explicitly called
+  `realsteamonmac_start_native_worker()`. The process remained healthy and
+  `cloud_enabled=true` plus `show_screenshot_manager=false` remained present.
+- The late worker successfully installed the strict one-AppID install-gate
+  trampoline and changed People Playground's backend details from status `14`
+  to status `11`. Its already-cached overview remained status `14`.
+- Live native titles confirm the actionable mapping:
+  - no local content and backend status `9` means ready to install;
+  - local content and backend status `11` means ready to launch.
+- The UI bridge must therefore synchronize an invalid managed overview to the
+  matching backend status `9` or `11`, while preserving download, update,
+  running, and other active statuses.
 
 ## Documentation Audit Findings
 
@@ -212,6 +225,7 @@
 | Preserve Claude's prototype on a recovery branch | It protects interrupted work while keeping incomplete behavior out of the verified mainline. |
 | Identify targets from Steam app/depot metadata | A title must have a Windows launch/depot path and no usable macOS launch/depot path; `InvalidPlatform` alone is insufficient. |
 | Use the live app store plus requested details as the authoritative registry | It is already decoded by Steam, reflects ownership and visibility, and supports in-process hot updates without parsing binary cache files. |
+| Activate the native engine only after Steam initialization | Live LLDB loading proved the install gate can be installed without removing Cloud settings; startup-time worker creation remains forbidden. |
 | Restore Steam UI before any other rollback mutation | A failed UI restore now aborts before Steam.app, runtime binaries, or support files are moved. |
 | Treat missing `cloud_enabled` as the primary cloud symptom | The blank page and false “globally disabled” state share this backend omission; changing account/cloud data would hide evidence without proving a cause. |
 

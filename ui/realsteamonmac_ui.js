@@ -3,6 +3,7 @@
 
   const INVALID_PLATFORM = 14;
   const READY_TO_INSTALL = 9;
+  const READY_TO_LAUNCH = 11;
   const STATUS_KEY = "__REALSTEAMONMAC_UI_STATUS__";
   const CONFIG_KEY = "__REALSTEAMONMAC_CONFIG__";
   const MANAGED_PREDICATE_KEY =
@@ -86,12 +87,29 @@
     return merged;
   }
 
+  function getManagedTargetStatus(state) {
+    if (state.allowlisted !== true) {
+      return null;
+    }
+    if (
+      state.detailsStatus === READY_TO_INSTALL &&
+      state.hasAnyLocalContent !== true
+    ) {
+      return READY_TO_INSTALL;
+    }
+    if (
+      state.detailsStatus === READY_TO_LAUNCH &&
+      state.hasAnyLocalContent === true
+    ) {
+      return READY_TO_LAUNCH;
+    }
+    return null;
+  }
+
   function decideOverviewPatch(state) {
     return {
       normalize:
-        state.allowlisted === true &&
-        state.hasAnyLocalContent !== true &&
-        state.detailsStatus === READY_TO_INSTALL &&
+        getManagedTargetStatus(state) !== null &&
         state.overviewStatus === INVALID_PLATFORM,
     };
   }
@@ -219,30 +237,31 @@
     }
 
     const allowlisted = allowlist.has(overview.appid);
+    const targetStatus = getManagedTargetStatus({
+      allowlisted,
+      detailsStatus: details.eDisplayStatus,
+      hasAnyLocalContent: details.bHasAnyLocalContent,
+    });
     const original = originalStates.get(selected);
     if (original) {
-      if (selected.display_status !== READY_TO_INSTALL) {
+      if (targetStatus !== null) {
         if (
-          selected.display_status === original.displayStatus &&
-          allowlisted &&
-          details.eDisplayStatus === READY_TO_INSTALL &&
-          details.bHasAnyLocalContent !== true
+          selected.display_status === original.displayStatus ||
+          selected.display_status === original.normalizedStatus ||
+          selected.display_status === INVALID_PLATFORM
         ) {
-          selected.display_status = READY_TO_INSTALL;
+          selected.display_status = targetStatus;
           selected.is_available_on_current_platform = true;
           selected.is_invalid_os_type = false;
+          original.normalizedStatus = targetStatus;
           return "normalized";
-        }
-        if (selected.display_status === original.displayStatus) {
-          originalStates.delete(selected);
         }
         return "unchanged";
       }
-      if (
-        allowlisted &&
-        details.eDisplayStatus === READY_TO_INSTALL &&
-        details.bHasAnyLocalContent !== true
-      ) {
+      if (selected.display_status !== original.normalizedStatus) {
+        if (selected.display_status === original.displayStatus) {
+          originalStates.delete(selected);
+        }
         return "unchanged";
       }
 
@@ -269,8 +288,9 @@
       availableOnCurrentPlatform:
         selected.is_available_on_current_platform,
       invalidOsType: selected.is_invalid_os_type,
+      normalizedStatus: targetStatus,
     });
-    selected.display_status = READY_TO_INSTALL;
+    selected.display_status = targetStatus;
     selected.is_available_on_current_platform = true;
     selected.is_invalid_os_type = false;
     return "normalized";
@@ -341,6 +361,7 @@
       findAppActionComponents,
       getSelectedData,
       getSteamUIDocuments,
+      getManagedTargetStatus,
       isOwnedWindowsOnlyGame,
       mergeCompatTools,
       refreshAppActionComponents,
@@ -349,6 +370,7 @@
       COMPAT_TOOL_PRIORITY,
       INVALID_PLATFORM,
       READY_TO_INSTALL,
+      READY_TO_LAUNCH,
     };
     return;
   }

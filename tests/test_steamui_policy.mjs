@@ -179,6 +179,35 @@ test("normalizes an allowlisted backend-ready invalid-platform app", () => {
   );
 });
 
+test("normalizes an installed backend-ready app to ready-to-launch", () => {
+  assert.deepEqual(
+    decideOverviewPatch({
+      allowlisted: true,
+      detailsStatus: 11,
+      overviewStatus: 14,
+      hasAnyLocalContent: true,
+    }),
+    { normalize: true },
+  );
+});
+
+for (const [detailsStatus, hasAnyLocalContent] of [
+  [9, true],
+  [11, false],
+]) {
+  test(`rejects inconsistent backend state ${detailsStatus}/${hasAnyLocalContent}`, () => {
+    assert.deepEqual(
+      decideOverviewPatch({
+        allowlisted: true,
+        detailsStatus,
+        overviewStatus: 14,
+        hasAnyLocalContent,
+      }),
+      { normalize: false },
+    );
+  });
+}
+
 test("fails closed while the native backend is still invalid", () => {
   assert.deepEqual(
     decideOverviewPatch({
@@ -256,6 +285,36 @@ test("normalizes the shared app store object when backend details are ready", ()
     "normalized",
   );
   assert.equal(selected.display_status, 9);
+  assert.equal(selected.is_available_on_current_platform, true);
+  assert.equal(selected.is_invalid_os_type, false);
+});
+
+test("normalizes an installed shared app store object to ready-to-launch", () => {
+  const selected = {
+    display_status: 14,
+    is_available_on_current_platform: false,
+    is_invalid_os_type: true,
+  };
+  const overview = {
+    appid: 1118200,
+    selected_per_client_data: selected,
+  };
+  const details = {
+    unAppID: 1118200,
+    eDisplayStatus: 11,
+    bHasAnyLocalContent: true,
+  };
+
+  assert.equal(
+    reconcileAppState({
+      overview,
+      details,
+      allowlist: new Set([1118200]),
+      originalStates: new WeakMap(),
+    }),
+    "normalized",
+  );
+  assert.equal(selected.display_status, 11);
   assert.equal(selected.is_available_on_current_platform, true);
   assert.equal(selected.is_invalid_os_type, false);
 });

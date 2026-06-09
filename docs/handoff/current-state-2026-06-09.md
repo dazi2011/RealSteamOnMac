@@ -101,6 +101,29 @@ The known-build compatibility chunk migrates atomically from the previous
 static AppID gate to the dynamic predicate. Unit, browser-context, migration,
 installer, launcher, and rollback tests all pass.
 
+## Post-Initialization Native Activation Experiment
+
+LLDB was attached to the already initialized Steam PID `97776`. The dormant
+engine was loaded with `process load`, its exported
+`realsteamonmac_start_native_worker()` function was called, and LLDB detached.
+This changed no persistent Steam file.
+
+Verified afterward:
+
+- Steam remained running;
+- the engine was mapped in the process;
+- the strict one-AppID install-gate trampoline was installed;
+- global `cloud_enabled=true` and screenshot setting fields remained present;
+- People Playground backend details transitioned to status `11`;
+- its cached overview remained status `14`.
+
+The result proves late native activation is cloud-safe on the current build.
+It also proves the browser bridge must map backend-ready installed entries to
+status `11`, just as uninstalled backend-ready entries map to status `9`.
+Automated tests now cover both states and reject mismatched local-content/state
+combinations. A production post-initialization loader is still required; LLDB
+is diagnostic evidence, not the shipping mechanism.
+
 ## What Is Not Implemented
 
 The installed compatibility tool's `run` script only logs Steam's verb,
