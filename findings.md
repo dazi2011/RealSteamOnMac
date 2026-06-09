@@ -341,6 +341,12 @@
 - People Playground's Chinese translation mod compiler connection refusal is
   reproducible under both DXVK and DXMT. It is non-fatal to rendering,
   Steamworks, Workshop retrieval, exit, and Cloud.
+- The exact `dxmtmac1` package is now active in the user's existing Steam. A
+  native URL launch reached the main menu in 31 seconds; normal close returned
+  `0` and Steam completed AutoCloud plus upload.
+- Successful installation initially left both official GPTK images mounted.
+  Detaching installer-owned unique mount points directly is reliable; a
+  mount-list precondition was unnecessary and failed in the live path.
 
 ## Technical Decisions
 
@@ -369,6 +375,7 @@
 | Keep People Playground cleanup AppID-scoped | Its PID collision is proven, while global post-exit kills could terminate legitimate launcher-spawned games. |
 | Inject the DXMT shim only from the per-renderer runtime environment | Steam and non-DXMT Wine processes must never inherit the visibility shim. |
 | Build the DXMT driver from exact Wine plus complete Wine-Staging sources | A live-compatible but source-mixed driver is not a maintainable release boundary. |
+| Detach installer-owned GPTK mount points unconditionally during cleanup | The paths are unique to the installer, detach is idempotent, and cleanup must not depend on a separate mount-list probe. |
 
 ## Issues Encountered
 

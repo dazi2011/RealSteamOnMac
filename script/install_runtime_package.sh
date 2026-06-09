@@ -150,11 +150,17 @@ OUTER_MOUNT=""
 INNER_MOUNT=""
 
 cleanup() {
-    if [ -n "$INNER_MOUNT" ] && mount | grep -Fq " on $INNER_MOUNT "; then
-        hdiutil detach "$INNER_MOUNT" -quiet || true
+    if [ -n "$INNER_MOUNT" ]; then
+        hdiutil detach "$INNER_MOUNT" -quiet ||
+            hdiutil detach "$INNER_MOUNT" -force -quiet ||
+            true
+        rmdir "$INNER_MOUNT" 2>/dev/null || true
     fi
-    if [ -n "$OUTER_MOUNT" ] && mount | grep -Fq " on $OUTER_MOUNT "; then
-        hdiutil detach "$OUTER_MOUNT" -quiet || true
+    if [ -n "$OUTER_MOUNT" ]; then
+        hdiutil detach "$OUTER_MOUNT" -quiet ||
+            hdiutil detach "$OUTER_MOUNT" -force -quiet ||
+            true
+        rmdir "$OUTER_MOUNT" 2>/dev/null || true
     fi
     rm -rf "$STAGING"
 }

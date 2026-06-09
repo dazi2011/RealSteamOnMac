@@ -228,24 +228,31 @@ People Playground now has a real Proton-layout prefix:
 ```
 
 The active runtime package contains GPTK, DXMT, DXVK-macOS, and WineD3D roots.
-DXVK-macOS is the currently deployed accepted path: native Steam launches the
-Windows game, Proton `lsteamclient` connects it to the real macOS Steam client,
-the game reports `Steamworks initialised` and `Steam login: True`, and Steam
-completes its normal exit Cloud upload.
-
-A new DXMT-capable candidate package has passed isolated acceptance at:
+The DXMT-compatible package is now deployed in the user's existing Steam at:
 
 ```text
-/private/tmp/realsteamonmac-formal-dxmt-runtime/packages/
+~/Library/Application Support/RealSteamOnMac/runtimes/packages/
   gptk3.0-3-wine11.10-dxmt0.80-dxmtmac1-dxvkmacos1.10.3-
   lsteamclient-proton11b5-macos2
 ```
 
 It uses a pinned Wine 11/Wine-Staging macdrv compatibility build and a
-DXMT-only dyld visibility shim. It rendered the People Playground menu,
-initialized Steamworks, retrieved Workshop subscriptions, exited `0`, cleared
-all managed processes, and completed AutoCloud. The user's active `current`
-symlink has not yet been switched to this candidate.
+DXMT-only dyld visibility shim. Native Steam launched People Playground through
+this exact active package, reached the main menu in 31 seconds, initialized
+Steamworks, logged in, and retrieved one Workshop subscription. A same-prefix
+`WM_CLOSE` produced exit `0`, cleared all managed processes, and completed
+AutoCloud plus upload at 15:58:29 Asia/Shanghai.
+
+The pre-switch rollback record is:
+
+```text
+/Users/wudazi/RealSteamOnMac-Backups/
+  pre-dxmtmac1-live-20260609T075422Z
+```
+
+The live screenshot is
+`docs/evidence/people-playground-dxmt-live-deployed-2026-06-09.png`, SHA-256
+`3e2ed8f6ee30e060790dd30efa8750cf6d9c5521ef6659d9e75bb2523ac09978`.
 
 Still not implemented or not yet accepted:
 
@@ -348,10 +355,9 @@ authoritative complete rollback source.
    native-title exclusions, and Cloud health.
 6. Done for DXVK: independent package, Proton-compatible PFX, real Steam
    launch, Steamworks bridge, normal exit, and AutoCloud closure.
-7. Done in isolated acceptance: DXMT-compatible Wine 11 build, real menu,
-   Steamworks, normal exit, and AutoCloud.
-8. In progress: live DXMT package deployment plus per-game controls,
-   run-command, and dependency workflows.
+7. Done and deployed: DXMT-compatible Wine 11 build, real menu, Steamworks,
+   normal exit, AutoCloud, rollback, and idempotent installer cleanup.
+8. In progress: per-game controls, run-command, and dependency workflows.
 
 ## Phase 4 Runtime Foundation Update
 
@@ -490,13 +496,11 @@ docs/research/steamworks-bridge-2026-06-09.md
 
 The remaining major gates are:
 
-1. switch the live immutable runtime to the isolated-accepted DXMT package and
-   repeat native Steam launch acceptance;
-2. verify GPTK + Steamworks and WineD3D or record their exact boundaries;
-3. expose per-game renderer, MSync, Retina, Metal HUD, MetalFX, DXR, and AVX
+1. verify GPTK + Steamworks and WineD3D or record their exact boundaries;
+2. expose per-game renderer, MSync, Retina, Metal HUD, MetalFX, DXR, and AVX
    controls below the compatibility selection;
-4. add bounded run-command and dependency installation workflows;
-5. rerun Cloud, dynamic library, full test, install, rollback, and live launch
+3. add bounded run-command and dependency installation workflows;
+4. rerun Cloud, dynamic library, full test, install, rollback, and live launch
    acceptance before final release.
 
 Operational note: a single diagnostic Wine registry query omitted

@@ -94,6 +94,8 @@ Phase 5: per-game compatibility controls and remaining renderer work
 - [x] Capture logs, screenshots, bridge hashes, and rollback evidence.
 - [ ] Verify input and audio explicitly.
 - [x] Verify DXMT with a compatible patched Wine build.
+- [x] Deploy the DXMT package into the existing Steam installation and verify
+      native launch, normal exit, process cleanup, and AutoCloud.
 - [ ] Update all handoff and installation documents.
 - [ ] Run the complete automated and live verification matrix.
 - [ ] Commit and push the final verified state.
@@ -171,3 +173,4 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Native macOS Steam lacks two Linux `steamclient` helper exports | 2 | Added generated local interface validation and local missing-interface logging while preserving the Linux path. |
 | DXMT v0.80 cannot create its Metal view with stock Wine Staging 11.10 | 1 | Added a Wine 11 client-surface bridge plus a narrow dyld visibility shim; the formal isolated package renders the People Playground menu and exits cleanly. |
 | People Playground's compiler kept Steam running after normal exit | 2 | Proved Wine PID `312` collided with `/usr/libexec/searchpartyd`; added an AppID-only post-exit Wine cleanup. |
+| Runtime installer left official GPTK images mounted after success | 1 | Detach the installer-owned mount points directly, use force only as fallback, and verify a real idempotent reinstall leaves no mounts. |

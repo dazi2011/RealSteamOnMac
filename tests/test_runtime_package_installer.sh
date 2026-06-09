@@ -28,6 +28,12 @@ grep -q 'shasum -a 256 -c SHA256SUMS' "$INSTALLER"
 grep -q 'mv "$PACKAGE" "$DESTINATION"' "$INSTALLER"
 grep -q 'mv -h "$CURRENT_TEMP" "$RUNTIME_ROOT/current"' "$INSTALLER"
 grep -q 'packages/$PACKAGE_ID' "$INSTALLER"
+grep -q 'hdiutil detach "$INNER_MOUNT" -force -quiet' "$INSTALLER"
+grep -q 'hdiutil detach "$OUTER_MOUNT" -force -quiet' "$INSTALLER"
+if grep -q 'mount | grep -Fq' "$INSTALLER"; then
+    echo "installer cleanup must not depend on a mount listing probe" >&2
+    exit 1
+fi
 grep -q 'Apple-GPTK-License.rtf' "$INSTALLER"
 grep -q -- '--steamworks-bridge' "$INSTALLER"
 grep -q 'lsteamclient-proton11b5-macos2' "$INSTALLER"

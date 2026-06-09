@@ -321,7 +321,7 @@
 
 ### Phase 4B: DXMT Wine 11 Compatibility
 
-- **Status:** isolated formal package accepted; live `current` deployment pending
+- **Status:** complete; formal package deployed and accepted through live Steam
 - Actions taken:
   - Reproduced the DXMT v0.80 failure against stock Wine Staging 11.10 and
     isolated it to macdrv symbol visibility plus Wine 11's client-surface
@@ -359,6 +359,24 @@
     installer contract pass.
   - Ran the complete post-DXMT matrix: 51 Node tests, 25 Python tests, and all
     22 shell contracts passed.
+  - Backed up the previous live runtime manager and active-package target at
+    `/Users/wudazi/RealSteamOnMac-Backups/pre-dxmtmac1-live-20260609T075422Z`.
+  - Atomically activated
+    `gptk3.0-3-wine11.10-dxmt0.80-dxmtmac1-dxvkmacos1.10.3-`
+    `lsteamclient-proton11b5-macos2` in the user's existing Steam environment.
+  - Launched People Playground from native `steam://rungameid/1118200`; the
+    deployed package reached the main menu in 31 seconds, initialized
+    Steamworks, logged in, and retrieved one Workshop subscription.
+  - Captured the deployed-runtime screenshot at
+    `docs/evidence/people-playground-dxmt-live-deployed-2026-06-09.png`
+    with SHA-256
+    `3e2ed8f6ee30e060790dd30efa8750cf6d9c5521ef6659d9e75bb2523ac09978`.
+  - Closed the game through `WM_CLOSE`; runtime exit was `0`, all managed
+    processes cleared, and Steam completed `AC Exit`, AutoCloud, and upload at
+    15:58:29 Asia/Shanghai.
+  - Fixed the installer to detach its unique GPTK mount points directly and
+    fall back to forced detach. A real idempotent reinstall left no mounted
+    GPTK images.
 
 ## Test Results
 
@@ -427,6 +445,9 @@
 | DXMT isolated package install | Official GPTK image, verified archives, bridge, DXMT compatibility artifacts | Immutable package and complete SHA manifest | Package installed; every recorded hash passed | PASS |
 | DXMT formal live launch | Manifest-driven shim, no wrapper, People Playground | Main menu plus Steamworks and Workshop | Menu rendered; login true; one subscription retrieved | PASS |
 | DXMT normal exit and Cloud | Same formal run plus Windows `WM_CLOSE` | Exit 0, cleanup, Steam removal, AutoCloud | All conditions passed at 15:46:45 | PASS |
+| Live DXMT deployment | Existing Steam plus active immutable `dxmtmac1` package | Native launch, real menu, Steamworks, Workshop | Main menu reached in 31 seconds; all conditions passed | PASS |
+| Live DXMT exit and Cloud | Deployed package plus `WM_CLOSE` | Exit 0, process cleanup, AutoCloud upload | All conditions passed at 15:58:29 | PASS |
+| Installer mount cleanup | Real GPTK DMG and existing immutable package | Idempotent install with no residual images | Reinstall passed; no project GPTK mounts remained | PASS |
 
 ## Error Log
 
@@ -453,13 +474,14 @@
 | 2026-06-09 | The first formal build used Apple's obsolete Bison | 1 | Put Homebrew Bison 3 first for both configure and make. |
 | 2026-06-09 | A shared clone of a partial Wine cache could not fetch a promisor object | 1 | Reused the fully checked-out cache through APFS clone-copy instead of `git clone --shared`. |
 | 2026-06-09 | GPTK installer could not attach an already-mounted image | 1 | Detached the inner read-only image before the outer image and reran the isolated install. |
+| 2026-06-09 | Successful live installer run left its two GPTK images mounted | 1 | Removed the fragile mount-list condition, detach unique mount points directly with a force fallback, and passed a real idempotent reinstall cleanup check. |
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | After isolated acceptance of the formal DXMT Wine 11 package, with live `current` deployment still pending. |
-| Where am I going? | Deploy the verified DXMT package, then implement Steam compatibility controls, run-command, dependencies, and final cross-renderer regression. |
+| Where am I? | The formal DXMT Wine 11 package is active in the user's existing Steam and has passed launch, exit, and Cloud acceptance. |
+| Where am I going? | Implement Steam compatibility controls, run-command, dependencies, and final cross-renderer regression. |
 | What's the goal? | Native macOS Steam downloads and launches Windows-only games through independent selectable compatibility tools. |
 | What have I learned? | DXMT v0.80 needs both Wine 11 client-surface adaptation and global visibility forwarding; Wine/.NET process IDs can collide with persistent macOS PIDs. |
-| What have I done? | Deployed 34-game dynamic eligibility and accepted DXVK plus DXMT rendering, Steamworks login, real PFX execution, clean exit, and Cloud closure. |
+| What have I done? | Deployed 34-game dynamic eligibility and the formal DXMT runtime, with Steamworks login, real PFX execution, clean exit, Cloud closure, and a tested rollback point. |
