@@ -31,7 +31,12 @@ SUPPORT="$TMP_ROOT/support"
 RUNTIME="$TMP_ROOT/fake-runtime"
 CAPTURE="$TMP_ROOT/capture.txt"
 STEAMUI="$TMP_ROOT/steamui"
-mkdir -p "$HOME_ROOT" "$SUPPORT/compat-tool" "$SUPPORT/ui" "$STEAMUI"
+mkdir -p \
+    "$HOME_ROOT" \
+    "$SUPPORT/compat-tool" \
+    "$SUPPORT/ui" \
+    "$SUPPORT/dependencies" \
+    "$STEAMUI"
 touch "$SUPPORT/libRealSteamCompatGate.dylib"
 touch "$SUPPORT/libRealSteamNativeEngine.dylib"
 cp "$ROOT/script/patch_steamui.py" "$SUPPORT/patch_steamui.py"
@@ -39,6 +44,8 @@ cp "$ROOT/ui/realsteamonmac_ui.js" "$SUPPORT/ui/realsteamonmac_ui.js"
 printf '%s\n' 1118200 >"$SUPPORT/allowlist.txt"
 printf '%s\n' 0123456789abcdef0123456789abcdef \
     >"$SUPPORT/registry-token"
+cp "$ROOT/config/dependencies.json" \
+    "$SUPPORT/dependencies/catalog.json"
 printf '%s\n' '#!/bin/sh' 'exit 0' >"$RUNTIME"
 chmod +x "$RUNTIME"
 printf '%s' \

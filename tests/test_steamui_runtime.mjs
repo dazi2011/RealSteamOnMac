@@ -190,7 +190,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     typeof context.__REALSTEAMONMAC_IS_MANAGED_APP__,
     "function",
   );
-  assert.equal(context.__REALSTEAMONMAC_UI_STATUS__.version, 8);
+  assert.equal(context.__REALSTEAMONMAC_UI_STATUS__.version, 9);
   assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(1118200), true);
 
   await waitFor(

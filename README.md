@@ -69,9 +69,15 @@ download prototype to a cloud-safe, independent compatibility runtime.
 - A real `steam://rungameid/1118200` launch now creates/uses the Proton-layout
   PFX, opens the game, exits from the game's own menu, clears the isolated Wine
   session, and completes Steam's AutoCloud exit upload.
-- DXMT remains unverified because Wine Staging 11.10 lacks the macOS exports
-  required by DXMT v0.80. GPTK + Steamworks and WineD3D live acceptance also
-  remain pending.
+- DXMT now passes the same real-game boundary through its pinned Wine 11
+  macdrv compatibility build: menu, Steamworks login, Workshop state, normal
+  exit, and AutoCloud all completed. GPTK + Steamworks and WineD3D live
+  acceptance remain pending.
+- The compatibility panel now includes a bounded `运行命令` workflow and a
+  searchable fixed dependency catalog. Jobs are token-authenticated, scoped
+  to one managed AppID, serialized per PFX, and reported through private
+  status/log files. Live Steam acceptance of these two new controls is the
+  current deployment gate.
 
 ## How It Works
 
@@ -85,6 +91,10 @@ download prototype to a cloud-safe, independent compatibility runtime.
 - The engine listens only on `127.0.0.1:57344` for authenticated `text/plain`
   AppID registry updates. Requests are capped at 16 KiB and 256 AppIDs; invalid
   tokens and malformed payloads leave the active registry unchanged.
+- The same loopback service accepts only two fixed action schemas:
+  `run-command` and `install-dependency`. It creates a random 128-bit job ID,
+  starts the Python runtime without a shell, and serves only the corresponding
+  private JSON status file.
 - The launcher explicitly removes `STEAM_EXTRA_COMPAT_TOOLS_PATHS`. Runtime
   packages remain outside Steam's native discovery path; the project-owned
   browser bridge supplies their compatibility-page entries instead.
@@ -110,6 +120,11 @@ download prototype to a cloud-safe, independent compatibility runtime.
   game's isolated PFX, rejects unmanaged DLL replacement, and disables Wine
   menu integration so migrated CrossOver prefixes cannot launch old CrossOver
   helper applications.
+- Run-command targets must be PE files below the game installation or its
+  Proton-layout PFX. Reserved Steam, Wine, project, and DYLD environment
+  variables cannot be overridden. Dependency installers come only from the
+  versioned catalog, must remain on allowlisted Microsoft HTTPS hosts, and
+  must match their exact byte size and SHA-256 before Wine starts them.
 
 ## Build And Test
 
@@ -133,8 +148,9 @@ sh script/install_steam_injection.sh \
 
 The installer refuses unknown Steam modifications, signs only the runtime main
 executable with the minimum DYLD entitlements, installs the minimal startup
-guard plus delayed native engine, creates the private registry token, and
-installs a universal launcher in `Steam.app`.
+guard plus delayed native engine, creates the private registry token, installs
+the dependency catalog with mode `0600`, and installs a universal launcher in
+`Steam.app`.
 
 Install or update the independent runtime package using an official local GPTK
 3 disk image and the reproducibly built Steamworks bridge:
@@ -152,6 +168,16 @@ sh script/install_runtime_package.sh \
 Apple binaries are never committed to this repository. Runtime versions are
 kept side by side; the installer verifies checksums and changes only the
 `current` symlink after a package passes validation.
+
+The dependency catalog is installed at:
+
+```text
+~/Library/Application Support/RealSteamOnMac/dependencies/catalog.json
+```
+
+It currently pins the official Microsoft Visual C++ 2015-2022 x64
+redistributable and .NET Framework 4.8 offline installer. Downloaded installers
+are private cached artifacts and are never committed.
 
 Verify the installed UI resources while Steam is stopped:
 
@@ -194,4 +220,6 @@ offsets, and runtime signature; unknown builds must remain disabled.
 See [current-state-2026-06-09.md](docs/handoff/current-state-2026-06-09.md)
 for the technical handoff and
 [steamworks-bridge-2026-06-09.md](docs/research/steamworks-bridge-2026-06-09.md)
-for the bridge build and live acceptance evidence.
+for the bridge build and live acceptance evidence, and
+[run-command-dependency-workflow-2026-06-09.md](docs/research/run-command-dependency-workflow-2026-06-09.md)
+for the fixed action protocol and dependency security model.

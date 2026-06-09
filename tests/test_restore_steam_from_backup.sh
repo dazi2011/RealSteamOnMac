@@ -16,6 +16,7 @@ mkdir -p \
     "$RUNTIME_APP/Contents/MacOS" \
     "$RUNTIME_APP/Contents/MacOS/steamui" \
     "$SUPPORT/ui" \
+    "$SUPPORT/dependencies" \
     "$BACKUP/Steam.app/Contents/MacOS" \
     "$BACKUP/SteamRuntime.app/Contents/MacOS"
 
@@ -34,6 +35,8 @@ cp "$ROOT/ui/realsteamonmac_ui.js" "$SUPPORT/ui/realsteamonmac_ui.js"
 printf '1118200\n' >"$SUPPORT/allowlist.txt"
 printf '0123456789abcdef0123456789abcdef\n' \
     >"$SUPPORT/registry-token"
+cp "$ROOT/config/dependencies.json" \
+    "$SUPPORT/dependencies/catalog.json"
 chmod 0600 "$SUPPORT/registry-token"
 chmod +x "$SUPPORT/patch_steamui.py"
 printf 'clean app\n' >"$BACKUP/Steam.app/Contents/MacOS/marker"
@@ -48,7 +51,8 @@ export REALSTEAMONMAC_ALLOW_TEST_FIXTURES=1
 "$SUPPORT/patch_steamui.py" install \
     --steamui-root "$STEAMUI" \
     --ui-source "$SUPPORT/ui/realsteamonmac_ui.js" \
-    --allowlist "$SUPPORT/allowlist.txt" >/dev/null
+    --allowlist "$SUPPORT/allowlist.txt" \
+    --dependencies "$SUPPORT/dependencies/catalog.json" >/dev/null
 grep -q '/realsteamonmac/ui.js' "$STEAMUI/index.html"
 test -e "$STEAMUI/index.html.realsteamonmac.original"
 test -e "$STEAMUI/chunk~2dcc5aaf7.js.realsteamonmac.original"

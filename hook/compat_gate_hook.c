@@ -48,6 +48,12 @@
 #define REGISTRY_TOKEN_CAPACITY 128
 #define RUNTIME_CONFIG_CAPACITY 1024
 #define RUNTIME_CONFIG_RENDERER_CAPACITY 16
+#define ACTION_PAYLOAD_CAPACITY 8192
+#define ACTION_JOB_ID_BYTES 16
+#define ACTION_JOB_ID_CAPACITY ((ACTION_JOB_ID_BYTES * 2) + 1)
+#define ACTION_JOB_STATUS_CAPACITY 8192
+
+extern char **environ;
 
 typedef struct {
   char renderer[RUNTIME_CONFIG_RENDERER_CAPACITY];
@@ -1368,12 +1374,16 @@ static const char *http_reason(int status) {
   switch (status) {
     case 200:
       return "OK";
+    case 202:
+      return "Accepted";
     case 204:
       return "No Content";
     case 400:
       return "Bad Request";
     case 403:
       return "Forbidden";
+    case 404:
+      return "Not Found";
     case 500:
       return "Internal Server Error";
     default:
@@ -1448,6 +1458,261 @@ static bool parse_config_target(
     return false;
   }
   return parse_positive_appid(target + prefix_length, appid_out);
+}
+
+static bool parse_action_target(
+    const char *target,
+    const char *token,
+    uint32_t *appid_out) {
+  char prefix[256];
+  int prefix_length = snprintf(
+      prefix, sizeof(prefix), "/action?token=%s&appid=", token);
+  if (
+      prefix_length <= 0 ||
+      prefix_length >= (int)sizeof(prefix) ||
+      strncmp(target, prefix, (size_t)prefix_length) != 0
+  ) {
+    return false;
+  }
+  return parse_positive_appid(target + prefix_length, appid_out);
+}
+
+static bool valid_action_job_id(const char *job_id) {
+  if (
+      job_id == NULL ||
+      strlen(job_id) != ACTION_JOB_ID_CAPACITY - 1
+  ) {
+    return false;
+  }
+  for (size_t index = 0; job_id[index] != '\0'; ++index) {
+    char character = job_id[index];
+    if (
+        !(
+            (character >= '0' && character <= '9') ||
+            (character >= 'a' && character <= 'f')
+        )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool parse_job_target(
+    const char *target,
+    const char *token,
+    uint32_t *appid_out,
+    char job_id[ACTION_JOB_ID_CAPACITY]) {
+  char prefix[256];
+  int prefix_length = snprintf(
+      prefix, sizeof(prefix), "/job?token=%s&appid=", token);
+  if (
+      prefix_length <= 0 ||
+      prefix_length >= (int)sizeof(prefix) ||
+      strncmp(target, prefix, (size_t)prefix_length) != 0
+  ) {
+    return false;
+  }
+  const char *appid_text = target + prefix_length;
+  const char *separator = strstr(appid_text, "&job=");
+  if (separator == NULL || separator == appid_text) {
+    return false;
+  }
+  size_t appid_length = (size_t)(separator - appid_text);
+  if (appid_length >= 16) {
+    return false;
+  }
+  char appid_buffer[16];
+  memcpy(appid_buffer, appid_text, appid_length);
+  appid_buffer[appid_length] = '\0';
+  const char *raw_job_id = separator + 5;
+  if (
+      !parse_positive_appid(appid_buffer, appid_out) ||
+      !valid_action_job_id(raw_job_id)
+  ) {
+    return false;
+  }
+  strcpy(job_id, raw_job_id);
+  return true;
+}
+
+static bool action_job_root(char path[1200]) {
+  const char *configured = getenv("REALSTEAMONMAC_JOB_ROOT");
+  if (configured != NULL && *configured != '\0') {
+    if (strlen(configured) >= 1200) {
+      return false;
+    }
+    strcpy(path, configured);
+    return true;
+  }
+  const char *home = getenv("HOME");
+  if (home == NULL) {
+    return false;
+  }
+  return snprintf(
+             path, 1200,
+             "%s/Library/Application Support/RealSteamOnMac/jobs",
+             home) < 1200;
+}
+
+static bool action_job_status_path(
+    uint32_t appid,
+    const char *job_id,
+    char path[1500]) {
+  char root[1200];
+  if (
+      !valid_action_job_id(job_id) ||
+      !action_job_root(root)
+  ) {
+    return false;
+  }
+  return snprintf(
+             path, 1500, "%s/%u/%s.json",
+             root, (unsigned int)appid, job_id) < 1500;
+}
+
+static bool load_action_job_status(
+    uint32_t appid,
+    const char *job_id,
+    char output[ACTION_JOB_STATUS_CAPACITY],
+    bool *found_out) {
+  *found_out = false;
+  char path[1500];
+  if (!action_job_status_path(appid, job_id, path)) {
+    return false;
+  }
+  int descriptor = open(path, O_RDONLY | O_NOFOLLOW);
+  if (descriptor < 0) {
+    return errno == ENOENT;
+  }
+  struct stat file_stat;
+  if (
+      fstat(descriptor, &file_stat) != 0 ||
+      !S_ISREG(file_stat.st_mode) ||
+      file_stat.st_size <= 0 ||
+      file_stat.st_size >= ACTION_JOB_STATUS_CAPACITY
+  ) {
+    close(descriptor);
+    return false;
+  }
+  size_t expected = (size_t)file_stat.st_size;
+  size_t total = 0;
+  while (total < expected) {
+    ssize_t result = read(
+        descriptor, output + total, expected - total);
+    if (result <= 0) {
+      close(descriptor);
+      return false;
+    }
+    total += (size_t)result;
+  }
+  close(descriptor);
+  output[total] = '\0';
+  *found_out = true;
+  return true;
+}
+
+static bool generate_action_job_id(
+    char job_id[ACTION_JOB_ID_CAPACITY]) {
+  unsigned char bytes[ACTION_JOB_ID_BYTES];
+  arc4random_buf(bytes, sizeof(bytes));
+  for (size_t index = 0; index < sizeof(bytes); ++index) {
+    snprintf(
+        job_id + (index * 2),
+        ACTION_JOB_ID_CAPACITY - (index * 2),
+        "%02x", bytes[index]);
+  }
+  return valid_action_job_id(job_id);
+}
+
+static bool runtime_entrypoint(char path[1400]) {
+  const char *runtime_root = getenv("REALSTEAMONMAC_RUNTIME_ROOT");
+  if (runtime_root != NULL && *runtime_root != '\0') {
+    return snprintf(
+               path, 1400, "%s/bin/realsteamonmac-runtime",
+               runtime_root) < 1400;
+  }
+  const char *home = getenv("HOME");
+  if (home == NULL) {
+    return false;
+  }
+  return snprintf(
+             path, 1400,
+             "%s/Library/Application Support/RealSteamOnMac/"
+             "runtimes/bin/realsteamonmac-runtime",
+             home) < 1400;
+}
+
+static bool spawn_action_job(
+    uint32_t appid,
+    const char *payload,
+    char job_id[ACTION_JOB_ID_CAPACITY]) {
+  if (
+      payload == NULL ||
+      strlen(payload) == 0 ||
+      strlen(payload) >= ACTION_PAYLOAD_CAPACITY ||
+      !generate_action_job_id(job_id)
+  ) {
+    return false;
+  }
+  char runtime[1400];
+  if (
+      !runtime_entrypoint(runtime) ||
+      access(runtime, R_OK) != 0
+  ) {
+    log_line("action: runtime entrypoint is unavailable");
+    return false;
+  }
+  char appid_text[16];
+  snprintf(
+      appid_text, sizeof(appid_text), "%u",
+      (unsigned int)appid);
+  char *arguments[] = {
+      "/usr/bin/python3",
+      runtime,
+      "action",
+      "--appid",
+      appid_text,
+      "--job-id",
+      job_id,
+      "--payload",
+      (char *)payload,
+      NULL,
+  };
+  posix_spawn_file_actions_t actions;
+  if (posix_spawn_file_actions_init(&actions) != 0) {
+    return false;
+  }
+  bool actions_ready =
+      posix_spawn_file_actions_addopen(
+          &actions, STDOUT_FILENO, "/dev/null",
+          O_WRONLY, 0) == 0 &&
+      posix_spawn_file_actions_addopen(
+          &actions, STDERR_FILENO, "/dev/null",
+          O_WRONLY, 0) == 0;
+  pid_t child = 0;
+  int result =
+      actions_ready
+          ? posix_spawn(
+                &child,
+                "/usr/bin/python3",
+                &actions,
+                NULL,
+                arguments,
+                environ)
+          : EINVAL;
+  (void)posix_spawn_file_actions_destroy(&actions);
+  if (result != 0) {
+    log_line("action: could not spawn runtime job");
+    return false;
+  }
+  char message[192];
+  snprintf(
+      message, sizeof(message),
+      "action: started AppID %u job %s pid %d",
+      (unsigned int)appid, job_id, child);
+  log_line(message);
+  return true;
 }
 
 static void default_runtime_config(runtime_config *config) {
@@ -1812,6 +2077,78 @@ static void handle_registry_connection(
     }
     publish_registry(appids, appid_count);
     send_http_response(connection, 204, "text/plain", NULL);
+    return;
+  }
+
+  uint32_t action_appid = 0;
+  if (parse_action_target(target, token, &action_appid)) {
+    if (!is_allowlisted(action_appid)) {
+      send_http_response(connection, 403, "text/plain", NULL);
+      return;
+    }
+    if (strcmp(method, "OPTIONS") == 0) {
+      send_http_response(connection, 204, "text/plain", NULL);
+      return;
+    }
+    if (
+        strcmp(method, "POST") != 0 ||
+        content_length == 0 ||
+        content_length >= ACTION_PAYLOAD_CAPACITY ||
+        strlen(payload) != content_length
+    ) {
+      send_http_response(connection, 400, "text/plain", NULL);
+      return;
+    }
+    char job_id[ACTION_JOB_ID_CAPACITY];
+    if (!spawn_action_job(action_appid, payload, job_id)) {
+      send_http_response(connection, 500, "text/plain", NULL);
+      return;
+    }
+    char response[128];
+    int response_length = snprintf(
+        response, sizeof(response),
+        "{\"job_id\":\"%s\"}\n", job_id);
+    if (
+        response_length <= 0 ||
+        response_length >= (int)sizeof(response)
+    ) {
+      send_http_response(connection, 500, "text/plain", NULL);
+      return;
+    }
+    send_http_response(
+        connection, 202, "application/json", response);
+    return;
+  }
+
+  uint32_t job_appid = 0;
+  char job_id[ACTION_JOB_ID_CAPACITY];
+  if (parse_job_target(
+          target, token, &job_appid, job_id)) {
+    if (!is_allowlisted(job_appid)) {
+      send_http_response(connection, 403, "text/plain", NULL);
+      return;
+    }
+    if (strcmp(method, "OPTIONS") == 0) {
+      send_http_response(connection, 204, "text/plain", NULL);
+      return;
+    }
+    if (strcmp(method, "GET") != 0 || content_length != 0) {
+      send_http_response(connection, 400, "text/plain", NULL);
+      return;
+    }
+    char status[ACTION_JOB_STATUS_CAPACITY];
+    bool found = false;
+    if (!load_action_job_status(
+            job_appid, job_id, status, &found)) {
+      send_http_response(connection, 500, "text/plain", NULL);
+      return;
+    }
+    if (!found) {
+      send_http_response(connection, 404, "text/plain", NULL);
+      return;
+    }
+    send_http_response(
+        connection, 200, "application/json", status);
     return;
   }
 

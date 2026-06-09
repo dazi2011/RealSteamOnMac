@@ -4,9 +4,13 @@ import test from "node:test";
 
 const require = createRequire(import.meta.url);
 const {
+  buildActionUrl,
+  buildDependencyPayload,
+  buildJobUrl,
   buildManagedAppSet,
   buildControlPayload,
   buildControlUrl,
+  buildRunCommandPayload,
   compatToolForRenderer,
   decideOverviewPatch,
   discoverManagedApps,
@@ -16,6 +20,7 @@ const {
   isOwnedWindowsOnlyGame,
   mergeCompatTools,
   normalizeControlConfig,
+  normalizeDependencyCatalog,
   refreshAppActionComponents,
   reconcileCompatDetails,
   reconcileAppState,
@@ -170,6 +175,98 @@ test("builds the fixed native control request shape", () => {
     ),
     "http://127.0.0.1:57344/config" +
       "?token=0123456789abcdef&appid=1118200",
+  );
+});
+
+test("builds fixed native action and job request shapes", () => {
+  assert.equal(
+    buildActionUrl(
+      "http://127.0.0.1:57344/action",
+      "0123456789abcdef",
+      1118200,
+    ),
+    "http://127.0.0.1:57344/action" +
+      "?token=0123456789abcdef&appid=1118200",
+  );
+  assert.equal(
+    buildJobUrl(
+      "http://127.0.0.1:57344/job",
+      "0123456789abcdef",
+      1118200,
+      "0123456789abcdef0123456789abcdef",
+    ),
+    "http://127.0.0.1:57344/job" +
+      "?token=0123456789abcdef&appid=1118200" +
+      "&job=0123456789abcdef0123456789abcdef",
+  );
+  assert.throws(
+    () =>
+      buildJobUrl(
+        "http://127.0.0.1:57344/job",
+        "0123456789abcdef",
+        1118200,
+        "../escape",
+      ),
+    /job ID is invalid/,
+  );
+});
+
+test("encodes only the supported action payload fields", () => {
+  assert.equal(
+    buildRunCommandPayload({
+      target: String.raw`C:\windows\system32\reg.exe`,
+      arguments: String.raw`query "HKCU\Software\Wine"`,
+      environment: "DXVK_HUD=fps\nCUSTOM_FLAG=a b",
+    }),
+    "action=run-command" +
+      "&target=C%3A%5Cwindows%5Csystem32%5Creg.exe" +
+      "&arguments=query%20%22HKCU%5CSoftware%5CWine%22" +
+      "&environment=DXVK_HUD%3Dfps%0ACUSTOM_FLAG%3Da%20b",
+  );
+  assert.equal(
+    buildDependencyPayload("vcrun2022"),
+    "action=install-dependency&dependency=vcrun2022",
+  );
+  assert.throws(
+    () => buildDependencyPayload("../custom-installer"),
+    /dependency ID is invalid/,
+  );
+});
+
+test("normalizes the public dependency catalog and removes invalid entries", () => {
+  assert.deepEqual(
+    normalizeDependencyCatalog([
+      {
+        id: "vcrun2022",
+        name: "Microsoft Visual C++",
+        description: "Runtime",
+        publisher: "Microsoft",
+        size: 25635768,
+      },
+      {
+        id: "vcrun2022",
+        name: "Duplicate",
+        description: "Ignored",
+        publisher: "Unknown",
+        size: 1,
+      },
+      {
+        id: "../unsafe",
+        name: "Unsafe",
+        description: "Ignored",
+        publisher: "Unknown",
+        size: 1,
+      },
+    ]),
+    [
+      {
+        id: "vcrun2022",
+        name: "Microsoft Visual C++",
+        description: "Runtime",
+        publisher: "Microsoft",
+        size: 25635768,
+      },
+    ],
   );
 });
 

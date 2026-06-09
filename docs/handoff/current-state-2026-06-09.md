@@ -258,8 +258,8 @@ Still not implemented or not yet accepted:
 
 - GPTK + Steamworks bridge acceptance;
 - WineD3D live game acceptance;
-- dependency search/install;
-- run-command UI and logging controls.
+- live Steam acceptance of dependency search/install;
+- live Steam acceptance of run-command UI and logging controls.
 
 The Phase 5A control surface is installed and accepted in the user's current
 Steam client. It provides four project tools, a Steam-native controls panel,
@@ -290,9 +290,37 @@ docs/evidence/people-playground-controls-live-2026-06-09.png
 SHA-256 daffe76b2d410377dfe5cf76897478a10f279a3ecdccf6b1311a23aa94042a10
 ```
 
-The current control matrix passes 56 Node tests. The native control and runtime
-matrix remains at 27 Python tests and 22 shell contracts pending the final
-repository-wide rerun after run-command work.
+The complete post-action-workflow matrix passes 59 Node tests, 38 Python tests,
+and all 22 shell contracts.
+
+The Phase 5B action workflow is implemented but has not yet been deployed to
+the user's current Steam client. The compatibility panel now includes:
+
+- a structured run-command form for target, arguments, and bounded
+  environment variables;
+- a searchable catalog for pinned Microsoft Visual C++ 2015-2022 x64 and
+  .NET Framework 4.8 installers;
+- authenticated `POST /action` submission and `GET /job` polling on the
+  existing loopback-only native service;
+- random 128-bit job IDs, private mode-`0600` status/log files, and one action
+  lock per AppID/PFX;
+- PE target confinement to the game installation or PFX, no shell
+  interpretation, reserved environment rejection, HTTPS redirect host checks,
+  exact size/SHA-256 verification, and per-prefix dependency receipts.
+
+Both one-click installers copy the catalog to:
+
+```text
+~/Library/Application Support/RealSteamOnMac/dependencies/catalog.json
+```
+
+The launcher passes that catalog back to the guarded Steam UI patcher on every
+startup, so the action UI persists across Steam restarts and supported resource
+refreshes. Detailed design and current acceptance boundary:
+
+```text
+docs/research/run-command-dependency-workflow-2026-06-09.md
+```
 
 DXMT implementation and acceptance details:
 
@@ -390,7 +418,9 @@ authoritative complete rollback source.
    normal exit, AutoCloud, rollback, and idempotent installer cleanup.
 8. Done and deployed: per-game renderer and advanced controls, native private
    persistence, popup reopen, and DXVK/DXMT runtime dry-runs.
-9. In progress: run-command and dependency workflows.
+9. Implemented and fully regression-tested: run-command and dependency
+   workflows. Next gate: deploy to the current Steam client and perform live
+   command plus Visual C++ installation acceptance.
 
 ## Phase 4 Runtime Foundation Update
 

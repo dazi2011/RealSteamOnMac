@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "dependencies": [
+    {
+      "id": "vcrun2022",
+      "name": "Microsoft Visual C++ 2015-2022 x64",
+      "description": "Installs the current Microsoft Visual C++ x64 runtime.",
+      "publisher": "Microsoft",
+      "filename": "vc_redist.x64.exe",
+      "url": "https://download.visualstudio.microsoft.com/download/pr/7ebf5fdb-36dc-4145-b0a0-90d3d5990a61/CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B/VC_redist.x64.exe",
+      "sha256": "cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b",
+      "size": 25635768,
+      "arguments": [
+        "/install",
+        "/quiet",
+        "/norestart"
+      ],
+      "success_codes": [
+        0,
+        105,
+        194,
+        1641,
+        3010
+      ]
+    },
+    {
+      "id": "dotnet48",
+      "name": "Microsoft .NET Framework 4.8",
+      "description": "Installs the official .NET Framework 4.8 offline runtime.",
+      "publisher": "Microsoft",
+      "filename": "ndp48-x86-x64-allos-enu.exe",
+      "url": "https://go.microsoft.com/fwlink/?linkid=2088631",
+      "sha256": "0a3a390c47e639d0f7fc65b21195fee6b7f65b066f80f70c60fab191d14b7e40",
+      "size": 121346568,
+      "arguments": [
+        "/q",
+        "/norestart"
+      ],
+      "success_codes": [
+        0,
+        105,
+        194,
+        1641,
+        3010
+      ]
+    }
+  ]
+}

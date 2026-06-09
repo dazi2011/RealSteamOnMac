@@ -3,9 +3,11 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 RUNTIME_SOURCE="$ROOT/runtime/realsteamonmac_runtime.py"
+DEPENDENCY_CATALOG_SOURCE="$ROOT/config/dependencies.json"
 DXMT_COMPAT_BUILDER="$ROOT/script/build_dxmt_winemac_compat.sh"
 RUNTIME_ROOT="${REALSTEAMONMAC_RUNTIME_ROOT:-$HOME/Library/Application Support/RealSteamOnMac/runtimes}"
 CACHE_DIR="${REALSTEAMONMAC_CACHE_DIR:-$HOME/Library/Caches/RealSteamOnMac/downloads}"
+SUPPORT_ROOT="${REALSTEAMONMAC_SUPPORT_ROOT:-}"
 GPTK_DMG=""
 GPTK_REDIST=""
 STEAMWORKS_BRIDGE=""
@@ -35,8 +37,8 @@ DXVK_SHA256="810b1e5caf8ce975b784fae866a130ad23fa0ea233b0e5609cbc4a45f3ef6f00"
 
 usage() {
     cat >&2 <<EOF
-usage: $0 --gptk-dmg PATH [--dxmt-winemac-compat DIRECTORY] [--steamworks-bridge DIRECTORY] [--runtime-root DIRECTORY] [--cache-dir DIRECTORY]
-       $0 --gptk-redist DIRECTORY [--dxmt-winemac-compat DIRECTORY] [--steamworks-bridge DIRECTORY] [--runtime-root DIRECTORY] [--cache-dir DIRECTORY]
+usage: $0 --gptk-dmg PATH [--dxmt-winemac-compat DIRECTORY] [--steamworks-bridge DIRECTORY] [--runtime-root DIRECTORY] [--support-root DIRECTORY] [--cache-dir DIRECTORY]
+       $0 --gptk-redist DIRECTORY [--dxmt-winemac-compat DIRECTORY] [--steamworks-bridge DIRECTORY] [--runtime-root DIRECTORY] [--support-root DIRECTORY] [--cache-dir DIRECTORY]
 EOF
     exit 2
 }
@@ -68,6 +70,11 @@ while [ "$#" -gt 0 ]; do
             RUNTIME_ROOT=$2
             shift 2
             ;;
+        --support-root)
+            [ "$#" -ge 2 ] || usage
+            SUPPORT_ROOT=$2
+            shift 2
+            ;;
         --cache-dir)
             [ "$#" -ge 2 ] || usage
             CACHE_DIR=$2
@@ -86,6 +93,10 @@ if [ -z "$GPTK_DMG" ] && [ -z "$GPTK_REDIST" ]; then
     usage
 fi
 test -f "$RUNTIME_SOURCE"
+test -f "$DEPENDENCY_CATALOG_SOURCE"
+if [ -z "$SUPPORT_ROOT" ]; then
+    SUPPORT_ROOT=$(dirname "$RUNTIME_ROOT")
+fi
 if [ -n "$GPTK_DMG" ]; then
     test -f "$GPTK_DMG"
 fi
@@ -432,6 +443,13 @@ cp "$RUNTIME_SOURCE" "$RUNTIME_TEMP"
 chmod 0755 "$RUNTIME_TEMP"
 mv "$RUNTIME_TEMP" "$RUNTIME_ROOT/bin/realsteamonmac-runtime"
 
+mkdir -p "$SUPPORT_ROOT/dependencies"
+chmod 0700 "$SUPPORT_ROOT/dependencies"
+CATALOG_TEMP="$SUPPORT_ROOT/dependencies/.catalog.json.$$"
+cp "$DEPENDENCY_CATALOG_SOURCE" "$CATALOG_TEMP"
+chmod 0600 "$CATALOG_TEMP"
+mv "$CATALOG_TEMP" "$SUPPORT_ROOT/dependencies/catalog.json"
+
 CURRENT_TEMP="$RUNTIME_ROOT/.current.$$"
 ln -s "packages/$PACKAGE_ID" "$CURRENT_TEMP"
 mv -h "$CURRENT_TEMP" "$RUNTIME_ROOT/current"
@@ -439,3 +457,4 @@ mv -h "$CURRENT_TEMP" "$RUNTIME_ROOT/current"
 echo "package=$DESTINATION"
 echo "current=$RUNTIME_ROOT/current"
 echo "runtime=$RUNTIME_ROOT/bin/realsteamonmac-runtime"
+echo "dependencies=$SUPPORT_ROOT/dependencies/catalog.json"

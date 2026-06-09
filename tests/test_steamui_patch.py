@@ -56,6 +56,34 @@ class SteamUIPatchTests(unittest.TestCase):
             "0123456789abcdef0123456789abcdef\n",
             encoding="utf-8",
         )
+        dependency_directory = self.root / "dependencies"
+        dependency_directory.mkdir()
+        self.dependency_catalog = dependency_directory / "catalog.json"
+        self.dependency_catalog.write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "dependencies": [
+                        {
+                            "id": "vcrun2022",
+                            "name": "Microsoft Visual C++ 2015-2022 x64",
+                            "description": "Installs the current runtime.",
+                            "publisher": "Microsoft",
+                            "filename": "vc_redist.x64.exe",
+                            "url": (
+                                "https://aka.ms/vs/17/release/"
+                                "vc_redist.x64.exe"
+                            ),
+                            "sha256": "0" * 64,
+                            "size": 25635768,
+                            "arguments": ["/quiet"],
+                            "success_codes": [0],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -105,6 +133,8 @@ class SteamUIPatchTests(unittest.TestCase):
                 "defaultCompatTool": "realsteamonmac-dxmt",
                 "registryEndpoint": "http://127.0.0.1:57344/registry",
                 "controlEndpoint": "http://127.0.0.1:57344/config",
+                "actionEndpoint": "http://127.0.0.1:57344/action",
+                "jobEndpoint": "http://127.0.0.1:57344/job",
                 "registryToken": "0123456789abcdef0123456789abcdef",
                 "compatTools": [
                     {
@@ -131,6 +161,15 @@ class SteamUIPatchTests(unittest.TestCase):
                         ),
                         "renderer": "wined3d",
                     },
+                ],
+                "dependencies": [
+                    {
+                        "id": "vcrun2022",
+                        "name": "Microsoft Visual C++ 2015-2022 x64",
+                        "description": "Installs the current runtime.",
+                        "publisher": "Microsoft",
+                        "size": 25635768,
+                    }
                 ],
             },
         )
@@ -279,6 +318,19 @@ class SteamUIPatchTests(unittest.TestCase):
         self.registry_token.write_text("not-a-token\n", encoding="utf-8")
 
         with self.assertRaisesRegex(ValueError, "registry token is invalid"):
+            self.patcher.install_steamui(
+                self.steamui,
+                self.ui_source,
+                self.allowlist,
+            )
+
+    def test_install_rejects_an_invalid_dependency_catalog(self):
+        self.dependency_catalog.write_text(
+            '{"schema":1,"dependencies":[]}',
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ValueError, "catalog is empty"):
             self.patcher.install_steamui(
                 self.steamui,
                 self.ui_source,

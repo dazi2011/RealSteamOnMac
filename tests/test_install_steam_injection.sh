@@ -73,6 +73,11 @@ done
 test -f "$SUPPORT/allowlist.txt"
 test -f "$SUPPORT/registry-token"
 test "$(stat -f '%Lp' "$SUPPORT/registry-token")" = "600"
+test -f "$SUPPORT/dependencies/catalog.json"
+test "$(stat -f '%Lp' "$SUPPORT/dependencies")" = "700"
+test "$(stat -f '%Lp' "$SUPPORT/dependencies/catalog.json")" = "600"
+cmp "$ROOT/config/dependencies.json" \
+    "$SUPPORT/dependencies/catalog.json"
 test -x "$SUPPORT/patch_steamui.py"
 test -f "$SUPPORT/ui/realsteamonmac_ui.js"
 test -f \
@@ -84,6 +89,8 @@ grep -q '/realsteamonmac/config.js' \
 grep -q '/realsteamonmac/ui.js' \
     "$RUNTIME_APP/Contents/MacOS/steamui/index.html"
 grep -q '"appids":\[1118200\]' \
+    "$RUNTIME_APP/Contents/MacOS/steamui/realsteamonmac/config.js"
+grep -q '"id":"vcrun2022"' \
     "$RUNTIME_APP/Contents/MacOS/steamui/realsteamonmac/config.js"
 test "$(grep -o '__REALSTEAMONMAC_IS_MANAGED_APP__' \
     "$RUNTIME_APP/Contents/MacOS/steamui/chunk~2dcc5aaf7.js" |

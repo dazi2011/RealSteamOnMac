@@ -37,6 +37,15 @@ CONFIG_PREFIX = "globalThis.__REALSTEAMONMAC_CONFIG__ = Object.freeze("
 DEFAULT_COMPAT_TOOL = "realsteamonmac-dxmt"
 REGISTRY_ENDPOINT = "http://127.0.0.1:57344/registry"
 CONTROL_ENDPOINT = "http://127.0.0.1:57344/config"
+ACTION_ENDPOINT = "http://127.0.0.1:57344/action"
+JOB_ENDPOINT = "http://127.0.0.1:57344/job"
+PUBLIC_DEPENDENCY_KEYS = (
+    "id",
+    "name",
+    "description",
+    "publisher",
+    "size",
+)
 COMPAT_TOOLS = [
     {
         "strToolName": "realsteamonmac-gptk",
@@ -156,15 +165,74 @@ def load_registry_token(path):
     return token
 
 
-def config_bytes(appids, registry_token):
+def load_public_dependencies(path):
+    catalog_path = Path(path)
+    try:
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(
+            f"RealSteamOnMac dependency catalog is invalid: {catalog_path}"
+        ) from error
+    dependencies = catalog.get("dependencies")
+    if catalog.get("schema") != 1 or not isinstance(dependencies, list):
+        raise ValueError(
+            "RealSteamOnMac dependency catalog schema is unsupported"
+        )
+    public = []
+    seen = set()
+    for dependency in dependencies:
+        dependency_id = (
+            dependency.get("id")
+            if isinstance(dependency, dict)
+            else None
+        )
+        if (
+            not isinstance(dependency, dict)
+            or not isinstance(dependency_id, str)
+            or re.fullmatch(r"[a-z0-9][a-z0-9-]{1,31}", dependency_id)
+            is None
+            or dependency_id in seen
+            or not isinstance(dependency.get("name"), str)
+            or not dependency["name"]
+            or len(dependency["name"]) > 160
+            or not isinstance(dependency.get("description"), str)
+            or len(dependency["description"]) > 500
+            or not isinstance(dependency.get("publisher"), str)
+            or len(dependency["publisher"]) > 160
+            or not isinstance(dependency.get("size"), int)
+            or dependency["size"] <= 0
+            or dependency["size"] > 512 * 1024 * 1024
+        ):
+            raise ValueError(
+                "RealSteamOnMac dependency catalog entry is invalid: "
+                f"{dependency_id}"
+            )
+        for key in ("name", "description", "publisher"):
+            if any(ord(character) < 32 for character in dependency[key]):
+                raise ValueError(
+                    "RealSteamOnMac dependency catalog text is invalid"
+                )
+        seen.add(dependency_id)
+        public.append(
+            {key: dependency[key] for key in PUBLIC_DEPENDENCY_KEYS}
+        )
+    if not public:
+        raise ValueError("RealSteamOnMac dependency catalog is empty")
+    return public
+
+
+def config_bytes(appids, registry_token, dependencies):
     payload = json.dumps(
         {
             "appids": appids,
             "defaultCompatTool": DEFAULT_COMPAT_TOOL,
             "registryEndpoint": REGISTRY_ENDPOINT,
             "controlEndpoint": CONTROL_ENDPOINT,
+            "actionEndpoint": ACTION_ENDPOINT,
+            "jobEndpoint": JOB_ENDPOINT,
             "registryToken": registry_token,
             "compatTools": COMPAT_TOOLS,
+            "dependencies": dependencies,
         },
         separators=(",", ":"),
     )
@@ -328,7 +396,10 @@ def verify_steamui(steamui_root):
     default_compat_tool = parsed.get("defaultCompatTool")
     registry_endpoint = parsed.get("registryEndpoint")
     control_endpoint = parsed.get("controlEndpoint")
+    action_endpoint = parsed.get("actionEndpoint")
+    job_endpoint = parsed.get("jobEndpoint")
     registry_token = parsed.get("registryToken")
+    dependencies = parsed.get("dependencies")
     if (
         not isinstance(compat_tools, list)
         or not compat_tools
@@ -351,14 +422,35 @@ def verify_steamui(steamui_root):
         not in {tool["strToolName"] for tool in compat_tools}
         or registry_endpoint != REGISTRY_ENDPOINT
         or control_endpoint != CONTROL_ENDPOINT
+        or action_endpoint != ACTION_ENDPOINT
+        or job_endpoint != JOB_ENDPOINT
         or not isinstance(registry_token, str)
         or re.fullmatch(r"[0-9A-Fa-f]{32,64}", registry_token) is None
+        or not isinstance(dependencies, list)
+        or not dependencies
+        or any(
+            not isinstance(dependency, dict)
+            or tuple(dependency) != PUBLIC_DEPENDENCY_KEYS
+            or not isinstance(dependency.get("id"), str)
+            or not isinstance(dependency.get("name"), str)
+            or not isinstance(dependency.get("description"), str)
+            or not isinstance(dependency.get("publisher"), str)
+            or not isinstance(dependency.get("size"), int)
+            for dependency in dependencies
+        )
+        or len({dependency["id"] for dependency in dependencies})
+        != len(dependencies)
     ):
         raise ValueError("Steam UI compatibility tool config is invalid")
     return appids
 
 
-def install_steamui(steamui_root, ui_source, allowlist):
+def install_steamui(
+    steamui_root,
+    ui_source,
+    allowlist,
+    dependency_catalog=None,
+):
     paths = paths_for(steamui_root)
     ui_source = Path(ui_source)
     if not paths["root"].is_dir():
@@ -376,6 +468,11 @@ def install_steamui(steamui_root, ui_source, allowlist):
     registry_token = load_registry_token(
         Path(allowlist).with_name("registry-token")
     )
+    dependencies = load_public_dependencies(
+        dependency_catalog
+        if dependency_catalog is not None
+        else Path(allowlist).with_name("dependencies") / "catalog.json"
+    )
 
     original, expected_index, backup_index = prepare_index(paths)
     compat_original, expected_compat, backup_compat = (
@@ -392,7 +489,10 @@ def install_steamui(steamui_root, ui_source, allowlist):
         atomic_write(paths["compat_chunk"], expected_compat)
 
     atomic_write(paths["ui"], ui_source.read_bytes())
-    atomic_write(paths["config"], config_bytes(appids, registry_token))
+    atomic_write(
+        paths["config"],
+        config_bytes(appids, registry_token, dependencies),
+    )
     paths["config"].chmod(0o600)
     verify_steamui(paths["root"])
     return appids
@@ -433,6 +533,7 @@ def build_parser():
     install.add_argument("--steamui-root", required=True)
     install.add_argument("--ui-source", required=True)
     install.add_argument("--allowlist", required=True)
+    install.add_argument("--dependencies", required=True)
 
     verify = subparsers.add_parser("verify")
     verify.add_argument("--steamui-root", required=True)
@@ -449,6 +550,7 @@ def main(argv=None):
             arguments.steamui_root,
             arguments.ui_source,
             arguments.allowlist,
+            arguments.dependencies,
         )
         print(f"steamui=installed appids={','.join(map(str, appids))}")
     elif arguments.command == "verify":

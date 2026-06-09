@@ -64,7 +64,8 @@ static bool parent_path(char *destination, size_t capacity,
 static bool install_steamui_patch(const char *patcher,
                                   const char *steamui,
                                   const char *ui_source,
-                                  const char *allowlist) {
+                                  const char *allowlist,
+                                  const char *dependencies) {
   pid_t child = fork();
   if (child < 0) {
     log_line("Steam UI patch failed: fork: %s", strerror(errno));
@@ -81,6 +82,8 @@ static bool install_steamui_patch(const char *patcher,
         (char *)ui_source,
         "--allowlist",
         (char *)allowlist,
+        "--dependencies",
+        (char *)dependencies,
         NULL,
     };
     execv(arguments[0], arguments);
@@ -187,6 +190,7 @@ int main(int argc, char **argv) {
   char patcher[PATH_MAX];
   char ui_source[PATH_MAX];
   char allowlist[PATH_MAX];
+  char dependencies[PATH_MAX];
   char registry_token[PATH_MAX];
   char runtime_directory[PATH_MAX];
   char steamui[PATH_MAX];
@@ -200,6 +204,8 @@ int main(int argc, char **argv) {
                   "ui/realsteamonmac_ui.js") ||
       !build_path(allowlist, sizeof(allowlist), support,
                   "allowlist.txt") ||
+      !build_path(dependencies, sizeof(dependencies), support,
+                  "dependencies/catalog.json") ||
       !build_path(registry_token, sizeof(registry_token), support,
                   "registry-token") ||
       !parent_path(runtime_directory, sizeof(runtime_directory), runtime) ||
@@ -216,11 +222,13 @@ int main(int argc, char **argv) {
       access(patcher, X_OK) != 0 ||
       access(ui_source, R_OK) != 0 ||
       access(allowlist, R_OK) != 0 ||
+      access(dependencies, R_OK) != 0 ||
       access(registry_token, R_OK) != 0) {
     return exec_original_bootstrap(argc, argv,
                                    "RealSteamOnMac support files are missing");
   }
-  if (!install_steamui_patch(patcher, steamui, ui_source, allowlist)) {
+  if (!install_steamui_patch(
+          patcher, steamui, ui_source, allowlist, dependencies)) {
     return exec_original_bootstrap(argc, argv,
                                    "Steam UI resource patch failed");
   }

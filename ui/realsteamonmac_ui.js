@@ -17,6 +17,9 @@
   const RECONCILE_INTERVAL_MS = 1000;
   const REGISTRY_REFRESH_INTERVAL_MS = 5000;
   const DETAILS_REFRESH_INTERVAL_MS = 5000;
+  const ACTION_POLL_INTERVAL_MS = 1000;
+  const ACTION_POLL_LIMIT = 3600;
+  const ACTION_JOB_ID_PATTERN = /^[0-9a-f]{32}$/;
   const CONTROL_DEFAULTS = Object.freeze({
     renderer: "dxmt",
     msync: true,
@@ -113,6 +116,123 @@
       `${endpoint}?token=${encodeURIComponent(token)}` +
       `&appid=${appid}`
     );
+  }
+
+  function buildActionUrl(endpoint, token, appid) {
+    if (
+      typeof endpoint !== "string" ||
+      !endpoint ||
+      typeof token !== "string" ||
+      !token ||
+      !Number.isSafeInteger(appid) ||
+      appid <= 0
+    ) {
+      throw new Error("native action endpoint is unavailable");
+    }
+    return (
+      `${endpoint}?token=${encodeURIComponent(token)}` +
+      `&appid=${appid}`
+    );
+  }
+
+  function buildJobUrl(endpoint, token, appid, jobId) {
+    if (
+      !ACTION_JOB_ID_PATTERN.test(String(jobId ?? ""))
+    ) {
+      throw new Error("native action job ID is invalid");
+    }
+    return (
+      buildActionUrl(endpoint, token, appid) +
+      `&job=${jobId}`
+    );
+  }
+
+  function encodeActionPayload(entries) {
+    return entries
+      .map(
+        ([key, value]) =>
+          `${encodeURIComponent(key)}=${encodeURIComponent(
+            String(value ?? ""),
+          )}`,
+      )
+      .join("&");
+  }
+
+  function buildRunCommandPayload({
+    target = "",
+    arguments: commandArguments = "",
+    environment = "",
+  } = {}) {
+    return encodeActionPayload([
+      ["action", "run-command"],
+      ["target", target],
+      ["arguments", commandArguments],
+      ["environment", environment],
+    ]);
+  }
+
+  function buildDependencyPayload(dependency) {
+    if (
+      typeof dependency !== "string" ||
+      !/^[a-z0-9][a-z0-9-]{1,31}$/.test(dependency)
+    ) {
+      throw new Error("dependency ID is invalid");
+    }
+    return encodeActionPayload([
+      ["action", "install-dependency"],
+      ["dependency", dependency],
+    ]);
+  }
+
+  function normalizeDependencyCatalog(value) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    const normalized = [];
+    const seen = new Set();
+    for (const dependency of value) {
+      if (
+        typeof dependency?.id !== "string" ||
+        !/^[a-z0-9][a-z0-9-]{1,31}$/.test(dependency.id) ||
+        seen.has(dependency.id) ||
+        typeof dependency.name !== "string" ||
+        !dependency.name ||
+        typeof dependency.description !== "string" ||
+        typeof dependency.publisher !== "string" ||
+        !Number.isSafeInteger(dependency.size) ||
+        dependency.size <= 0
+      ) {
+        continue;
+      }
+      seen.add(dependency.id);
+      normalized.push({
+        id: dependency.id,
+        name: dependency.name,
+        description: dependency.description,
+        publisher: dependency.publisher,
+        size: dependency.size,
+      });
+    }
+    return normalized;
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
+  function formatByteSize(value) {
+    if (!Number.isFinite(value) || value <= 0) {
+      return "未知大小";
+    }
+    if (value >= 1024 * 1024) {
+      return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+    }
+    return `${Math.ceil(value / 1024)} KB`;
   }
 
   function isOwnedVisibleGameOverview(overview) {
@@ -484,14 +604,20 @@
       isOwnedWindowsOnlyGame,
       buildControlPayload,
       buildControlUrl,
+      buildActionUrl,
+      buildDependencyPayload,
+      buildJobUrl,
+      buildRunCommandPayload,
       compatToolForRenderer,
       mergeCompatTools,
       normalizeControlConfig,
+      normalizeDependencyCatalog,
       refreshAppActionComponents,
       reconcileCompatDetails,
       reconcileAppState,
       rendererForCompatTool,
       CONTROL_DEFAULTS,
+      ACTION_POLL_INTERVAL_MS,
       COMPAT_TOOL_PRIORITY,
       DETAILS_REFRESH_INTERVAL_MS,
       INVALID_PLATFORM,
@@ -525,8 +651,11 @@
   const projectCompatToolNames = new Set(
     projectCompatTools.map((tool) => tool.strToolName),
   );
+  const dependencies = normalizeDependencyCatalog(
+    config.dependencies,
+  );
   const status = {
-    version: 8,
+    version: 9,
     mode: "dynamic-owned-windows-only-registry",
     enabled: true,
     appids: [...managedAppids],
@@ -552,6 +681,10 @@
     controlNativeSaves: 0,
     controlLastError: null,
     controlPanels: 0,
+    actionJobsStarted: 0,
+    actionJobsCompleted: 0,
+    actionJobsFailed: 0,
+    actionLastError: null,
     actionRefreshes: 0,
     missingOverview: 0,
     missingDetails: 0,
@@ -568,6 +701,7 @@
   const availableCompatTools = new Map();
   const compatSelections = new Map();
   const controlConfigs = new Map();
+  const actionStates = new Map();
   const nativeLoadedControlAppids = new Set();
   const lastNativeControlPayloads = new Map();
   const nativeSyncedAppids = new Set();
@@ -873,6 +1007,167 @@
     status.controlLastError = null;
     persistControlConfigs();
     return normalized;
+  }
+
+  function actionStateFor(appid) {
+    if (!actionStates.has(appid)) {
+      actionStates.set(appid, {
+        state: "idle",
+        label: "",
+        message: "等待操作",
+        jobId: "",
+        logPath: "",
+      });
+    }
+    return actionStates.get(appid);
+  }
+
+  function setActionState(appid, value, panel = null) {
+    actionStates.set(appid, {
+      ...actionStateFor(appid),
+      ...value,
+    });
+    if (panel) {
+      panel.dataset.signature = "";
+      renderControlPanel(panel, appid);
+    }
+  }
+
+  async function startNativeAction(appid, payload) {
+    const response = await globalObject.fetch(
+      buildActionUrl(
+        config.actionEndpoint,
+        config.registryToken,
+        appid,
+      ),
+      {
+        method: "POST",
+        mode: "cors",
+        cache: "no-store",
+        headers: { "Content-Type": "text/plain" },
+        body: payload,
+      },
+    );
+    if (response?.ok !== true || typeof response.json !== "function") {
+      throw new Error(
+        `native action start failed for AppID ${appid}: ` +
+          `${response?.status ?? "invalid response"}`,
+      );
+    }
+    const value = await response.json();
+    if (!ACTION_JOB_ID_PATTERN.test(String(value?.job_id ?? ""))) {
+      throw new Error("native action response has an invalid job ID");
+    }
+    return value.job_id;
+  }
+
+  async function readNativeActionJob(appid, jobId) {
+    const response = await globalObject.fetch(
+      buildJobUrl(
+        config.jobEndpoint,
+        config.registryToken,
+        appid,
+        jobId,
+      ),
+      {
+        method: "GET",
+        mode: "cors",
+        cache: "no-store",
+      },
+    );
+    if (response?.status === 404) {
+      return null;
+    }
+    if (response?.ok !== true || typeof response.json !== "function") {
+      throw new Error(
+        `native action status failed for AppID ${appid}: ` +
+          `${response?.status ?? "invalid response"}`,
+      );
+    }
+    const value = await response.json();
+    if (
+      value?.schema !== 1 ||
+      value.appid !== appid ||
+      value.job_id !== jobId ||
+      !["running", "completed", "failed"].includes(value.state)
+    ) {
+      throw new Error("native action status response is invalid");
+    }
+    return value;
+  }
+
+  async function waitForNativeActionJob(appid, jobId) {
+    for (let attempt = 0; attempt < ACTION_POLL_LIMIT; attempt += 1) {
+      const value = await readNativeActionJob(appid, jobId);
+      if (value && value.state !== "running") {
+        return value;
+      }
+      await new Promise((resolve) =>
+        globalObject.setTimeout(resolve, ACTION_POLL_INTERVAL_MS),
+      );
+    }
+    throw new Error("native action timed out");
+  }
+
+  async function runNativeAction(appid, payload, label, panel) {
+    if (actionStateFor(appid).state === "running") {
+      return;
+    }
+    setActionState(
+      appid,
+      {
+        state: "running",
+        label,
+        message: "正在提交任务",
+        jobId: "",
+        logPath: "",
+      },
+      panel,
+    );
+    status.actionJobsStarted += 1;
+    try {
+      const jobId = await startNativeAction(appid, payload);
+      setActionState(
+        appid,
+        {
+          state: "running",
+          message: "任务运行中",
+          jobId,
+        },
+        panel,
+      );
+      const result = await waitForNativeActionJob(appid, jobId);
+      const failed = result.state === "failed";
+      setActionState(
+        appid,
+        {
+          state: result.state,
+          message: failed
+            ? result.message || "任务执行失败"
+            : "任务已完成",
+          logPath: result.log_path || "",
+        },
+        panel,
+      );
+      if (failed) {
+        status.actionJobsFailed += 1;
+        status.actionLastError = result.message || "native action failed";
+      } else {
+        status.actionJobsCompleted += 1;
+        status.actionLastError = null;
+      }
+    } catch (error) {
+      status.actionJobsFailed += 1;
+      status.actionLastError = String(error);
+      setActionState(
+        appid,
+        {
+          state: "failed",
+          message: String(error),
+        },
+        panel,
+      );
+    }
   }
 
   async function getAvailableCompatTools(appid) {
@@ -1185,7 +1480,7 @@
         box-sizing: border-box;
         margin: 14px 0 2px;
         padding: 16px;
-        width: min(100%, 720px);
+        width: min(100%, 760px);
         color: var(--rsm-text);
         background:
           linear-gradient(135deg, rgba(26,159,255,.14), transparent 46%),
@@ -1275,6 +1570,185 @@
         color: var(--rsm-muted);
         font-size: 11px;
       }
+      .realsteamonmac-tools {
+        margin-top: 16px;
+        padding-top: 15px;
+        border-top: 1px solid rgba(102,192,244,.22);
+      }
+      .realsteamonmac-tools__head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 10px;
+      }
+      .realsteamonmac-tools__title {
+        font-size: 14px;
+        font-weight: 800;
+      }
+      .realsteamonmac-tools__copy {
+        margin-top: 3px;
+        color: var(--rsm-muted);
+        font-size: 11px;
+        line-height: 1.35;
+      }
+      .realsteamonmac-tools__badge {
+        padding: 4px 7px;
+        color: var(--rsm-cyan);
+        background: rgba(102,192,244,.08);
+        border: 1px solid rgba(102,192,244,.3);
+        border-radius: 2px;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        white-space: nowrap;
+      }
+      .realsteamonmac-field {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        margin-top: 8px;
+      }
+      .realsteamonmac-field__label {
+        color: #dce8f3;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .realsteamonmac-field input,
+      .realsteamonmac-field textarea,
+      .realsteamonmac-dependencies__search {
+        width: 100%;
+        color: var(--rsm-text);
+        background: #0c141d;
+        border: 1px solid #3d4f5f;
+        border-radius: 2px;
+        outline: none;
+        font: 12px/1.4 "SFMono-Regular", Consolas, monospace;
+      }
+      .realsteamonmac-field input,
+      .realsteamonmac-dependencies__search {
+        height: 34px;
+        padding: 0 9px;
+      }
+      .realsteamonmac-field textarea {
+        min-height: 58px;
+        padding: 8px 9px;
+        resize: vertical;
+      }
+      .realsteamonmac-field input:focus,
+      .realsteamonmac-field textarea:focus,
+      .realsteamonmac-dependencies__search:focus {
+        border-color: var(--rsm-blue);
+        box-shadow: 0 0 0 1px rgba(26,159,255,.25);
+      }
+      .realsteamonmac-run__grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr);
+        gap: 10px;
+      }
+      .realsteamonmac-button {
+        min-width: 112px;
+        height: 34px;
+        padding: 0 13px;
+        color: #07121c;
+        background: linear-gradient(180deg, #67c1f5, #1a9fff);
+        border: 0;
+        border-radius: 2px;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .realsteamonmac-button:hover:not(:disabled) {
+        filter: brightness(1.1);
+      }
+      .realsteamonmac-button:disabled {
+        cursor: wait;
+        filter: saturate(.3);
+        opacity: .55;
+      }
+      .realsteamonmac-run__actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 10px;
+      }
+      .realsteamonmac-dependencies__search {
+        margin-bottom: 9px;
+      }
+      .realsteamonmac-dependencies__list {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .realsteamonmac-dependency {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        min-height: 76px;
+        padding: 10px;
+        background: rgba(5,12,18,.38);
+        border: 1px solid rgba(158,177,194,.15);
+        border-radius: 3px;
+      }
+      .realsteamonmac-dependency[hidden] { display: none; }
+      .realsteamonmac-dependency__name {
+        font-size: 12px;
+        font-weight: 800;
+      }
+      .realsteamonmac-dependency__meta {
+        margin-top: 3px;
+        color: var(--rsm-cyan);
+        font-size: 10px;
+      }
+      .realsteamonmac-dependency__description {
+        margin-top: 4px;
+        color: var(--rsm-muted);
+        font-size: 10px;
+        line-height: 1.3;
+      }
+      .realsteamonmac-dependency .realsteamonmac-button {
+        min-width: 68px;
+      }
+      .realsteamonmac-action-status {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 7px 10px;
+        align-items: center;
+        margin-top: 12px;
+        padding: 9px 10px;
+        color: var(--rsm-muted);
+        background: rgba(7,14,21,.62);
+        border: 1px solid rgba(158,177,194,.16);
+        border-radius: 3px;
+        font-size: 11px;
+      }
+      .realsteamonmac-action-status__lamp {
+        width: 8px;
+        height: 8px;
+        background: #70808e;
+        border-radius: 50%;
+      }
+      .realsteamonmac-action-status[data-state="running"]
+        .realsteamonmac-action-status__lamp {
+        background: #f2c94c;
+        box-shadow: 0 0 0 4px rgba(242,201,76,.1);
+      }
+      .realsteamonmac-action-status[data-state="completed"]
+        .realsteamonmac-action-status__lamp {
+        background: #75d17e;
+      }
+      .realsteamonmac-action-status[data-state="failed"]
+        .realsteamonmac-action-status__lamp {
+        background: #ff7b72;
+      }
+      .realsteamonmac-action-status__log {
+        grid-column: 2;
+        overflow: hidden;
+        color: #7890a3;
+        font: 10px/1.3 "SFMono-Regular", Consolas, monospace;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
       .realsteamonmac-controls__status[data-state="saved"] {
         color: #75d17e;
       }
@@ -1285,7 +1759,11 @@
         color: #ff7b72;
       }
       @media (max-width: 640px) {
-        .realsteamonmac-controls__grid { grid-template-columns: 1fr; }
+        .realsteamonmac-controls__grid,
+        .realsteamonmac-run__grid,
+        .realsteamonmac-dependencies__list {
+          grid-template-columns: 1fr;
+        }
       }
     `;
     documentObject.head.appendChild(style);
@@ -1334,12 +1812,14 @@
 
   function renderControlPanel(panel, appid) {
     const value = ensureControlConfig(appid);
+    const actionState = actionStateFor(appid);
+    const actionRunning = actionState.state === "running";
     const rendererLabel =
       projectCompatTools.find(
         (tool) => tool.renderer === value.renderer,
       )?.strDisplayName ?? value.renderer.toUpperCase();
     const definitions = controlDefinitions(value.renderer);
-    const signature = JSON.stringify(value);
+    const signature = JSON.stringify({ value, actionState });
     if (panel.dataset.signature === signature) {
       return;
     }
@@ -1372,6 +1852,88 @@
           )
           .join("")}
       </div>
+      <div class="realsteamonmac-tools realsteamonmac-run">
+        <div class="realsteamonmac-tools__head">
+          <div>
+            <div class="realsteamonmac-tools__title">运行命令</div>
+            <div class="realsteamonmac-tools__copy">在当前游戏的 Proton 风格 PFX 中启动 Windows 程序。目标仅允许位于游戏目录或该 PFX 内。</div>
+          </div>
+          <div class="realsteamonmac-tools__badge">NO SHELL</div>
+        </div>
+        <label class="realsteamonmac-field">
+          <span class="realsteamonmac-field__label">目标程序 · 留空时使用游戏主程序</span>
+          <input type="text" data-run-target
+                 placeholder="C:\\windows\\system32\\reg.exe"
+                 ${actionRunning ? "disabled" : ""}>
+        </label>
+        <div class="realsteamonmac-run__grid">
+          <label class="realsteamonmac-field">
+            <span class="realsteamonmac-field__label">参数</span>
+            <textarea data-run-arguments
+                      placeholder='query "HKCU\\Software\\Wine"'
+                      ${actionRunning ? "disabled" : ""}></textarea>
+          </label>
+          <label class="realsteamonmac-field">
+            <span class="realsteamonmac-field__label">环境变量 · 每行 NAME=VALUE</span>
+            <textarea data-run-environment
+                      placeholder="DXVK_HUD=fps"
+                      ${actionRunning ? "disabled" : ""}></textarea>
+          </label>
+        </div>
+        <div class="realsteamonmac-run__actions">
+          <button type="button"
+                  class="realsteamonmac-button"
+                  data-run-command
+                  ${actionRunning ? "disabled" : ""}>运行</button>
+        </div>
+      </div>
+      <div class="realsteamonmac-tools realsteamonmac-dependencies">
+        <div class="realsteamonmac-tools__head">
+          <div>
+            <div class="realsteamonmac-tools__title">安装 Windows 组件</div>
+            <div class="realsteamonmac-tools__copy">官方安装包会校验固定大小和 SHA-256 后写入当前游戏容器。</div>
+          </div>
+          <div class="realsteamonmac-tools__badge">${dependencies.length} PACKAGES</div>
+        </div>
+        <input type="search"
+               class="realsteamonmac-dependencies__search"
+               data-dependency-search
+               placeholder="搜索 C++、.NET 或发布者"
+               ${actionRunning ? "disabled" : ""}>
+        <div class="realsteamonmac-dependencies__list">
+          ${dependencies
+            .map(
+              (dependency) => `
+                <article class="realsteamonmac-dependency"
+                         data-dependency-card
+                         data-search="${escapeHtml(
+                           `${dependency.name} ${dependency.description} ${dependency.publisher}`.toLowerCase(),
+                         )}">
+                  <div>
+                    <div class="realsteamonmac-dependency__name">${escapeHtml(dependency.name)}</div>
+                    <div class="realsteamonmac-dependency__meta">${escapeHtml(dependency.publisher)} · ${formatByteSize(dependency.size)}</div>
+                    <div class="realsteamonmac-dependency__description">${escapeHtml(dependency.description)}</div>
+                  </div>
+                  <button type="button"
+                          class="realsteamonmac-button"
+                          data-install-dependency="${escapeHtml(dependency.id)}"
+                          ${actionRunning ? "disabled" : ""}>安装</button>
+                </article>
+              `,
+            )
+            .join("")}
+        </div>
+      </div>
+      <div class="realsteamonmac-action-status"
+           data-state="${escapeHtml(actionState.state)}">
+        <span class="realsteamonmac-action-status__lamp"></span>
+        <span><strong>${escapeHtml(actionState.label || "任务")}</strong> · ${escapeHtml(actionState.message)}</span>
+        ${
+          actionState.logPath
+            ? `<span class="realsteamonmac-action-status__log" title="${escapeHtml(actionState.logPath)}">${escapeHtml(actionState.logPath)}</span>`
+            : ""
+        }
+      </div>
       <div class="realsteamonmac-controls__foot">
         <span>AppID ${appid} · 配置按游戏隔离</span>
         <span class="realsteamonmac-controls__status" data-state="saved">已保存</span>
@@ -1403,6 +1965,58 @@
         }
       });
     }
+
+    const runButton = panel.querySelector("[data-run-command]");
+    runButton?.addEventListener("click", () => {
+      const target =
+        panel.querySelector("[data-run-target]")?.value ?? "";
+      const commandArguments =
+        panel.querySelector("[data-run-arguments]")?.value ?? "";
+      const environment =
+        panel.querySelector("[data-run-environment]")?.value ?? "";
+      void runNativeAction(
+        appid,
+        buildRunCommandPayload({
+          target,
+          arguments: commandArguments,
+          environment,
+        }),
+        "运行命令",
+        panel,
+      );
+    });
+
+    for (const button of panel.querySelectorAll(
+      "[data-install-dependency]",
+    )) {
+      button.addEventListener("click", () => {
+        const dependencyId = button.dataset.installDependency;
+        const dependency = dependencies.find(
+          (candidate) => candidate.id === dependencyId,
+        );
+        if (!dependency) {
+          return;
+        }
+        void runNativeAction(
+          appid,
+          buildDependencyPayload(dependency.id),
+          `安装 ${dependency.name}`,
+          panel,
+        );
+      });
+    }
+
+    const search = panel.querySelector("[data-dependency-search]");
+    search?.addEventListener("input", () => {
+      const query = search.value.trim().toLowerCase();
+      for (const card of panel.querySelectorAll(
+        "[data-dependency-card]",
+      )) {
+        card.hidden =
+          Boolean(query) &&
+          !String(card.dataset.search ?? "").includes(query);
+      }
+    });
   }
 
   function mountControlPanels() {

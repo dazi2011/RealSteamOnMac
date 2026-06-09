@@ -22,15 +22,20 @@ printf '%s' \
 printf '%s\n' 1118200 >"$TMP_ROOT/allowlist.txt"
 printf '%s\n' 0123456789abcdef0123456789abcdef \
     >"$TMP_ROOT/registry-token"
+mkdir -p "$TMP_ROOT/dependencies"
+cp "$ROOT/config/dependencies.json" \
+    "$TMP_ROOT/dependencies/catalog.json"
 
 "$PATCHER" install \
     --steamui-root "$STEAMUI" \
     --ui-source "$UI_SOURCE" \
-    --allowlist "$TMP_ROOT/allowlist.txt"
+    --allowlist "$TMP_ROOT/allowlist.txt" \
+    --dependencies "$TMP_ROOT/dependencies/catalog.json"
 "$PATCHER" install \
     --steamui-root "$STEAMUI" \
     --ui-source "$UI_SOURCE" \
-    --allowlist "$TMP_ROOT/allowlist.txt"
+    --allowlist "$TMP_ROOT/allowlist.txt" \
+    --dependencies "$TMP_ROOT/dependencies/catalog.json"
 "$PATCHER" verify --steamui-root "$STEAMUI"
 
 test "$(grep -o '/realsteamonmac/config.js' "$STEAMUI/index.html" | wc -l)" -eq 1
@@ -39,6 +44,12 @@ grep -q '"appids":\[1118200\]' "$STEAMUI/realsteamonmac/config.js"
 grep -q '"registryToken":"0123456789abcdef0123456789abcdef"' \
     "$STEAMUI/realsteamonmac/config.js"
 grep -q '"defaultCompatTool":"realsteamonmac-dxmt"' \
+    "$STEAMUI/realsteamonmac/config.js"
+grep -q '"actionEndpoint":"http://127.0.0.1:57344/action"' \
+    "$STEAMUI/realsteamonmac/config.js"
+grep -q '"jobEndpoint":"http://127.0.0.1:57344/job"' \
+    "$STEAMUI/realsteamonmac/config.js"
+grep -q '"id":"vcrun2022"' \
     "$STEAMUI/realsteamonmac/config.js"
 test "$(grep -o '\"renderer\":\"' \
     "$STEAMUI/realsteamonmac/config.js" | wc -l)" -eq 4

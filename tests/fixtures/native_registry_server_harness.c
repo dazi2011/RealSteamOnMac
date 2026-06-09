@@ -205,6 +205,120 @@ static int request_config(
       response, response_capacity);
 }
 
+static int request_action(
+    uint16_t port,
+    const char *token,
+    uint32_t appid,
+    const char *payload,
+    char *response,
+    size_t response_capacity) {
+  char request[4096];
+  size_t payload_length = strlen(payload);
+  int request_length = snprintf(
+      request, sizeof(request),
+      "POST /action?token=%s&appid=%u HTTP/1.1\r\n"
+      "Host: 127.0.0.1:%u\r\n"
+      "Content-Type: text/plain\r\n"
+      "Content-Length: %zu\r\n"
+      "Connection: close\r\n\r\n"
+      "%s",
+      token, (unsigned int)appid, (unsigned int)port,
+      payload_length, payload);
+  if (
+      request_length <= 0 ||
+      request_length >= (int)sizeof(request)
+  ) {
+    return -1;
+  }
+  return send_request_capture(
+      port, request, (size_t)request_length,
+      response, response_capacity);
+}
+
+static int request_job(
+    uint16_t port,
+    const char *token,
+    uint32_t appid,
+    const char *job_id,
+    char *response,
+    size_t response_capacity) {
+  char request[2048];
+  int request_length = snprintf(
+      request, sizeof(request),
+      "GET /job?token=%s&appid=%u&job=%s HTTP/1.1\r\n"
+      "Host: 127.0.0.1:%u\r\n"
+      "Connection: close\r\n\r\n",
+      token, (unsigned int)appid, job_id, (unsigned int)port);
+  if (
+      request_length <= 0 ||
+      request_length >= (int)sizeof(request)
+  ) {
+    return -1;
+  }
+  return send_request_capture(
+      port, request, (size_t)request_length,
+      response, response_capacity);
+}
+
+static bool make_directory(const char *path) {
+  return mkdir(path, 0700) == 0 || errno == EEXIST;
+}
+
+static bool prepare_fake_runtime(
+    const char *home, const char *job_root) {
+  char library[1024];
+  char application_support[1024];
+  char support[1024];
+  char runtimes[1024];
+  char bin[1024];
+  char runtime[1200];
+  if (
+      snprintf(library, sizeof(library), "%s/Library", home) >=
+          (int)sizeof(library) ||
+      snprintf(
+          application_support, sizeof(application_support),
+          "%s/Application Support", library) >=
+          (int)sizeof(application_support) ||
+      snprintf(
+          support, sizeof(support),
+          "%s/RealSteamOnMac", application_support) >=
+          (int)sizeof(support) ||
+      snprintf(runtimes, sizeof(runtimes), "%s/runtimes", support) >=
+          (int)sizeof(runtimes) ||
+      snprintf(bin, sizeof(bin), "%s/bin", runtimes) >=
+          (int)sizeof(bin) ||
+      snprintf(
+          runtime, sizeof(runtime),
+          "%s/realsteamonmac-runtime", bin) >= (int)sizeof(runtime) ||
+      !make_directory(library) ||
+      !make_directory(application_support) ||
+      !make_directory(support) ||
+      !make_directory(runtimes) ||
+      !make_directory(bin) ||
+      !make_directory(job_root)
+  ) {
+    return false;
+  }
+  FILE *stream = fopen(runtime, "w");
+  if (stream == NULL) {
+    return false;
+  }
+  fputs(
+      "import json, os, pathlib, sys\n"
+      "def value(name): return sys.argv[sys.argv.index(name) + 1]\n"
+      "appid = value('--appid')\n"
+      "job = value('--job-id')\n"
+      "root = pathlib.Path(os.environ['REALSTEAMONMAC_JOB_ROOT']) / appid\n"
+      "root.mkdir(parents=True, exist_ok=True)\n"
+      "path = root / (job + '.json')\n"
+      "path.write_text(json.dumps({'schema': 1, 'appid': int(appid), "
+      "'job_id': job, 'action': 'fixture', 'state': 'completed'}) + '\\n')\n"
+      "os.chmod(path, 0o600)\n",
+      stream);
+  bool success = fclose(stream) == 0 && chmod(runtime, 0600) == 0;
+  return success;
+}
+
 static const char *response_body(const char *response) {
   const char *separator = strstr(response, "\r\n\r\n");
   return separator != NULL ? separator + 4 : NULL;
@@ -237,6 +351,18 @@ int main(int argc, char **argv) {
           config_root, 1) != 0
   ) {
     perror("setenv");
+    return 2;
+  }
+  char job_root[1024];
+  if (
+      snprintf(
+          job_root, sizeof(job_root),
+          "%s/jobs", config_root) >= (int)sizeof(job_root) ||
+      setenv("HOME", config_root, 1) != 0 ||
+      setenv("REALSTEAMONMAC_JOB_ROOT", job_root, 1) != 0 ||
+      !prepare_fake_runtime(config_root, job_root)
+  ) {
+    fputs("could not prepare fake action runtime\n", stderr);
     return 2;
   }
 
@@ -278,6 +404,61 @@ int main(int argc, char **argv) {
       strstr(body, "\"msync\": true") == NULL
   ) {
     fputs("default runtime config response failed\n", stderr);
+    return 1;
+  }
+
+  const char *action_payload =
+      "action=run-command&target=Fixture.exe&"
+      "arguments=&environment=";
+  status = request_action(
+      port, TEST_TOKEN, 1118200,
+      action_payload, response, sizeof(response));
+  body = response_body(response);
+  char job_id[33];
+  memset(job_id, 0, sizeof(job_id));
+  if (status == 202 && body != NULL) {
+    const char *start = strstr(body, "\"job_id\":\"");
+    if (start != NULL) {
+      start += strlen("\"job_id\":\"");
+      const char *end = strchr(start, '"');
+      if (end != NULL && end - start == 32) {
+        memcpy(job_id, start, 32);
+      }
+    }
+  }
+  if (job_id[0] == '\0') {
+    fputs("authorized action did not return a job ID\n", stderr);
+    return 1;
+  }
+  int job_status = 404;
+  for (int attempt = 0; attempt < 200 && job_status == 404; ++attempt) {
+    job_status = request_job(
+        port, TEST_TOKEN, 1118200, job_id,
+        response, sizeof(response));
+    if (job_status == 404) {
+      usleep(10000);
+    }
+  }
+  body = response_body(response);
+  if (
+      job_status != 200 || body == NULL ||
+      strstr(body, "\"state\": \"completed\"") == NULL
+  ) {
+    fputs("action job status did not complete\n", stderr);
+    return 1;
+  }
+  if (
+      request_action(
+          port, TEST_TOKEN, 42,
+          action_payload, response, sizeof(response)) != 403 ||
+      request_action(
+          port, "ffffffffffffffffffffffffffffffff",
+          1118200, action_payload, response, sizeof(response)) != 403 ||
+      request_job(
+          port, TEST_TOKEN, 1118200, "../escape",
+          response, sizeof(response)) != 403
+  ) {
+    fputs("action job authorization or path validation failed\n", stderr);
     return 1;
   }
 

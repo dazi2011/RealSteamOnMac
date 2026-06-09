@@ -5,10 +5,13 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
 import tempfile
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,6 +21,37 @@ STEAMWORKS_RENDERERS = ("dxmt", "dxvk", "wined3d")
 # People Playground's .NET mod compiler mistakes its Wine PID for a macOS PID.
 # It can therefore survive the game indefinitely and keep Steam's AppID active.
 POST_EXIT_PREFIX_KILL_APPIDS = frozenset((1118200,))
+ACTION_JOB_ID_PATTERN = re.compile(r"[0-9a-f]{32}")
+ENVIRONMENT_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+RESERVED_ENVIRONMENT_NAMES = frozenset(
+    (
+        "HOME",
+        "PATH",
+        "WINEPREFIX",
+        "WINEDLLOVERRIDES",
+        "SteamAppId",
+        "SteamGameId",
+        "STEAM_COMPAT_APP_ID",
+        "STEAM_COMPAT_DATA_PATH",
+        "STEAM_COMPAT_CLIENT_INSTALL_PATH",
+    )
+)
+RESERVED_ENVIRONMENT_NAMES_UPPER = frozenset(
+    name.upper() for name in RESERVED_ENVIRONMENT_NAMES
+)
+RESERVED_ENVIRONMENT_PREFIXES = (
+    "DYLD_",
+    "REALSTEAMONMAC_",
+    "STEAM_",
+)
+DEPENDENCY_DOWNLOAD_HOSTS = frozenset(
+    (
+        "aka.ms",
+        "download.microsoft.com",
+        "download.visualstudio.microsoft.com",
+        "go.microsoft.com",
+    )
+)
 DEFAULT_CONFIG = {
     "renderer": "dxmt",
     "msync": True,
@@ -63,8 +97,54 @@ def default_app_config_root():
     )
 
 
+def default_support_root():
+    configured = os.environ.get("REALSTEAMONMAC_SUPPORT_ROOT")
+    if configured:
+        return Path(configured).expanduser()
+    return (
+        Path.home()
+        / "Library"
+        / "Application Support"
+        / "RealSteamOnMac"
+    )
+
+
+def default_job_root():
+    configured = os.environ.get("REALSTEAMONMAC_JOB_ROOT")
+    if configured:
+        return Path(configured).expanduser()
+    return default_support_root() / "jobs"
+
+
+def default_dependency_catalog():
+    configured = os.environ.get("REALSTEAMONMAC_DEPENDENCY_CATALOG")
+    if configured:
+        return Path(configured).expanduser()
+    return default_support_root() / "dependencies" / "catalog.json"
+
+
+def default_dependency_cache():
+    configured = os.environ.get("REALSTEAMONMAC_DEPENDENCY_CACHE")
+    if configured:
+        return Path(configured).expanduser()
+    return default_support_root() / "dependencies" / "cache"
+
+
+def default_steam_root():
+    configured = os.environ.get("REALSTEAMONMAC_STEAM_ROOT")
+    if configured:
+        return Path(configured).expanduser()
+    return (
+        Path.home()
+        / "Library"
+        / "Application Support"
+        / "Steam"
+    )
+
+
 def atomic_write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.chmod(0o700)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", dir=str(path.parent)
     )
@@ -159,6 +239,159 @@ def resolve_context(executable, explicit_appid=None, explicit_compat_data=None):
         "global_config": default_app_config_root() / f"{appid}.json",
         "logs": state / "logs",
     }
+
+
+def parse_vdf_string_pairs(path):
+    pairs = []
+    pattern = re.compile(
+        r'^\s*"((?:\\.|[^"])*)"\s*"((?:\\.|[^"])*)"\s*$'
+    )
+    try:
+        lines = path.read_text(
+            encoding="utf-8", errors="strict"
+        ).splitlines()
+    except OSError as error:
+        raise RuntimeErrorWithContext(
+            f"could not read Steam VDF file: {path}"
+        ) from error
+    for line in lines:
+        match = pattern.match(line)
+        if not match:
+            continue
+        key = match.group(1).replace(r"\"", '"').replace(r"\\", "\\")
+        value = (
+            match.group(2).replace(r"\"", '"').replace(r"\\", "\\")
+        )
+        pairs.append((key, value))
+    return pairs
+
+
+def steam_library_roots(steam_root=None):
+    root = (
+        Path(steam_root).expanduser().resolve()
+        if steam_root is not None
+        else default_steam_root().resolve()
+    )
+    roots = [root]
+    library_file = root / "steamapps" / "libraryfolders.vdf"
+    if library_file.is_file():
+        for key, value in parse_vdf_string_pairs(library_file):
+            if key != "path":
+                continue
+            candidate = Path(value).expanduser().resolve()
+            if candidate not in roots:
+                roots.append(candidate)
+    return roots
+
+
+def parse_app_manifest(path, expected_appid):
+    values = dict(parse_vdf_string_pairs(path))
+    try:
+        appid = int(values.get("appid", ""), 10)
+    except ValueError as error:
+        raise RuntimeErrorWithContext(
+            f"Steam app manifest has an invalid AppID: {path}"
+        ) from error
+    installdir = values.get("installdir")
+    if appid != expected_appid or not installdir:
+        raise RuntimeErrorWithContext(
+            f"Steam app manifest is inconsistent: {path}"
+        )
+    if (
+        Path(installdir).name != installdir
+        or installdir in (".", "..")
+    ):
+        raise RuntimeErrorWithContext(
+            f"Steam install directory is unsafe: {installdir}"
+        )
+    return installdir
+
+
+def find_app_installation(appid, steam_root=None):
+    appid = parse_appid(appid)
+    for library_root in steam_library_roots(steam_root):
+        steamapps = library_root / "steamapps"
+        manifest = steamapps / f"appmanifest_{appid}.acf"
+        if not manifest.is_file():
+            continue
+        installdir = parse_app_manifest(manifest, appid)
+        install_path = (steamapps / "common" / installdir).resolve()
+        if not install_path.is_dir():
+            raise RuntimeErrorWithContext(
+                f"Steam game install directory is missing: {install_path}"
+            )
+        return {
+            "appid": appid,
+            "steamapps": steamapps.resolve(),
+            "manifest": manifest.resolve(),
+            "install_path": install_path,
+            "compat_data": (
+                steamapps / "compatdata" / str(appid)
+            ).resolve(),
+        }
+    raise RuntimeErrorWithContext(
+        f"Steam app manifest was not found for AppID {appid}"
+    )
+
+
+def discover_default_executable(installation):
+    install_path = installation["install_path"]
+    top_level = sorted(
+        path for path in install_path.glob("*.exe") if path.is_file()
+    )
+    candidates = top_level
+    if not candidates:
+        candidates = []
+        for path in install_path.rglob("*.exe"):
+            if path.is_file():
+                candidates.append(path)
+            if len(candidates) >= 5000:
+                break
+        candidates.sort()
+    if not candidates:
+        raise RuntimeErrorWithContext(
+            f"no Windows executable was found in {install_path}"
+        )
+
+    preferred_name = re.sub(
+        r"[^a-z0-9]", "", install_path.name.lower()
+    )
+    rejected_stems = (
+        "crashhandler",
+        "unins",
+        "uninstall",
+        "setup",
+        "installer",
+    )
+
+    def rank(path):
+        stem = re.sub(r"[^a-z0-9]", "", path.stem.lower())
+        rejected = any(token in stem for token in rejected_stems)
+        exact = stem == preferred_name
+        return (rejected, not exact, len(path.parts), str(path).lower())
+
+    for candidate in sorted(candidates, key=rank):
+        try:
+            with candidate.open("rb") as stream:
+                if stream.read(2) == b"MZ":
+                    return candidate.resolve()
+        except OSError:
+            continue
+    raise RuntimeErrorWithContext(
+        f"no valid PE executable was found in {install_path}"
+    )
+
+
+def resolve_app_context(appid, steam_root=None):
+    installation = find_app_installation(appid, steam_root)
+    executable = discover_default_executable(installation)
+    context = resolve_context(
+        executable,
+        str(installation["appid"]),
+        str(installation["compat_data"]),
+    )
+    context["install_path"] = installation["install_path"]
+    return context
 
 
 def normalize_config(value):
@@ -748,6 +981,548 @@ def prepare(context, runtime_root, config):
     return package, manifest, wine_root, wine64, environment
 
 
+def parse_action_payload(payload):
+    if not isinstance(payload, str) or len(payload.encode("utf-8")) > 8192:
+        raise RuntimeErrorWithContext("action payload is invalid")
+    try:
+        parsed = urllib.parse.parse_qs(
+            payload,
+            keep_blank_values=True,
+            strict_parsing=True,
+            max_num_fields=8,
+        )
+    except ValueError as error:
+        raise RuntimeErrorWithContext(
+            "action payload is malformed"
+        ) from error
+    if any(len(values) != 1 for values in parsed.values()):
+        raise RuntimeErrorWithContext(
+            "action payload contains duplicate fields"
+        )
+    fields = {key: values[0] for key, values in parsed.items()}
+    action = fields.get("action")
+    allowed = {
+        "run-command": {
+            "action",
+            "target",
+            "arguments",
+            "environment",
+        },
+        "install-dependency": {"action", "dependency"},
+    }
+    if action not in allowed or set(fields) != allowed[action]:
+        raise RuntimeErrorWithContext(
+            "action payload contains unsupported fields"
+        )
+    return fields
+
+
+def resolve_command_target(context, target):
+    raw = target.strip()
+    if not raw:
+        candidate = context["executable"]
+    elif re.match(r"^[A-Za-z]:[\\/]", raw):
+        if raw[0].lower() != "c":
+            raise RuntimeErrorWithContext(
+                "only the Wine C: drive is available"
+            )
+        relative = raw[3:].replace("\\", "/")
+        candidate = context["prefix"] / "drive_c" / relative
+    elif raw.startswith("prefix:"):
+        candidate = context["prefix"] / raw[len("prefix:") :].lstrip(
+            "/\\"
+        )
+    elif raw.startswith("install:"):
+        candidate = context["install_path"] / raw[
+            len("install:") :
+        ].lstrip("/\\")
+    else:
+        raw_path = Path(raw).expanduser()
+        candidate = (
+            raw_path
+            if raw_path.is_absolute()
+            else context["install_path"] / raw_path
+        )
+
+    resolved = candidate.resolve()
+    allowed_roots = (
+        context["install_path"].resolve(),
+        context["prefix"].resolve(),
+    )
+    if not any(
+        resolved == root or resolved.is_relative_to(root)
+        for root in allowed_roots
+    ):
+        raise RuntimeErrorWithContext(
+            "run-command target must stay inside the game or its prefix"
+        )
+    if not resolved.is_file():
+        raise RuntimeErrorWithContext(
+            f"run-command target does not exist: {resolved}"
+        )
+    try:
+        with resolved.open("rb") as stream:
+            magic = stream.read(2)
+    except OSError as error:
+        raise RuntimeErrorWithContext(
+            f"could not inspect run-command target: {resolved}"
+        ) from error
+    if magic != b"MZ":
+        raise RuntimeErrorWithContext(
+            f"run-command target is not a PE executable: {resolved}"
+        )
+    return resolved
+
+
+def parse_command_arguments(value):
+    if len(value) > 8192:
+        raise RuntimeErrorWithContext(
+            "run-command arguments are too long"
+        )
+    try:
+        arguments = shlex.split(value, posix=True)
+    except ValueError as error:
+        raise RuntimeErrorWithContext(
+            "run-command arguments are malformed"
+        ) from error
+    if len(arguments) > 128 or any(
+        len(argument) > 4096 for argument in arguments
+    ):
+        raise RuntimeErrorWithContext(
+            "run-command argument vector is too large"
+        )
+    return arguments
+
+
+def parse_command_environment(value):
+    if len(value) > 8192:
+        raise RuntimeErrorWithContext(
+            "run-command environment is too large"
+        )
+    result = {}
+    for raw_line in value.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if len(result) >= 32 or "=" not in line:
+            raise RuntimeErrorWithContext(
+                "run-command environment is malformed"
+            )
+        name, variable_value = line.split("=", 1)
+        if (
+            not ENVIRONMENT_NAME_PATTERN.fullmatch(name)
+            or len(variable_value) > 2048
+            or "\0" in variable_value
+        ):
+            raise RuntimeErrorWithContext(
+                f"run-command environment variable is invalid: {name}"
+            )
+        upper_name = name.upper()
+        if (
+            upper_name in RESERVED_ENVIRONMENT_NAMES_UPPER
+            or any(
+                upper_name.startswith(prefix)
+                for prefix in RESERVED_ENVIRONMENT_PREFIXES
+            )
+        ):
+            raise RuntimeErrorWithContext(
+                f"run-command cannot override reserved variable: {name}"
+            )
+        if name in result:
+            raise RuntimeErrorWithContext(
+                f"run-command environment variable is duplicated: {name}"
+            )
+        result[name] = variable_value
+    return result
+
+
+def job_paths(appid, job_id):
+    appid = parse_appid(appid)
+    if not ACTION_JOB_ID_PATTERN.fullmatch(job_id):
+        raise RuntimeErrorWithContext("action job ID is invalid")
+    directory = default_job_root() / str(appid)
+    return {
+        "status": directory / f"{job_id}.json",
+        "log": directory / f"{job_id}.log",
+    }
+
+
+def write_job_status(path, appid, job_id, action, state, **values):
+    atomic_write_json(
+        path,
+        {
+            "schema": 1,
+            "appid": appid,
+            "job_id": job_id,
+            "action": action,
+            "state": state,
+            **values,
+        },
+    )
+
+
+def open_private_log(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.chmod(0o700)
+    descriptor = os.open(
+        path,
+        os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+        0o600,
+    )
+    return os.fdopen(descriptor, "a", encoding="utf-8")
+
+
+def run_job_process(context, command, environment, log_path, description):
+    with open_private_log(log_path) as stream:
+        stream.write(f"\n[{utc_timestamp()}] {description}\n")
+        stream.write(f"$ {shlex.join(str(part) for part in command)}\n")
+        stream.flush()
+        return subprocess.run(
+            [str(part) for part in command],
+            cwd=str(context["install_path"]),
+            env=environment,
+            stdout=stream,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+
+
+def load_dependency_catalog(path=None):
+    catalog_path = (
+        Path(path).expanduser()
+        if path is not None
+        else default_dependency_catalog()
+    )
+    try:
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeErrorWithContext(
+            f"dependency catalog is invalid: {catalog_path}"
+        ) from error
+    dependencies = catalog.get("dependencies")
+    if catalog.get("schema") != 1 or not isinstance(
+        dependencies, list
+    ):
+        raise RuntimeErrorWithContext(
+            f"dependency catalog schema is unsupported: {catalog_path}"
+        )
+    normalized = {}
+    for dependency in dependencies:
+        if not isinstance(dependency, dict):
+            raise RuntimeErrorWithContext(
+                f"dependency catalog entry is invalid: {catalog_path}"
+            )
+        dependency_id = dependency.get("id")
+        filename = dependency.get("filename")
+        url = dependency.get("url")
+        digest = dependency.get("sha256")
+        size = dependency.get("size")
+        arguments = dependency.get("arguments")
+        success_codes = dependency.get("success_codes")
+        parsed_url = urllib.parse.urlparse(url or "")
+        valid = (
+            isinstance(dependency_id, str)
+            and re.fullmatch(r"[a-z0-9][a-z0-9-]{1,31}", dependency_id)
+            and dependency_id not in normalized
+            and isinstance(dependency.get("name"), str)
+            and bool(dependency["name"])
+            and isinstance(dependency.get("description"), str)
+            and isinstance(dependency.get("publisher"), str)
+            and isinstance(filename, str)
+            and Path(filename).name == filename
+            and filename.lower().endswith(".exe")
+            and parsed_url.scheme == "https"
+            and parsed_url.hostname in DEPENDENCY_DOWNLOAD_HOSTS
+            and isinstance(digest, str)
+            and re.fullmatch(r"[0-9a-f]{64}", digest)
+            and isinstance(size, int)
+            and 0 < size <= 512 * 1024 * 1024
+            and isinstance(arguments, list)
+            and all(
+                isinstance(argument, str) and len(argument) <= 256
+                for argument in arguments
+            )
+            and isinstance(success_codes, list)
+            and bool(success_codes)
+            and all(
+                isinstance(code, int) and 0 <= code <= 65535
+                for code in success_codes
+            )
+        )
+        if not valid:
+            raise RuntimeErrorWithContext(
+                f"dependency catalog entry is invalid: {dependency_id}"
+            )
+        normalized[dependency_id] = dependency
+    return normalized
+
+
+def download_dependency(dependency, cache_root=None):
+    cache = (
+        Path(cache_root).expanduser()
+        if cache_root is not None
+        else default_dependency_cache()
+    )
+    cache.mkdir(parents=True, exist_ok=True)
+    cache.chmod(0o700)
+    destination = (
+        cache
+        / (
+            f"{dependency['id']}-"
+            f"{dependency['sha256'][:16]}-{dependency['filename']}"
+        )
+    )
+    if destination.is_file():
+        if (
+            destination.stat().st_size == dependency["size"]
+            and file_sha256(destination) == dependency["sha256"]
+        ):
+            return destination
+        destination.unlink()
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{dependency['id']}.", dir=str(cache)
+    )
+    temporary = Path(temporary_name)
+    try:
+        request = urllib.request.Request(
+            dependency["url"],
+            headers={"User-Agent": "RealSteamOnMac/1"},
+        )
+        total = 0
+        digest = hashlib.sha256()
+        with urllib.request.urlopen(request, timeout=30) as response:
+            final_url = (
+                response.geturl()
+                if callable(getattr(response, "geturl", None))
+                else dependency["url"]
+            )
+            parsed_final_url = urllib.parse.urlparse(final_url)
+            if (
+                parsed_final_url.scheme != "https"
+                or parsed_final_url.hostname
+                not in DEPENDENCY_DOWNLOAD_HOSTS
+            ):
+                raise RuntimeErrorWithContext(
+                    "dependency download redirected to an untrusted host"
+                )
+            with os.fdopen(descriptor, "wb") as output:
+                descriptor = -1
+                for chunk in iter(
+                    lambda: response.read(1024 * 1024), b""
+                ):
+                    total += len(chunk)
+                    if total > dependency["size"]:
+                        raise RuntimeErrorWithContext(
+                            "dependency download exceeded its expected size"
+                        )
+                    digest.update(chunk)
+                    output.write(chunk)
+                output.flush()
+                os.fsync(output.fileno())
+        if (
+            total != dependency["size"]
+            or digest.hexdigest() != dependency["sha256"]
+        ):
+            raise RuntimeErrorWithContext(
+                "dependency download did not match its manifest"
+            )
+        temporary.chmod(0o600)
+        os.replace(temporary, destination)
+        return destination
+    except OSError as error:
+        raise RuntimeErrorWithContext(
+            f"dependency download failed: {dependency['id']}"
+        ) from error
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if temporary.exists():
+            temporary.unlink()
+
+
+def execute_run_command_action(context, runtime_root, fields, log_path):
+    config = load_config(context)
+    _, _, _, wine64, environment = prepare(
+        context, runtime_root, config
+    )
+    target = resolve_command_target(context, fields["target"])
+    arguments = parse_command_arguments(fields["arguments"])
+    environment.update(
+        parse_command_environment(fields["environment"])
+    )
+    command = [wine64, target, *arguments]
+    log_event(
+        context,
+        {
+            "event": "run-command",
+            "target": str(target),
+            "arguments": arguments,
+        },
+    )
+    result = run_job_process(
+        context,
+        command,
+        environment,
+        log_path,
+        "run command",
+    )
+    return result.returncode, {
+        "target": str(target),
+        "renderer": config["renderer"],
+    }
+
+
+def execute_dependency_action(context, runtime_root, fields, log_path):
+    catalog = load_dependency_catalog()
+    dependency = catalog.get(fields["dependency"])
+    if dependency is None:
+        raise RuntimeErrorWithContext(
+            f"dependency is not in the catalog: {fields['dependency']}"
+        )
+    config = load_config(context)
+    _, manifest, _, wine64, environment = prepare(
+        context, runtime_root, config
+    )
+    installer = download_dependency(dependency)
+    command = [wine64, installer, *dependency["arguments"]]
+    result = run_job_process(
+        context,
+        command,
+        environment,
+        log_path,
+        f"install dependency {dependency['id']}",
+    )
+    if result.returncode not in dependency["success_codes"]:
+        raise RuntimeErrorWithContext(
+            f"dependency installer exited with {result.returncode}"
+        )
+    receipt = (
+        context["state"]
+        / "dependencies"
+        / f"{dependency['id']}.json"
+    )
+    atomic_write_json(
+        receipt,
+        {
+            "schema": 1,
+            "dependency": dependency["id"],
+            "name": dependency["name"],
+            "sha256": dependency["sha256"],
+            "package_id": manifest["package_id"],
+            "renderer": config["renderer"],
+            "installed_at": utc_timestamp(),
+            "exit_code": result.returncode,
+        },
+    )
+    log_event(
+        context,
+        {
+            "event": "dependency-install",
+            "dependency": dependency["id"],
+            "exit_code": result.returncode,
+        },
+    )
+    return result.returncode, {
+        "dependency": dependency["id"],
+        "receipt": str(receipt),
+        "renderer": config["renderer"],
+    }
+
+
+def action_job(args):
+    appid = parse_appid(args.appid)
+    paths = job_paths(appid, args.job_id)
+    action = "unknown"
+    started_at = utc_timestamp()
+    try:
+        fields = parse_action_payload(args.payload)
+        action = fields["action"]
+        write_job_status(
+            paths["status"],
+            appid,
+            args.job_id,
+            action,
+            "running",
+            started_at=started_at,
+            log_path=str(paths["log"]),
+        )
+        context = resolve_app_context(appid)
+        runtime_root = Path(args.runtime_root).expanduser().resolve()
+        context["state"].mkdir(parents=True, exist_ok=True)
+        context["state"].chmod(0o700)
+        action_lock_path = context["state"] / "action.lock"
+        with action_lock_path.open("a+", encoding="utf-8") as action_lock:
+            action_lock_path.chmod(0o600)
+            fcntl.flock(action_lock.fileno(), fcntl.LOCK_EX)
+            if action == "run-command":
+                exit_code, result = execute_run_command_action(
+                    context, runtime_root, fields, paths["log"]
+                )
+                if exit_code != 0:
+                    raise RuntimeErrorWithContext(
+                        f"run command exited with {exit_code}"
+                    )
+            else:
+                exit_code, result = execute_dependency_action(
+                    context, runtime_root, fields, paths["log"]
+                )
+        write_job_status(
+            paths["status"],
+            appid,
+            args.job_id,
+            action,
+            "completed",
+            started_at=started_at,
+            finished_at=utc_timestamp(),
+            exit_code=exit_code,
+            log_path=str(paths["log"]),
+            result=result,
+        )
+        return 0
+    except Exception as error:
+        message = (
+            str(error)
+            if isinstance(error, RuntimeErrorWithContext)
+            else f"unexpected action failure: {error}"
+        )
+        write_job_status(
+            paths["status"],
+            appid,
+            args.job_id,
+            action,
+            "failed",
+            started_at=started_at,
+            finished_at=utc_timestamp(),
+            exit_code=1,
+            log_path=str(paths["log"]),
+            message=message,
+        )
+        with open_private_log(paths["log"]) as stream:
+            stream.write(f"[{utc_timestamp()}] ERROR: {message}\n")
+        print(f"error: {message}", file=sys.stderr)
+        return 1
+
+
+def list_dependencies(args):
+    dependencies = load_dependency_catalog(args.catalog)
+    public = [
+        {
+            key: dependency[key]
+            for key in (
+                "id",
+                "name",
+                "description",
+                "publisher",
+                "size",
+            )
+        }
+        for dependency in dependencies.values()
+    ]
+    print(json.dumps(public, indent=2, sort_keys=True))
+    return 0
+
+
 def plan(context, runtime_root, config, arguments):
     package, manifest, wine_root, wine64 = load_package(
         runtime_root, config["renderer"]
@@ -949,6 +1724,23 @@ def build_parser():
     show_parser = subparsers.add_parser("show-config")
     add_context_arguments(show_parser)
     show_parser.set_defaults(handler=show_config)
+
+    action_parser = subparsers.add_parser("action")
+    action_parser.add_argument("--appid", required=True)
+    action_parser.add_argument("--job-id", required=True)
+    action_parser.add_argument("--payload", required=True)
+    action_parser.add_argument(
+        "--runtime-root", default=str(default_runtime_root())
+    )
+    action_parser.set_defaults(handler=action_job)
+
+    dependencies_parser = subparsers.add_parser(
+        "list-dependencies"
+    )
+    dependencies_parser.add_argument(
+        "--catalog", default=str(default_dependency_catalog())
+    )
+    dependencies_parser.set_defaults(handler=list_dependencies)
     return parser
 
 

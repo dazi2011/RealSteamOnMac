@@ -11,6 +11,7 @@ ENTITLEMENTS="$ROOT/config/steam-runtime-entitlements.plist"
 COMPAT_SOURCE="$ROOT/compat-tool"
 PATCHER_SOURCE="$ROOT/script/patch_steamui.py"
 UI_SOURCE="$ROOT/ui/realsteamonmac_ui.js"
+DEPENDENCY_SOURCE="$ROOT/config/dependencies.json"
 SUPPORT_ROOT="$HOME/Library/Application Support/RealSteamOnMac"
 CLEAN_BACKUP=""
 
@@ -90,6 +91,10 @@ done
 }
 [ -f "$UI_SOURCE" ] || {
     echo "Steam UI source is missing: $UI_SOURCE" >&2
+    exit 1
+}
+[ -f "$DEPENDENCY_SOURCE" ] || {
+    echo "dependency catalog is missing: $DEPENDENCY_SOURCE" >&2
     exit 1
 }
 
@@ -205,6 +210,7 @@ ENGINE_TARGET="$SUPPORT_ROOT/libRealSteamNativeEngine.dylib"
 COMPAT_TARGET="$SUPPORT_ROOT/compat-tool"
 PATCHER_TARGET="$SUPPORT_ROOT/patch_steamui.py"
 UI_TARGET="$SUPPORT_ROOT/ui/realsteamonmac_ui.js"
+DEPENDENCY_TARGET="$SUPPORT_ROOT/dependencies/catalog.json"
 
 cp "$HOOK_SOURCE" "$HOOK_TARGET"
 cp "$ENGINE_SOURCE" "$ENGINE_TARGET"
@@ -217,6 +223,12 @@ mkdir -p "$SUPPORT_ROOT/ui"
 cp "$PATCHER_SOURCE" "$PATCHER_TARGET"
 cp "$UI_SOURCE" "$UI_TARGET"
 chmod 0755 "$PATCHER_TARGET"
+mkdir -p "$SUPPORT_ROOT/dependencies"
+chmod 0700 "$SUPPORT_ROOT/dependencies"
+DEPENDENCY_TEMP="$SUPPORT_ROOT/dependencies/.catalog.json.$$"
+cp "$DEPENDENCY_SOURCE" "$DEPENDENCY_TEMP"
+chmod 0600 "$DEPENDENCY_TEMP"
+mv "$DEPENDENCY_TEMP" "$DEPENDENCY_TARGET"
 
 if [ ! -f "$SUPPORT_ROOT/allowlist.txt" ]; then
     cp "$ROOT/config/allowlist.txt" "$SUPPORT_ROOT/allowlist.txt"
@@ -237,7 +249,8 @@ fi
 "$PATCHER_TARGET" install \
     --steamui-root "$STEAMUI_ROOT" \
     --ui-source "$UI_TARGET" \
-    --allowlist "$SUPPORT_ROOT/allowlist.txt"
+    --allowlist "$SUPPORT_ROOT/allowlist.txt" \
+    --dependencies "$DEPENDENCY_TARGET"
 
 # Preserve the clean Valve bootstrap as a standalone fallback executable.
 SIGNED_BOOTSTRAP="$TMP_ROOT/steam_osx.original"
@@ -312,5 +325,6 @@ printf 'native_engine=%s\n' "$ENGINE_TARGET"
 printf 'compat_tools=%s\n' "$COMPAT_TARGET"
 printf 'allowlist=%s\n' "$SUPPORT_ROOT/allowlist.txt"
 printf 'registry_token=%s\n' "$REGISTRY_TOKEN"
+printf 'dependencies=%s\n' "$DEPENDENCY_TARGET"
 printf 'steamui=%s\n' "$STEAMUI_ROOT"
 printf 'rollback_source=%s\n' "$CLEAN_BACKUP"

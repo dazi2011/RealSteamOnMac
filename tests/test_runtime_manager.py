@@ -1,9 +1,11 @@
 import importlib.util
+import io
 import json
 import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -23,7 +25,15 @@ class RuntimeManagerTests(unittest.TestCase):
             {
                 "REALSTEAMONMAC_APP_CONFIG_ROOT": str(
                     self.root / "app-configs"
-                )
+                ),
+                "REALSTEAMONMAC_STEAM_ROOT": str(self.root),
+                "REALSTEAMONMAC_JOB_ROOT": str(self.root / "jobs"),
+                "REALSTEAMONMAC_DEPENDENCY_CATALOG": str(
+                    self.root / "dependencies.json"
+                ),
+                "REALSTEAMONMAC_DEPENDENCY_CACHE": str(
+                    self.root / "dependency-cache"
+                ),
             },
         )
         self.environment.start()
@@ -32,6 +42,39 @@ class RuntimeManagerTests(unittest.TestCase):
         self.game.mkdir(parents=True)
         self.executable = self.game / "Fixture.exe"
         self.executable.write_bytes(b"MZfixture")
+        (self.steamapps / "appmanifest_1118200.acf").write_text(
+            '"AppState"\n{\n'
+            '\t"appid"\t\t"1118200"\n'
+            '\t"installdir"\t\t"Fixture Game"\n'
+            "}\n",
+            encoding="utf-8",
+        )
+        self.dependency_bytes = b"MZdependency-fixture"
+        self.dependency_digest = runtime.hashlib.sha256(
+            self.dependency_bytes
+        ).hexdigest()
+        (self.root / "dependencies.json").write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "dependencies": [
+                        {
+                            "id": "fixture-redist",
+                            "name": "Fixture Redistributable",
+                            "description": "Fixture dependency",
+                            "publisher": "Microsoft",
+                            "filename": "fixture.exe",
+                            "url": "https://aka.ms/fixture.exe",
+                            "sha256": self.dependency_digest,
+                            "size": len(self.dependency_bytes),
+                            "arguments": ["/quiet"],
+                            "success_codes": [0],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
         self.runtime_root = self.root / "runtimes"
         package = self.runtime_root / "packages" / "fixture"
         for renderer in runtime.RENDERERS:
@@ -101,6 +144,248 @@ class RuntimeManagerTests(unittest.TestCase):
             / "1118200"
             / "pfx",
         )
+
+    def test_resolves_installed_app_from_steam_manifest(self):
+        context = runtime.resolve_app_context("1118200")
+        self.assertEqual(context["executable"], self.executable.resolve())
+        self.assertEqual(context["install_path"], self.game.resolve())
+        self.assertEqual(
+            context["compat_data"],
+            self.steamapps.resolve() / "compatdata" / "1118200",
+        )
+
+    def test_resolved_app_context_keeps_the_full_install_root(self):
+        nested = self.game / "bin" / "Fixture.exe"
+        nested.parent.mkdir()
+        self.executable.unlink()
+        nested.write_bytes(b"MZnested-fixture")
+
+        context = runtime.resolve_app_context("1118200")
+
+        self.assertEqual(context["executable"], nested.resolve())
+        self.assertEqual(context["install_path"], self.game.resolve())
+        sibling = self.game / "Redist.exe"
+        sibling.write_bytes(b"MZredist")
+        self.assertEqual(
+            runtime.resolve_command_target(context, "Redist.exe"),
+            sibling.resolve(),
+        )
+
+    def test_action_payload_is_fixed_and_rejects_duplicates(self):
+        self.assertEqual(
+            runtime.parse_action_payload(
+                "action=run-command&target=Fixture.exe&"
+                "arguments=-windowed&environment=DXVK_HUD%3D1"
+            ),
+            {
+                "action": "run-command",
+                "target": "Fixture.exe",
+                "arguments": "-windowed",
+                "environment": "DXVK_HUD=1",
+            },
+        )
+        with self.assertRaisesRegex(
+            runtime.RuntimeErrorWithContext, "duplicate"
+        ):
+            runtime.parse_action_payload(
+                "action=install-dependency&dependency=one&dependency=two"
+            )
+
+    def test_run_command_target_cannot_escape_game_or_prefix(self):
+        context = self.context()
+        self.assertEqual(
+            runtime.resolve_command_target(context, "Fixture.exe"),
+            self.executable.resolve(),
+        )
+        outside = self.root / "outside.exe"
+        outside.write_bytes(b"MZoutside")
+        with self.assertRaisesRegex(
+            runtime.RuntimeErrorWithContext, "must stay inside"
+        ):
+            runtime.resolve_command_target(context, str(outside))
+
+    def test_run_command_environment_rejects_reserved_variables(self):
+        self.assertEqual(
+            runtime.parse_command_environment(
+                "DXVK_HUD=fps\nCUSTOM_FLAG=value"
+            ),
+            {"DXVK_HUD": "fps", "CUSTOM_FLAG": "value"},
+        )
+        for value in (
+            "WINEPREFIX=/tmp/escape",
+            "DYLD_INSERT_LIBRARIES=/tmp/payload.dylib",
+            "STEAM_COMPAT_APP_ID=42",
+            "REALSTEAMONMAC_RENDERER=gptk",
+        ):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(
+                    runtime.RuntimeErrorWithContext,
+                    "reserved variable",
+                ):
+                    runtime.parse_command_environment(value)
+
+    def test_dependency_download_requires_manifest_hash_and_size(self):
+        dependency = runtime.load_dependency_catalog()[
+            "fixture-redist"
+        ]
+        with mock.patch.object(
+            runtime.urllib.request,
+            "urlopen",
+            return_value=io.BytesIO(self.dependency_bytes),
+        ):
+            downloaded = runtime.download_dependency(dependency)
+        self.assertEqual(
+            downloaded.read_bytes(), self.dependency_bytes
+        )
+        self.assertEqual(downloaded.stat().st_mode & 0o777, 0o600)
+
+        downloaded.unlink()
+        with mock.patch.object(
+            runtime.urllib.request,
+            "urlopen",
+            return_value=io.BytesIO(b"MZwrong"),
+        ):
+            with self.assertRaisesRegex(
+                runtime.RuntimeErrorWithContext,
+                "did not match",
+            ):
+                runtime.download_dependency(dependency)
+
+    def test_dependency_download_rejects_an_untrusted_redirect(self):
+        dependency = runtime.load_dependency_catalog()[
+            "fixture-redist"
+        ]
+        response = io.BytesIO(self.dependency_bytes)
+        response.geturl = lambda: "https://example.invalid/fixture.exe"
+        with mock.patch.object(
+            runtime.urllib.request,
+            "urlopen",
+            return_value=response,
+        ):
+            with self.assertRaisesRegex(
+                runtime.RuntimeErrorWithContext,
+                "untrusted host",
+            ):
+                runtime.download_dependency(dependency)
+
+    def test_action_job_writes_private_completed_status(self):
+        arguments = SimpleNamespace(
+            appid="1118200",
+            job_id="0123456789abcdef0123456789abcdef",
+            payload=(
+                "action=run-command&target=Fixture.exe&"
+                "arguments=&environment="
+            ),
+            runtime_root=str(self.runtime_root),
+        )
+        with mock.patch.object(
+            runtime,
+            "execute_run_command_action",
+            return_value=(0, {"target": str(self.executable)}),
+        ):
+            self.assertEqual(runtime.action_job(arguments), 0)
+        status_path = runtime.job_paths(
+            1118200, arguments.job_id
+        )["status"]
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+        self.assertEqual(status["state"], "completed")
+        self.assertEqual(status["action"], "run-command")
+        self.assertEqual(status_path.stat().st_mode & 0o777, 0o600)
+        action_lock = (
+            self.steamapps
+            / "compatdata"
+            / "1118200"
+            / "realsteamonmac"
+            / "action.lock"
+        )
+        self.assertEqual(action_lock.stat().st_mode & 0o777, 0o600)
+
+    def test_run_command_executes_an_argv_vector_without_a_shell(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        with mock.patch.object(
+            runtime,
+            "prepare",
+            return_value=(
+                self.package,
+                {"package_id": "fixture"},
+                wine64.parent.parent,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+            ),
+        ), mock.patch.object(
+            runtime,
+            "run_job_process",
+            return_value=mock.Mock(returncode=0),
+        ) as run:
+            exit_code, result = runtime.execute_run_command_action(
+                context,
+                self.runtime_root,
+                {
+                    "target": "Fixture.exe",
+                    "arguments": "--flag;touch 'two words'",
+                    "environment": "CUSTOM_FLAG=value",
+                },
+                self.root / "run-command.log",
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(result["renderer"], "dxmt")
+        self.assertEqual(
+            run.call_args.args[1],
+            [
+                wine64,
+                self.executable.resolve(),
+                "--flag;touch",
+                "two words",
+            ],
+        )
+        self.assertEqual(
+            run.call_args.args[2]["CUSTOM_FLAG"],
+            "value",
+        )
+
+    def test_dependency_action_writes_a_private_prefix_receipt(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        installer = self.root / "vc_redist.x64.exe"
+        installer.write_bytes(self.dependency_bytes)
+        with mock.patch.object(
+            runtime,
+            "prepare",
+            return_value=(
+                self.package,
+                {"package_id": "fixture"},
+                wine64.parent.parent,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+            ),
+        ), mock.patch.object(
+            runtime,
+            "download_dependency",
+            return_value=installer,
+        ), mock.patch.object(
+            runtime,
+            "run_job_process",
+            return_value=mock.Mock(returncode=0),
+        ):
+            exit_code, result = runtime.execute_dependency_action(
+                context,
+                self.runtime_root,
+                {"dependency": "fixture-redist"},
+                self.root / "dependency.log",
+            )
+
+        self.assertEqual(exit_code, 0)
+        receipt = Path(result["receipt"])
+        value = json.loads(receipt.read_text(encoding="utf-8"))
+        self.assertEqual(value["dependency"], "fixture-redist")
+        self.assertEqual(value["package_id"], "fixture")
+        self.assertEqual(receipt.stat().st_mode & 0o777, 0o600)
 
     def test_rejects_non_pe_target(self):
         target = self.game / "not-pe"
