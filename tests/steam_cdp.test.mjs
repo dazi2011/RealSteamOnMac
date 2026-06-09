@@ -5,6 +5,9 @@ import {
   selectSharedContextTarget,
   selectTarget,
 } from "../script/steam_cdp.mjs";
+import {
+  buildRendererSelectionExpression,
+} from "../script/select_people_playground_renderer.mjs";
 
 test("selects the Steam shared JavaScript context", () => {
   const targets = [
@@ -51,5 +54,21 @@ test("selects a Steam target by URL fragment", () => {
     selectTarget(targets, { urlIncludes: "/library/app/1118200" })
       .webSocketDebuggerUrl,
     "ws://tracking",
+  );
+});
+
+test("builds a People Playground renderer selection with fixed scope", () => {
+  const expression = buildRendererSelectionExpression("dxvk");
+
+  assert.match(expression, /const appid = 1118200;/);
+  assert.match(expression, /realsteamonmac-dxvk/);
+  assert.match(expression, /__REALSTEAMONMAC_IS_MANAGED_APP__/);
+  assert.match(expression, /SpecifyCompatTool\(appid, toolName\)/);
+});
+
+test("rejects an unknown People Playground renderer", () => {
+  assert.throws(
+    () => buildRendererSelectionExpression("arbitrary"),
+    /unsupported renderer/,
   );
 });

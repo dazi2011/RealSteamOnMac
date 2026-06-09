@@ -504,6 +504,9 @@
 | Retina UI write | Real checkbox `change` event | Persist per-AppID Retina setting | Saved true, then restored false | PASS |
 | DXMT control restore | Select DXMT and reopen properties | Persist accepted default state | DXMT, MSync true, Retina false | PASS |
 | Startup reconcile rate | Six-second settled counter delta | Fixed cadence without callback amplification | Seven scans, zero additional detail refreshes | PASS |
+| GPTK managed bridge diagnosis | GPTK run-command plus private task log | Explain exit code 3 without guessing | Unity reached D3DMetal, then asserted in managed `lsteamclient` line 375 | PASS |
+| GPTK bridge isolation experiment | Move only ledger-matched bridge DLLs out of the shared PFX | GPTK must launch without corrupting the prefix | Menu/map loading continued for 43 seconds; `WM_CLOSE` exit 0 | PASS |
+| Steamworks renderer reconciliation | DXMT -> GPTK -> DXMT unit fixture | Remove incompatible managed bridge and restore it atomically | Two focused state-transition tests passed | PASS |
 
 ## Error Log
 
@@ -533,6 +536,7 @@
 | 2026-06-09 | Successful live installer run left its two GPTK images mounted | 1 | Removed the fragile mount-list condition, detach unique mount points directly with a force fallback, and passed a real idempotent reinstall cleanup check. |
 | 2026-06-09 | Properties popup had no control panel despite four visible tools | 1 | Added the shared idle-tracker popup window registry and prioritized the compatibility combobox over the page root. |
 | 2026-06-09 | Initial live startup accumulated over one thousand reconcile scans | 1 | Removed per-detail callback reconciliation and widened stale-detail retries to five seconds; settled cadence is now fixed. |
+| 2026-06-09 | GPTK exited with code 3 after DXMT/DXVK Steamworks acceptance | 2 | Private game log proved the shared PFX loaded the Wine 11 Proton bridge under GPTK Wine 7.7. Temporarily disabling only ledger-matched bridge DLLs restored a normal GPTK launch and exit; runtime reconciliation now automates this boundary. |
 
 ## 5-Question Reboot Check
 

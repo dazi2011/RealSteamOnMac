@@ -825,9 +825,6 @@ def atomic_copy_file(source, destination):
 
 
 def install_steamworks_files(context, manifest, bridge):
-    if bridge is None:
-        return
-
     marker_path = context["state"] / "steamworks-bridge.json"
     previous = {}
     if marker_path.exists():
@@ -842,6 +839,18 @@ def install_steamworks_files(context, manifest, bridge):
         raise RuntimeErrorWithContext(
             f"Steamworks bridge ledger is invalid: {marker_path}"
         )
+    managed_names = ("lsteamclient.dll", "steamclient64.dll")
+    if (
+        not set(previous_files).issubset(managed_names)
+        or any(
+            not isinstance(digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", digest)
+            for digest in previous_files.values()
+        )
+    ):
+        raise RuntimeErrorWithContext(
+            f"Steamworks bridge ledger is invalid: {marker_path}"
+        )
 
     steam_directory = (
         context["prefix"]
@@ -849,10 +858,33 @@ def install_steamworks_files(context, manifest, bridge):
         / "Program Files (x86)"
         / "Steam"
     )
+    if bridge is None:
+        if not previous:
+            return
+        for name, managed_digest in previous_files.items():
+            destination = steam_directory / name
+            if not destination.exists():
+                continue
+            if file_sha256(destination) != managed_digest:
+                raise RuntimeErrorWithContext(
+                    "refusing to remove a modified managed Steamworks "
+                    f"file: {destination}"
+                )
+            destination.unlink()
+        atomic_write_json(
+            marker_path,
+            {
+                **previous,
+                "schema": 1,
+                "active": False,
+            },
+        )
+        return
+
     source = bridge["windows_dll"]
     source_digest = file_sha256(source)
     installed = {}
-    for name in ("lsteamclient.dll", "steamclient64.dll"):
+    for name in managed_names:
         destination = steam_directory / name
         if destination.exists():
             current_digest = file_sha256(destination)
@@ -877,6 +909,7 @@ def install_steamworks_files(context, manifest, bridge):
             "schema": 1,
             "package_id": manifest["package_id"],
             "bridge": bridge["metadata"].get("name", "lsteamclient"),
+            "active": True,
             "files": installed,
         },
     )

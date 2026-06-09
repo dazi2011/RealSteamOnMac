@@ -75,14 +75,14 @@ Phase 5: per-game compatibility controls and remaining renderer work
 - [x] Expose installed compatibility tools in Steam's per-game dropdown.
 - [x] Add persistent per-AppID controls for MSync, high-resolution mode,
       Metal HUD, and supported MetalFX/DLSS translation settings.
-- [ ] Add a run-command workflow scoped to the selected game's prefix.
-- [ ] Add dependency search/install with manifests, checksums, and uninstall logs.
+- [x] Add a run-command workflow scoped to the selected game's prefix.
+- [x] Add dependency search/install with manifests, checksums, and private receipts.
 - [x] Ensure settings survive Steam and machine restarts.
 - [x] Test renderer selection and control persistence against the actual
       generated DXVK and DXMT environments.
 - [x] Document, commit, and push the renderer/control group.
-- **Status:** renderer and runtime controls accepted in live Steam; run-command
-  and dependency workflows remain
+- **Status:** renderer, runtime controls, run-command, and checksum-pinned
+  dependency installation are accepted in live Steam
 
 ### Phase 6: End-To-End Game Launch
 
@@ -92,6 +92,8 @@ Phase 5: per-game compatibility controls and remaining renderer work
 - [x] Verify prefix creation, process tree, window creation, Steamworks, and
       normal exit.
 - [x] Verify GPTK window creation and DXVK full runtime acceptance.
+- [x] Diagnose and fix GPTK regression caused by an incompatible managed
+      Steamworks bridge remaining in the shared PFX.
 - [x] Verify cloud status no longer blocks launch and AutoCloud runs on exit.
 - [x] Capture logs, screenshots, bridge hashes, and rollback evidence.
 - [ ] Verify input and audio explicitly.

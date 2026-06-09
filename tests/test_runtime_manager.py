@@ -744,6 +744,98 @@ class RuntimeManagerTests(unittest.TestCase):
                     context, self.runtime_root, config
                 )
 
+    def test_steamworks_bridge_is_removed_for_gptk_and_restored(self):
+        steam_client = self.add_steamworks_bridge()
+        context = self.context()
+        dxmt_config = {
+            **runtime.DEFAULT_CONFIG,
+            "renderer": "dxmt",
+        }
+        gptk_config = {
+            **runtime.DEFAULT_CONFIG,
+            "renderer": "gptk",
+        }
+        steam_directory = (
+            context["prefix"]
+            / "drive_c"
+            / "Program Files (x86)"
+            / "Steam"
+        )
+        marker = context["state"] / "steamworks-bridge.json"
+        with mock.patch.dict(
+            os.environ,
+            {
+                "REALSTEAMONMAC_STEAM_CLIENT_INSTALL": str(
+                    steam_client
+                )
+            },
+            clear=False,
+        ), mock.patch.object(runtime, "run_logged"):
+            runtime.prepare(context, self.runtime_root, dxmt_config)
+            runtime.prepare(context, self.runtime_root, gptk_config)
+            self.assertFalse(
+                (steam_directory / "lsteamclient.dll").exists()
+            )
+            self.assertFalse(
+                (steam_directory / "steamclient64.dll").exists()
+            )
+            self.assertFalse(
+                json.loads(marker.read_text(encoding="utf-8"))[
+                    "active"
+                ]
+            )
+
+            runtime.prepare(context, self.runtime_root, dxmt_config)
+
+        self.assertEqual(
+            (steam_directory / "lsteamclient.dll").read_bytes(),
+            b"MZsteamworks-fixture",
+        )
+        self.assertEqual(
+            (steam_directory / "steamclient64.dll").read_bytes(),
+            b"MZsteamworks-fixture",
+        )
+        self.assertTrue(
+            json.loads(marker.read_text(encoding="utf-8"))["active"]
+        )
+
+    def test_gptk_refuses_to_remove_a_modified_managed_bridge(self):
+        steam_client = self.add_steamworks_bridge()
+        context = self.context()
+        dxmt_config = {
+            **runtime.DEFAULT_CONFIG,
+            "renderer": "dxmt",
+        }
+        gptk_config = {
+            **runtime.DEFAULT_CONFIG,
+            "renderer": "gptk",
+        }
+        with mock.patch.dict(
+            os.environ,
+            {
+                "REALSTEAMONMAC_STEAM_CLIENT_INSTALL": str(
+                    steam_client
+                )
+            },
+            clear=False,
+        ), mock.patch.object(runtime, "run_logged"):
+            runtime.prepare(context, self.runtime_root, dxmt_config)
+            destination = (
+                context["prefix"]
+                / "drive_c"
+                / "Program Files (x86)"
+                / "Steam"
+                / "steamclient64.dll"
+            )
+            destination.write_bytes(b"user-modified")
+            with self.assertRaisesRegex(
+                runtime.RuntimeErrorWithContext,
+                "modified managed Steamworks file",
+            ):
+                runtime.prepare(
+                    context, self.runtime_root, gptk_config
+                )
+
     def test_dry_run_plan_does_not_create_prefix(self):
         context = self.context()
         config = runtime.normalize_config(None)

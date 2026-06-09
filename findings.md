@@ -383,6 +383,17 @@
   package Wine path returned by runtime dry-run. A real Retina checkbox event
   wrote the canonical AppID config with mode `0600`; the final accepted state
   is DXMT, MSync enabled, and all other switches disabled.
+- GPTK Wine 7.7 can open the shared Wine 11-updated PFX and run its registry
+  tools. The observed game exit code `3` was not a general prefix-version
+  failure.
+- The exact GPTK failure was a managed Steamworks bridge mismatch. Unity
+  reached D3DMetal, then the project `lsteamclient.dll` asserted at
+  `steamclient_main.c:375` because its Wine 11 Unix side is not installed in
+  the GPTK Wine 7.7 root.
+- Moving only the two bridge DLLs whose hashes matched the private project
+  ledger restored GPTK menu/map loading and a normal `WM_CLOSE` exit `0`.
+  Unsupported renderers must deactivate those shared-PFX files, while
+  DXMT/DXVK/WineD3D restore them atomically.
 
 ## Technical Decisions
 
@@ -414,6 +425,7 @@
 | Detach installer-owned GPTK mount points unconditionally during cleanup | The paths are unique to the installer, detach is idempotent, and cleanup must not depend on a separate mount-list probe. |
 | Keep the native control API data-only | Fixed renderer/boolean fields can be validated and persisted safely; arbitrary command execution belongs to a later separately bounded workflow. |
 | Make global AppID config canonical and retain PFX config as fallback | Settings can exist before install and survive prefix replacement while old deployments remain readable. |
+| Reconcile shared-PFX Steamworks files per renderer | The Proton bridge is Wine-ABI-specific. GPTK must not inherit the Wine 11 bridge, while supported renderers must restore exactly the ledger-matched files. |
 
 ## Issues Encountered
 

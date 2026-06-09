@@ -597,10 +597,25 @@ Detailed build and evidence:
 docs/research/steamworks-bridge-2026-06-09.md
 ```
 
+Cross-renderer testing later found a precise GPTK boundary. GPTK Wine 7.7 can
+use the shared Wine 11-updated PFX, but it cannot load the Proton
+`lsteamclient` built for the Wine 11 renderer roots. With the two
+ledger-matched bridge DLLs present, Unity reaches D3DMetal and then asserts at
+`steamclient_main.c:375`, returning exit code `3`. Removing only those managed
+files restores normal GPTK menu/map loading and a `WM_CLOSE` exit code `0`.
+
+The runtime now treats shared-PFX Steamworks files as renderer state:
+
+- DXMT, DXVK, and WineD3D install/restore the checked bridge atomically;
+- GPTK removes only files whose hashes still match the private project ledger;
+- a user-modified file aborts the transition instead of being deleted.
+
 The remaining major gates are:
 
-1. verify GPTK + Steamworks and WineD3D or record their exact boundaries;
-2. rerun Cloud, dynamic library, full test, install, rollback, and live launch
+1. deploy the renderer-aware bridge reconciliation and accept GPTK plus
+   WineD3D through native Steam;
+2. restore the accepted DXMT default;
+3. rerun Cloud, dynamic library, full test, install, rollback, and live launch
    acceptance before final release.
 
 Operational note: a single diagnostic Wine registry query omitted
