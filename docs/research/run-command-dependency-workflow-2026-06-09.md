@@ -5,16 +5,16 @@ Date: 2026-06-09
 ## Status
 
 The fixed action protocol, runtime implementation, Steam properties UI, and
-one-click installation assets are complete in the repository. The complete
-pre-deployment matrix passes:
+one-click installation assets are installed in the user's current Steam
+client. The pre-action acceptance matrix passes:
 
-- 59 Node tests;
+- 62 Node tests;
 - 38 Python tests;
-- all 22 shell contracts.
+- all 23 shell contracts.
 
-Live installation into the user's current Steam client is the next acceptance
-gate. This document deliberately does not claim a successful live command or
-dependency installation yet.
+The live panel and dependency catalog are present. No command or dependency
+action has been accepted yet because the first live panel inspection found and
+blocked an AppID binding defect before a button was pressed.
 
 ## Protocol
 
@@ -122,6 +122,37 @@ The UI receives only public catalog fields. Download URLs, hashes, arguments,
 and accepted exit codes remain in the private installed catalog consumed by
 the Python runtime.
 
+## Live AppID Binding Gate
+
+The first deployed panel was visibly attached to the People Playground detail
+page but carried AppID `1665460` from the first managed game in Steam's library
+sidebar. The old resolver scanned the whole React document and returned the
+first managed AppID whenever the window URL did not contain a route AppID.
+Executing that panel would have targeted the wrong PFX, so acceptance stopped
+before any action job was created.
+
+The corrected resolver now evaluates evidence in this order:
+
+1. an explicit managed AppID in the current Steam route;
+2. a unique matching `overview.appid` and `details.unAppID` pair inside the
+   compatibility control region;
+3. a unique managed AppID inside that region;
+4. a unique matching overview/details pair in the document.
+
+Multiple strong candidates fail closed and remove the panel. The live trigger
+probe independently requires panel AppID `1118200` before it can click the run
+button. Unit coverage reproduces the exact sidebar `1665460` versus detail
+`1118200` collision.
+
+The pre-fix screenshot proves that the action controls and dependency catalog
+were rendered, but it is not action-acceptance evidence because the hidden
+panel AppID was wrong:
+
+```text
+docs/evidence/people-playground-actions-live-2026-06-09.png
+SHA-256 eed7b5f678a651e7b7dd0845d051b26ca128625232a278a8e520c5ee8666c0a3
+```
+
 ## Rollback
 
 Before live deployment, preserve the current support directory, launcher,
@@ -137,16 +168,20 @@ full rollback source:
 For a failed dependency acceptance, restore the tested PFX snapshot rather than
 deleting or manually editing registry state without evidence.
 
+The complete pre-action live snapshot is:
+
+```text
+/Users/wudazi/RealSteamOnMac-Backups/
+  pre-phase5b-actions-20260609T092230Z
+```
+
 ## Next Acceptance
 
-1. Quit Steam normally and create a pre-Phase-5B rollback snapshot.
-2. Install the rebuilt native engine, launcher, UI, runtime entrypoint, and
-   catalog.
-3. Restart Steam with CEF debugging enabled.
-4. Confirm the People Playground properties panel shows both new sections.
-5. Run a harmless PFX `reg.exe query` command and verify the completed job,
+1. Redeploy the scoped AppID resolver and restart Steam.
+2. Confirm the People Playground panel reports AppID `1118200`.
+3. Run a harmless PFX `reg.exe query` command and verify the completed job,
    private log, and no shell interpretation.
-6. Install Visual C++ 2015-2022 x64, verify the exact downloaded digest,
+4. Install Visual C++ 2015-2022 x64, verify the exact downloaded digest,
    completed receipt, and PFX registry/files.
-7. Recheck dynamic Windows-only availability, native macOS exclusions, Cloud,
+5. Recheck dynamic Windows-only availability, native macOS exclusions, Cloud,
    all four renderer selections, and a real game launch/exit.

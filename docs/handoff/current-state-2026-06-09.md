@@ -290,11 +290,11 @@ docs/evidence/people-playground-controls-live-2026-06-09.png
 SHA-256 daffe76b2d410377dfe5cf76897478a10f279a3ecdccf6b1311a23aa94042a10
 ```
 
-The complete post-action-workflow matrix passes 59 Node tests, 38 Python tests,
-and all 22 shell contracts.
+The complete post-action-workflow matrix passes 62 Node tests, 38 Python tests,
+and all 23 shell contracts.
 
-The Phase 5B action workflow is implemented but has not yet been deployed to
-the user's current Steam client. The compatibility panel now includes:
+The Phase 5B action workflow is deployed to the user's current Steam client.
+The compatibility panel now includes:
 
 - a structured run-command form for target, arguments, and bounded
   environment variables;
@@ -320,6 +320,26 @@ refreshes. Detailed design and current acceptance boundary:
 
 ```text
 docs/research/run-command-dependency-workflow-2026-06-09.md
+```
+
+The first live action-panel inspection stopped before executing any action:
+the panel appeared on People Playground but carried AppID `1665460`, taken from
+the first managed library row. The corrected resolver now scopes React evidence
+to the current compatibility region, requires a unique overview/details AppID
+pair, and fails closed on ambiguity. The trigger probe also independently
+refuses any AppID other than People Playground `1118200`. This correction passes
+the complete 62-test Node matrix and awaits redeployment before live action
+acceptance.
+
+The pre-fix UI screenshot is
+`docs/evidence/people-playground-actions-live-2026-06-09.png`, SHA-256
+`eed7b5f678a651e7b7dd0845d051b26ca128625232a278a8e520c5ee8666c0a3`.
+It proves the action UI was rendered only; it is not command or dependency
+acceptance evidence. The full live rollback snapshot is:
+
+```text
+/Users/wudazi/RealSteamOnMac-Backups/
+  pre-phase5b-actions-20260609T092230Z
 ```
 
 DXMT implementation and acceptance details:

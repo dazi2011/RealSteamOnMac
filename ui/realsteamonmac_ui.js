@@ -598,6 +598,7 @@
       discoverManagedApps,
       findAppActionComponents,
       findCompatControlAnchor,
+      findManagedAppidForControls,
       getSelectedData,
       getSteamUIDocuments,
       getManagedTargetStatus,
@@ -1360,7 +1361,75 @@
     }
   }
 
-  function managedAppidFromDocument(documentObject) {
+  function reactFiberForElement(element) {
+    const fiberKey = Object.getOwnPropertyNames(element ?? {}).find(
+      (key) =>
+        key.startsWith("__reactFiber$") ||
+        key.startsWith("__reactInternalInstance$"),
+    );
+    return fiberKey ? element[fiberKey] : null;
+  }
+
+  function collectManagedAppidsFromElements(
+    elements,
+    managedAppidSet,
+  ) {
+    const strong = new Set();
+    const weak = new Set();
+    const visitedFibers = new Set();
+    let inspected = 0;
+    for (const element of elements ?? []) {
+      inspected += 1;
+      if (inspected > 2500) {
+        break;
+      }
+      let fiber = reactFiberForElement(element);
+      for (let depth = 0; fiber && depth < 40; depth += 1) {
+        if (visitedFibers.has(fiber)) {
+          break;
+        }
+        visitedFibers.add(fiber);
+        for (const props of [
+          fiber.memoizedProps,
+          fiber.pendingProps,
+        ]) {
+          const overviewAppid = Number(props?.overview?.appid);
+          const detailsAppid = Number(props?.details?.unAppID);
+          if (
+            overviewAppid === detailsAppid &&
+            managedAppidSet.has(overviewAppid)
+          ) {
+            strong.add(overviewAppid);
+          }
+          for (const candidate of [
+            props?.appid,
+            props?.unAppID,
+            props?.overview?.appid,
+            props?.details?.unAppID,
+            props?.app?.appid,
+            props?.app?.unAppID,
+          ]) {
+            const appid = Number(candidate);
+            if (managedAppidSet.has(appid)) {
+              weak.add(appid);
+            }
+          }
+        }
+        fiber = fiber.return;
+      }
+    }
+    return { strong, weak };
+  }
+
+  function uniqueAppid(candidates) {
+    return candidates.size === 1 ? [...candidates][0] : null;
+  }
+
+  function findManagedAppidForControls(
+    documentObject,
+    anchor,
+    managedAppidSet,
+  ) {
     const locationText = [
       documentObject?.location?.href,
       documentObject?.location?.hash,
@@ -1369,43 +1438,36 @@
       .join(" ");
     for (const match of locationText.matchAll(/\d{3,10}/g)) {
       const appid = Number(match[0]);
-      if (managedAppids.has(appid)) {
+      if (managedAppidSet.has(appid)) {
         return appid;
       }
     }
 
-    const elements = documentObject?.querySelectorAll?.("*") ?? [];
-    let inspected = 0;
-    for (const element of elements) {
-      inspected += 1;
-      if (inspected > 2000) {
-        break;
-      }
-      const fiberKey = Object.getOwnPropertyNames(element).find(
-        (key) =>
-          key.startsWith("__reactFiber$") ||
-          key.startsWith("__reactInternalInstance$"),
-      );
-      let fiber = fiberKey ? element[fiberKey] : null;
-      for (let depth = 0; fiber && depth < 30; depth += 1) {
-        const candidates = [
-          fiber.memoizedProps?.appid,
-          fiber.memoizedProps?.overview?.appid,
-          fiber.memoizedProps?.details?.unAppID,
-          fiber.pendingProps?.appid,
-          fiber.pendingProps?.overview?.appid,
-          fiber.pendingProps?.details?.unAppID,
-        ];
-        for (const candidate of candidates) {
-          const appid = Number(candidate);
-          if (managedAppids.has(appid)) {
-            return appid;
-          }
-        }
-        fiber = fiber.return;
-      }
+    const scopedElements = [
+      anchor,
+      ...(anchor?.querySelectorAll?.("*") ?? []),
+    ].filter(Boolean);
+    const scoped = collectManagedAppidsFromElements(
+      scopedElements,
+      managedAppidSet,
+    );
+    const scopedStrong = uniqueAppid(scoped.strong);
+    if (scopedStrong) {
+      return scopedStrong;
     }
-    return null;
+    if (scoped.strong.size > 1) {
+      return null;
+    }
+    const scopedWeak = uniqueAppid(scoped.weak);
+    if (scopedWeak) {
+      return scopedWeak;
+    }
+
+    const documentEvidence = collectManagedAppidsFromElements(
+      documentObject?.querySelectorAll?.("*") ?? [],
+      managedAppidSet,
+    );
+    return uniqueAppid(documentEvidence.strong);
   }
 
   function findCompatControlAnchor(documentObject) {
@@ -2022,15 +2084,21 @@
   function mountControlPanels() {
     let mounted = 0;
     for (const documentObject of getSteamUIDocuments(globalObject)) {
-      const appid = managedAppidFromDocument(documentObject);
       const existing = documentObject.querySelector?.(
         ".realsteamonmac-controls",
       );
+      const anchor = findCompatControlAnchor(documentObject);
+      const appid = anchor
+        ? findManagedAppidForControls(
+            documentObject,
+            anchor,
+            managedAppids,
+          )
+        : null;
       if (!appid) {
         existing?.remove?.();
         continue;
       }
-      const anchor = findCompatControlAnchor(documentObject);
       if (!anchor?.parentElement) {
         continue;
       }

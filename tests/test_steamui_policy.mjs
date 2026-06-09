@@ -16,6 +16,7 @@ const {
   discoverManagedApps,
   findAppActionComponents,
   findCompatControlAnchor,
+  findManagedAppidForControls,
   getSteamUIDocuments,
   isOwnedWindowsOnlyGame,
   mergeCompatTools,
@@ -116,6 +117,100 @@ test("anchors controls to the compatibility selector instead of the page root", 
   };
 
   assert.equal(findCompatControlAnchor(documentObject), dialogBody);
+});
+
+function attachReactFiber(element, memoizedProps, parent = null) {
+  Object.defineProperty(element, "__reactFiber$test", {
+    value: {
+      memoizedProps,
+      pendingProps: memoizedProps,
+      return: parent,
+    },
+  });
+  return element;
+}
+
+test("binds controls to the scoped game detail instead of the first library row", () => {
+  const sidebarGame = attachReactFiber({}, { appid: 1665460 });
+  const detailGame = attachReactFiber(
+    {},
+    {
+      overview: { appid: 1118200 },
+      details: { unAppID: 1118200 },
+    },
+  );
+  const anchor = {
+    querySelectorAll() {
+      return [detailGame];
+    },
+  };
+  const documentObject = {
+    location: { href: "about:blank", hash: "" },
+    querySelectorAll() {
+      return [sidebarGame, detailGame];
+    },
+  };
+
+  assert.equal(
+    findManagedAppidForControls(
+      documentObject,
+      anchor,
+      new Set([1118200, 1665460]),
+    ),
+    1118200,
+  );
+});
+
+test("fails closed when the control region contains two game detail AppIDs", () => {
+  const firstGame = attachReactFiber(
+    {},
+    {
+      overview: { appid: 1118200 },
+      details: { unAppID: 1118200 },
+    },
+  );
+  const secondGame = attachReactFiber(
+    {},
+    {
+      overview: { appid: 1665460 },
+      details: { unAppID: 1665460 },
+    },
+  );
+  const anchor = {
+    querySelectorAll() {
+      return [firstGame, secondGame];
+    },
+  };
+
+  assert.equal(
+    findManagedAppidForControls(
+      {
+        location: { href: "about:blank", hash: "" },
+        querySelectorAll() {
+          return [firstGame, secondGame];
+        },
+      },
+      anchor,
+      new Set([1118200, 1665460]),
+    ),
+    null,
+  );
+});
+
+test("uses an explicit managed AppID in the current Steam route", () => {
+  assert.equal(
+    findManagedAppidForControls(
+      {
+        location: {
+          href: "steam://nav/games/details/1118200",
+          hash: "",
+        },
+      },
+      null,
+      new Set([1118200, 1665460]),
+    ),
+    1118200,
+  );
 });
 
 test("maps compatibility tools to runtime renderers in both directions", () => {
