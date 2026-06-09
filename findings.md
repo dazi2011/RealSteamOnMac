@@ -297,8 +297,9 @@
   `Steam login: True`.
 - Workshop subscription retrieval completed in the same run. No fake API or
   ownership bypass was used.
-- DXMT v0.80 currently fails before rendering because Wine Staging 11.10 does
-  not export the symbols DXMT needs to create a Metal view.
+- Stock DXMT v0.80 initially failed before rendering because Wine Staging
+  11.10 did not expose the legacy macdrv contract it needs. The project-owned
+  compatibility build described below resolves that boundary.
 - A migrated CrossOver PFX may contain menu-integration artifacts even when all
   actual Wine binaries come from RealSteamOnMac. Disabling
   `winemenubuilder.exe` prevents those artifacts from launching old CrossOver
@@ -315,6 +316,31 @@
 - The final normal-menu exit cleared all managed processes in five seconds,
   removed AppID `1118200` from Steam's running list, and triggered a successful
   `AC Exit` AutoCloud upload.
+
+## DXMT Wine 11 Findings
+
+- DXMT v0.80 does not merely need a public function symbol. Its
+  `macdrv_win_data` layout predates Wine 11 and reads `client_cocoa_view`.
+- Wine 11's `client_view` can remain null until a `macdrv_client_surface` is
+  created and presented. Returning the current struct without creating that
+  surface still fails Metal-view creation.
+- Wine loads winemac locally, so exporting `macdrv_functions` from
+  `winemac.so` alone is insufficient for DXMT's `RTLD_DEFAULT` lookup.
+- The accepted design combines:
+  - a Wine-side function table and legacy proxy with explicit client-surface
+    lifetime management;
+  - a globally injected, DXMT-only visibility shim that forwards into the
+    locally loaded winemac table.
+- The complete Wine Staging v11.10 patch set is based on the exact Wine 11.10
+  commit used by the project. The formal artifact is no longer a vanilla-Wine
+  driver mixed silently into a Staging package.
+- Building every linked object with deployment target 10.15 matters. Relinking
+  only the final dylib does not lower object-level availability assumptions.
+- The formal runtime launches with the original Mach-O `wine64` entrypoint.
+  Runtime-managed `DYLD_INSERT_LIBRARIES` replaces the temporary shell wrapper.
+- People Playground's Chinese translation mod compiler connection refusal is
+  reproducible under both DXVK and DXMT. It is non-fatal to rendering,
+  Steamworks, Workshop retrieval, exit, and Cloud.
 
 ## Technical Decisions
 
@@ -341,6 +367,8 @@
 | Build a real bridge rather than fake Steam API success | The pinned Proton bridge preserves native ownership, callbacks, Workshop, and Cloud behavior. |
 | Validate interfaces from generated bridge code | Native macOS Steam lacks Linux helper exports; generated local validation is narrower than blindly accepting `CreateInterface`. |
 | Keep People Playground cleanup AppID-scoped | Its PID collision is proven, while global post-exit kills could terminate legitimate launcher-spawned games. |
+| Inject the DXMT shim only from the per-renderer runtime environment | Steam and non-DXMT Wine processes must never inherit the visibility shim. |
+| Build the DXMT driver from exact Wine plus complete Wine-Staging sources | A live-compatible but source-mixed driver is not a maintainable release boundary. |
 
 ## Issues Encountered
 

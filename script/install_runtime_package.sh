@@ -3,15 +3,19 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 RUNTIME_SOURCE="$ROOT/runtime/realsteamonmac_runtime.py"
+DXMT_COMPAT_BUILDER="$ROOT/script/build_dxmt_winemac_compat.sh"
 RUNTIME_ROOT="${REALSTEAMONMAC_RUNTIME_ROOT:-$HOME/Library/Application Support/RealSteamOnMac/runtimes}"
 CACHE_DIR="${REALSTEAMONMAC_CACHE_DIR:-$HOME/Library/Caches/RealSteamOnMac/downloads}"
 GPTK_DMG=""
 GPTK_REDIST=""
 STEAMWORKS_BRIDGE=""
+DXMT_WINEMAC_COMPAT="$ROOT/artifacts/dxmt-winemac-compat"
 
-PACKAGE_ID="gptk3.0-3-wine11.10-dxmt0.80-dxvkmacos1.10.3"
+PACKAGE_ID="gptk3.0-3-wine11.10-dxmt0.80-dxmtmac1-dxvkmacos1.10.3"
 STEAMWORKS_PACKAGE_SUFFIX="-lsteamclient-proton11b5-macos2"
 STEAMWORKS_PROTON_COMMIT="25880e88befb52c5aa7ff162c5b00b6b8825e494"
+DXMT_WINE_COMMIT="2cac6ccf33c0807f374dc96f5a20e35a2da86157"
+DXMT_WINE_STAGING_COMMIT="f45e84d7a01a52d379e4003f03800c13875c69e9"
 
 GPTK_ARCHIVE="game-porting-toolkit-3.0-3.tar.xz"
 GPTK_URL="https://github.com/Gcenx/game-porting-toolkit/releases/download/Game-Porting-Toolkit-3.0-3/game-porting-toolkit-3.0-3.tar.xz"
@@ -31,8 +35,8 @@ DXVK_SHA256="810b1e5caf8ce975b784fae866a130ad23fa0ea233b0e5609cbc4a45f3ef6f00"
 
 usage() {
     cat >&2 <<EOF
-usage: $0 --gptk-dmg PATH [--steamworks-bridge DIRECTORY] [--runtime-root DIRECTORY] [--cache-dir DIRECTORY]
-       $0 --gptk-redist DIRECTORY [--steamworks-bridge DIRECTORY] [--runtime-root DIRECTORY] [--cache-dir DIRECTORY]
+usage: $0 --gptk-dmg PATH [--dxmt-winemac-compat DIRECTORY] [--steamworks-bridge DIRECTORY] [--runtime-root DIRECTORY] [--cache-dir DIRECTORY]
+       $0 --gptk-redist DIRECTORY [--dxmt-winemac-compat DIRECTORY] [--steamworks-bridge DIRECTORY] [--runtime-root DIRECTORY] [--cache-dir DIRECTORY]
 EOF
     exit 2
 }
@@ -52,6 +56,11 @@ while [ "$#" -gt 0 ]; do
         --steamworks-bridge)
             [ "$#" -ge 2 ] || usage
             STEAMWORKS_BRIDGE=$2
+            shift 2
+            ;;
+        --dxmt-winemac-compat)
+            [ "$#" -ge 2 ] || usage
+            DXMT_WINEMAC_COMPAT=$2
             shift 2
             ;;
         --runtime-root)
@@ -88,6 +97,52 @@ if [ -n "$STEAMWORKS_BRIDGE" ]; then
     test -f "$STEAMWORKS_BRIDGE/x86_64-unix/lsteamclient.so"
     PACKAGE_ID="${PACKAGE_ID}${STEAMWORKS_PACKAGE_SUFFIX}"
 fi
+if [ ! -f "$DXMT_WINEMAC_COMPAT/winemac.so" ] ||
+    [ ! -f "$DXMT_WINEMAC_COMPAT/librealsteamonmac_dxmt_macdrv_shim.dylib" ] ||
+    [ ! -f "$DXMT_WINEMAC_COMPAT/build-info.json" ] ||
+    [ ! -f "$DXMT_WINEMAC_COMPAT/SHA256SUMS" ]; then
+    test -x "$DXMT_COMPAT_BUILDER"
+    "$DXMT_COMPAT_BUILDER" --output "$DXMT_WINEMAC_COMPAT"
+fi
+test -f "$DXMT_WINEMAC_COMPAT/winemac.so"
+test -f "$DXMT_WINEMAC_COMPAT/librealsteamonmac_dxmt_macdrv_shim.dylib"
+test -f "$DXMT_WINEMAC_COMPAT/build-info.json"
+test -f "$DXMT_WINEMAC_COMPAT/SHA256SUMS"
+(
+    cd "$DXMT_WINEMAC_COMPAT"
+    shasum -a 256 -c SHA256SUMS
+)
+file "$DXMT_WINEMAC_COMPAT/winemac.so" | grep -q 'x86_64'
+file "$DXMT_WINEMAC_COMPAT/librealsteamonmac_dxmt_macdrv_shim.dylib" |
+    grep -q 'x86_64'
+nm -gU "$DXMT_WINEMAC_COMPAT/winemac.so" |
+    grep -q ' _macdrv_functions$'
+nm -gU "$DXMT_WINEMAC_COMPAT/librealsteamonmac_dxmt_macdrv_shim.dylib" |
+    grep -q ' _macdrv_functions$'
+codesign --verify "$DXMT_WINEMAC_COMPAT/winemac.so"
+codesign --verify \
+    "$DXMT_WINEMAC_COMPAT/librealsteamonmac_dxmt_macdrv_shim.dylib"
+/usr/bin/python3 - \
+    "$DXMT_WINEMAC_COMPAT/build-info.json" \
+    "$DXMT_WINE_COMMIT" \
+    "$DXMT_WINE_STAGING_COMMIT" <<'PY'
+import json
+import sys
+
+path, wine_commit, staging_commit = sys.argv[1:]
+with open(path, encoding="utf-8") as stream:
+    value = json.load(stream)
+expected = {
+    "schema": 1,
+    "name": "RealSteamOnMac DXMT Wine macdrv compatibility",
+    "wine_commit": wine_commit,
+    "wine_staging_commit": staging_commit,
+    "minimum_macos": "10.15",
+    "dxmt_version": "0.80",
+}
+if value != expected:
+    raise SystemExit("DXMT Wine compatibility build metadata mismatch")
+PY
 
 mkdir -p "$CACHE_DIR" "$RUNTIME_ROOT/packages" "$RUNTIME_ROOT/bin"
 STAGING=$(mktemp -d "$RUNTIME_ROOT/.staging.$PACKAGE_ID.XXXXXX")
@@ -184,6 +239,14 @@ fi
 clone_tree "$PACKAGE/wine/wined3d" "$PACKAGE/wine/dxmt"
 clone_tree "$PACKAGE/wine/wined3d" "$PACKAGE/wine/dxvk"
 
+cp "$DXMT_WINEMAC_COMPAT/winemac.so" \
+    "$PACKAGE/wine/dxmt/lib/wine/x86_64-unix/winemac.so"
+cp "$DXMT_WINEMAC_COMPAT/librealsteamonmac_dxmt_macdrv_shim.dylib" \
+    "$PACKAGE/wine/dxmt/lib/librealsteamonmac_dxmt_macdrv_shim.dylib"
+mkdir -p "$PACKAGE/dxmt-winemac-compat"
+cp "$DXMT_WINEMAC_COMPAT/build-info.json" \
+    "$PACKAGE/dxmt-winemac-compat/build-info.json"
+
 if [ -n "$STEAMWORKS_BRIDGE" ]; then
     mkdir -p \
         "$PACKAGE/steamworks/x86_64-windows" \
@@ -235,6 +298,8 @@ for renderer in gptk dxmt dxvk wined3d; do
 done
 test -f "$PACKAGE/wine/gptk/lib/external/D3DMetal.framework/Versions/A/D3DMetal"
 test -f "$PACKAGE/wine/dxmt/lib/wine/x86_64-unix/winemetal.so"
+test -f "$PACKAGE/wine/dxmt/lib/wine/x86_64-unix/winemac.so"
+test -f "$PACKAGE/wine/dxmt/lib/librealsteamonmac_dxmt_macdrv_shim.dylib"
 test -f "$PACKAGE/wine/dxvk/lib/wine/x86_64-windows/d3d11.dll"
 test -f "$PACKAGE/wine/wined3d/lib/wine/x86_64-windows/wined3d.dll"
 if [ -n "$STEAMWORKS_BRIDGE" ]; then
@@ -248,11 +313,20 @@ fi
     "$PACKAGE/manifest.json" \
     "$PACKAGE_ID" \
     "$STEAMWORKS_BRIDGE" \
-    "$STEAMWORKS_PROTON_COMMIT" <<'PY'
+    "$STEAMWORKS_PROTON_COMMIT" \
+    "$PACKAGE/dxmt-winemac-compat/build-info.json" <<'PY'
 import json
 import sys
 
-path, package_id, steamworks_bridge, proton_commit = sys.argv[1:]
+(
+    path,
+    package_id,
+    steamworks_bridge,
+    proton_commit,
+    dxmt_build_info_path,
+) = sys.argv[1:]
+with open(dxmt_build_info_path, encoding="utf-8") as stream:
+    dxmt_build_info = json.load(stream)
 manifest = {
     "schema": 1,
     "package_id": package_id,
@@ -273,6 +347,21 @@ manifest = {
             "wine": "wine-staging-11.10",
             "graphics": "WineD3D",
         },
+    },
+    "dxmt_winemac_compat": {
+        "name": dxmt_build_info["name"],
+        "wine_commit": dxmt_build_info["wine_commit"],
+        "wine_staging_commit": dxmt_build_info[
+            "wine_staging_commit"
+        ],
+        "minimum_macos": dxmt_build_info["minimum_macos"],
+        "winemac_driver": (
+            "wine/dxmt/lib/wine/x86_64-unix/winemac.so"
+        ),
+        "visibility_shim": (
+            "wine/dxmt/lib/"
+            "librealsteamonmac_dxmt_macdrv_shim.dylib"
+        ),
     },
 }
 if steamworks_bridge:
@@ -298,7 +387,10 @@ PY
         wine/gptk/bin/wine64 \
         wine/gptk/lib/external/D3DMetal.framework/Versions/A/D3DMetal \
         wine/dxmt/bin/wine64 \
+        wine/dxmt/lib/wine/x86_64-unix/winemac.so \
         wine/dxmt/lib/wine/x86_64-unix/winemetal.so \
+        wine/dxmt/lib/librealsteamonmac_dxmt_macdrv_shim.dylib \
+        dxmt-winemac-compat/build-info.json \
         wine/dxvk/bin/wine64 \
         wine/dxvk/lib/wine/x86_64-windows/d3d11.dll \
         wine/wined3d/bin/wine64 \

@@ -319,6 +319,47 @@
   - Ran 12 runtime-manager tests, the runtime installer contract, Python
     compilation, shell syntax checks, and `git diff --check`; all passed.
 
+### Phase 4B: DXMT Wine 11 Compatibility
+
+- **Status:** isolated formal package accepted; live `current` deployment pending
+- Actions taken:
+  - Reproduced the DXMT v0.80 failure against stock Wine Staging 11.10 and
+    isolated it to macdrv symbol visibility plus Wine 11's client-surface
+    lifecycle.
+  - Rejected the older Wine 8 path after Unity failed with a stack overflow.
+  - Pinned Wine `2cac6ccf33c0807f374dc96f5a20e35a2da86157` and Wine Staging
+    `f45e84d7a01a52d379e4003f03800c13875c69e9`.
+  - Added an exported Wine 11 macdrv compatibility table that creates and
+    retains a client surface for DXMT's legacy `client_cocoa_view` contract.
+  - Added a narrow dyld visibility shim because Wine loads `winemac.so`
+    locally while DXMT resolves through `RTLD_DEFAULT`.
+  - Added a reproducible source builder with complete Staging patch application,
+    Rosetta x86_64 configuration, macOS 10.15 deployment target, symbol checks,
+    ad-hoc signing, hashes, and immutable metadata.
+  - Extended the runtime package manifest and installer with fail-closed DXMT
+    driver/shim validation and automatic artifact building.
+  - Removed the temporary `wine64` wrapper design; the runtime now injects only
+    the package-owned shim for DXMT.
+  - Built accepted artifacts:
+    `cc86bd9296688cbcceca146cdb9a88b9ac97859f96c4b05bf9c0e7c7496529c9`
+    (`winemac.so`) and
+    `afa8a47ddd73057bd014e1807bacaf7a91d7917ad1eb51b1d1afb7446b8349c0`
+    (visibility shim).
+  - Installed the complete candidate package into
+    `/private/tmp/realsteamonmac-formal-dxmt-runtime`.
+  - Launched People Playground without a wrapper or manual environment,
+    rendered the main menu through DXMT, initialized Steamworks, logged in,
+    and retrieved one Workshop subscription.
+  - Sent `WM_CLOSE` inside the same Wine session and verified runtime exit `0`,
+    no remaining managed processes, Steam running-list removal, and successful
+    AutoCloud exit/upload.
+  - Captured
+    `docs/evidence/people-playground-dxmt-wine11-live-2026-06-09.png`.
+  - Added three focused runtime tests; 15 runtime-manager tests and the package
+    installer contract pass.
+  - Ran the complete post-DXMT matrix: 51 Node tests, 25 Python tests, and all
+    22 shell contracts passed.
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -372,7 +413,7 @@
 | Independent Wine entrypoints | Four installed renderer roots | Each Wine launcher executes without CrossOver | GPTK Wine and three Wine Staging 11.10 roots executed | PASS |
 | People Playground dry-run | Installed runtime plus AppID 1118200 | Exact prefix and no mutation | Exact `/compatdata/1118200/pfx`; prefix remained absent | PASS |
 | Spawn redirect harness | Managed PE, unmanaged PE, native binary | Redirect only managed PE target | Decision boundary passed | PASS |
-| Full Phase 4 pre-deployment suite | 51 Node, 18 Python, 22 shell contracts | No regression before live installation | All passed | PASS |
+| Full Phase 4 post-DXMT suite | 51 Node, 25 Python, 22 shell contracts | No regression before live installation | All passed | PASS |
 | Steamworks bridge build | Pinned Proton/Valve Wine plus macOS patch | Reproducible Mach-O and PE bridge | Both hashes verified | PASS |
 | DXVK Steamworks direct trace | People Playground with bridge | Reach native Steam and initialize APIs | Pipe/user/interfaces/callbacks completed | PASS |
 | Native Steam DXVK launch | `steam://rungameid/1118200` | Steam-tracked real game window | Menu rendered; Steamworks login true | PASS |
@@ -381,7 +422,11 @@
 | PPG compiler cleanup | Wine PID collides with macOS PID 312 | AppID-scoped PFX cleanup | All managed processes gone in five seconds | PASS |
 | Steam running-list closure | Final supervised exit | Remove AppID after cleanup | `Remove 1118200 from running list` | PASS |
 | Steam Cloud exit closure | Final supervised exit | Run AutoCloud upload | `AC Exit`, complete, upload complete | PASS |
-| DXMT live launch | DXMT v0.80 plus Wine Staging 11.10 | Create Metal view | Missing required Wine exports | BLOCKED |
+| DXMT stock Wine launch | DXMT v0.80 plus unmodified Wine Staging 11.10 | Create Metal view | Required exports and legacy client view unavailable | EXPECTED FAIL |
+| DXMT formal source build | Pinned Wine 11.10 + complete Staging v11.10 + project patch | x86_64, macOS 10.15, exported table, signed artifacts | All checks and hashes passed | PASS |
+| DXMT isolated package install | Official GPTK image, verified archives, bridge, DXMT compatibility artifacts | Immutable package and complete SHA manifest | Package installed; every recorded hash passed | PASS |
+| DXMT formal live launch | Manifest-driven shim, no wrapper, People Playground | Main menu plus Steamworks and Workshop | Menu rendered; login true; one subscription retrieved | PASS |
+| DXMT normal exit and Cloud | Same formal run plus Windows `WM_CLOSE` | Exit 0, cleanup, Steam removal, AutoCloud | All conditions passed at 15:46:45 | PASS |
 
 ## Error Log
 
@@ -404,13 +449,17 @@
 | 2026-06-09 | CrossOver Menu Helper appeared during independent launch | 1 | Disabled Wine menu integration; repeat launch contained no CrossOver process. |
 | 2026-06-09 | PPG mod compiler survived normal game exit | 2 | Proved Wine PID 312 collided with macOS `searchpartyd`; added AppID-scoped PFX cleanup. |
 | 2026-06-09 | Steam Cloud log rotated during final exit verification | 1 | Checked both `cloud_log.txt` and `cloud_log.previous.txt`; `AC Exit` and upload completion were present. |
+| 2026-06-09 | Wine configure selected ARM64 despite x86_64 compiler flags | 1 | Ran `configure` itself under `arch -x86_64`; the host triplet and PE toolchain then resolved correctly. |
+| 2026-06-09 | The first formal build used Apple's obsolete Bison | 1 | Put Homebrew Bison 3 first for both configure and make. |
+| 2026-06-09 | A shared clone of a partial Wine cache could not fetch a promisor object | 1 | Reused the fully checked-out cache through APFS clone-copy instead of `git clone --shared`. |
+| 2026-06-09 | GPTK installer could not attach an already-mounted image | 1 | Detached the inner read-only image before the outer image and reran the isolated install. |
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | After the verified DXVK + real Steamworks + normal-exit runtime milestone. |
-| Where am I going? | DXMT-capable Wine, Steam compatibility controls, run-command, dependencies, and final cross-renderer regression. |
+| Where am I? | After isolated acceptance of the formal DXMT Wine 11 package, with live `current` deployment still pending. |
+| Where am I going? | Deploy the verified DXMT package, then implement Steam compatibility controls, run-command, dependencies, and final cross-renderer regression. |
 | What's the goal? | Native macOS Steam downloads and launches Windows-only games through independent selectable compatibility tools. |
-| What have I learned? | Native Steam can be bridged with pinned Proton `lsteamclient`; DXMT needs patched Wine exports; Wine/.NET process IDs can collide with persistent macOS PIDs. |
-| What have I done? | Deployed 34-game dynamic eligibility, real PFX launch, DXVK rendering, Steamworks login, CrossOver-independent execution, clean exit, and Cloud closure. |
+| What have I learned? | DXMT v0.80 needs both Wine 11 client-surface adaptation and global visibility forwarding; Wine/.NET process IDs can collide with persistent macOS PIDs. |
+| What have I done? | Deployed 34-game dynamic eligibility and accepted DXVK plus DXMT rendering, Steamworks login, real PFX execution, clean exit, and Cloud closure. |

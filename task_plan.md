@@ -93,7 +93,7 @@ Phase 5: per-game compatibility controls and remaining renderer work
 - [x] Verify cloud status no longer blocks launch and AutoCloud runs on exit.
 - [x] Capture logs, screenshots, bridge hashes, and rollback evidence.
 - [ ] Verify input and audio explicitly.
-- [ ] Verify DXMT with a compatible patched Wine build.
+- [x] Verify DXMT with a compatible patched Wine build.
 - [ ] Update all handoff and installation documents.
 - [ ] Run the complete automated and live verification matrix.
 - [ ] Commit and push the final verified state.
@@ -169,5 +169,5 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Wine Staging 11.10 had no separate `wine64` executable | 1 | Added a package-local `wine64 -> wine` compatibility symlink for its unified WoW64 launcher. |
 | Upstream DXVK 2.7.1 is incompatible with current MoltenVK extensions | 1 | Replaced the active mode with Gcenx DXVK-macOS builtin; retained upstream DXVK only as research evidence. |
 | Native macOS Steam lacks two Linux `steamclient` helper exports | 2 | Added generated local interface validation and local missing-interface logging while preserving the Linux path. |
-| DXMT v0.80 cannot create its Metal view with Wine Staging 11.10 | 1 | Recorded the exact missing-export boundary; a DXMT-patched Wine build is required. |
+| DXMT v0.80 cannot create its Metal view with stock Wine Staging 11.10 | 1 | Added a Wine 11 client-surface bridge plus a narrow dyld visibility shim; the formal isolated package renders the People Playground menu and exits cleanly. |
 | People Playground's compiler kept Steam running after normal exit | 2 | Proved Wine PID `312` collided with `/usr/libexec/searchpartyd`; added an AppID-only post-exit Wine cleanup. |

@@ -30,12 +30,43 @@ class RuntimeManagerTests(unittest.TestCase):
             wine64.parent.mkdir(parents=True)
             wine64.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             wine64.chmod(0o755)
+        dxmt_driver = (
+            package
+            / "wine"
+            / "dxmt"
+            / "lib"
+            / "wine"
+            / "x86_64-unix"
+            / "winemac.so"
+        )
+        dxmt_shim = (
+            package
+            / "wine"
+            / "dxmt"
+            / "lib"
+            / "librealsteamonmac_dxmt_macdrv_shim.dylib"
+        )
+        dxmt_driver.parent.mkdir(parents=True, exist_ok=True)
+        dxmt_shim.parent.mkdir(parents=True, exist_ok=True)
+        dxmt_driver.write_bytes(b"Mach-O winemac fixture")
+        dxmt_shim.write_bytes(b"Mach-O shim fixture")
         (package / "manifest.json").write_text(
             json.dumps(
                 {
                     "schema": 1,
                     "package_id": "fixture",
                     "renderers": {},
+                    "dxmt_winemac_compat": {
+                        "name": "fixture DXMT macdrv compatibility",
+                        "winemac_driver": (
+                            "wine/dxmt/lib/wine/"
+                            "x86_64-unix/winemac.so"
+                        ),
+                        "visibility_shim": (
+                            "wine/dxmt/lib/"
+                            "librealsteamonmac_dxmt_macdrv_shim.dylib"
+                        ),
+                    },
                 }
             ),
             encoding="utf-8",
@@ -125,6 +156,7 @@ class RuntimeManagerTests(unittest.TestCase):
             {
                 "WINEMSYNC": "stale",
                 "D3DM_ENABLE_METALFX": "stale",
+                "DYLD_INSERT_LIBRARIES": "stale",
             },
             clear=False,
         ):
@@ -153,6 +185,79 @@ class RuntimeManagerTests(unittest.TestCase):
             environment["WINEDLLOVERRIDES"],
             "winemenubuilder.exe=d",
         )
+        self.assertNotIn("DYLD_INSERT_LIBRARIES", environment)
+
+    def test_dxmt_injects_only_managed_visibility_shim(self):
+        context = self.context()
+        config = {
+            **runtime.DEFAULT_CONFIG,
+            "renderer": "dxmt",
+        }
+        with mock.patch.dict(
+            os.environ,
+            {"DYLD_INSERT_LIBRARIES": "/tmp/unmanaged.dylib"},
+            clear=False,
+        ):
+            result = runtime.plan(
+                context, self.runtime_root, config, []
+            )
+        expected = (
+            self.package.resolve()
+            / "wine"
+            / "dxmt"
+            / "lib"
+            / "librealsteamonmac_dxmt_macdrv_shim.dylib"
+        )
+        self.assertEqual(
+            result["environment"]["DYLD_INSERT_LIBRARIES"],
+            str(expected),
+        )
+        self.assertEqual(
+            result["dxmt_winemac_compat"],
+            "fixture DXMT macdrv compatibility",
+        )
+
+    def test_dxmt_refuses_missing_visibility_shim(self):
+        context = self.context()
+        shim = (
+            self.package
+            / "wine"
+            / "dxmt"
+            / "lib"
+            / "librealsteamonmac_dxmt_macdrv_shim.dylib"
+        )
+        shim.unlink()
+        config = {
+            **runtime.DEFAULT_CONFIG,
+            "renderer": "dxmt",
+        }
+        with self.assertRaisesRegex(
+            runtime.RuntimeErrorWithContext,
+            "compatibility payload is missing",
+        ):
+            runtime.plan(context, self.runtime_root, config, [])
+
+    def test_dxmt_refuses_visibility_shim_outside_renderer_root(self):
+        context = self.context()
+        outside = self.package / "outside-shim.dylib"
+        outside.write_bytes(b"Mach-O outside fixture")
+        manifest_path = self.package / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["dxmt_winemac_compat"][
+            "visibility_shim"
+        ] = "outside-shim.dylib"
+        manifest_path.write_text(
+            json.dumps(manifest), encoding="utf-8"
+        )
+        config = {
+            **runtime.DEFAULT_CONFIG,
+            "renderer": "dxmt",
+        }
+        with self.assertRaisesRegex(
+            runtime.RuntimeErrorWithContext,
+            "visibility shim path is invalid",
+        ):
+            runtime.plan(context, self.runtime_root, config, [])
 
     def test_dxvk_uses_macos_moltenvk_recovery_setting(self):
         context = self.context()
@@ -233,11 +338,9 @@ class RuntimeManagerTests(unittest.TestCase):
                 )
             },
             clear=False,
-        ):
-            package, manifest, wine_root, wine64, environment = (
-                runtime.prepare(
-                    context, self.runtime_root, config
-                )
+        ), mock.patch.object(runtime, "run_logged"):
+            package, manifest, wine_root, wine64, environment = runtime.prepare(
+                context, self.runtime_root, config
             )
         self.assertEqual(package, self.package.resolve())
         self.assertEqual(
@@ -297,7 +400,7 @@ class RuntimeManagerTests(unittest.TestCase):
                 )
             },
             clear=False,
-        ):
+        ), mock.patch.object(runtime, "run_logged"):
             with self.assertRaisesRegex(
                 runtime.RuntimeErrorWithContext,
                 "unmanaged Steamworks file",

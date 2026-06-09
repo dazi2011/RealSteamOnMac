@@ -1,0 +1,34 @@
+diff --git a/dlls/winemac.drv/Makefile.in b/dlls/winemac.drv/Makefile.in
+index 576a2fbd0c..5ce448e154 100644
+--- a/dlls/winemac.drv/Makefile.in
++++ b/dlls/winemac.drv/Makefile.in
+@@ -29,6 +29,7 @@ SOURCES = \
+ 	cocoa_window.m \
+ 	display.c \
+ 	dllmain.c \
++	dxmt_compat.c \
+ 	event.c \
+ 	gdi.c \
+ 	image.c \
+diff --git a/dlls/winemac.drv/window.c b/dlls/winemac.drv/window.c
+index 7831eca732..21c38fc906 100644
+--- a/dlls/winemac.drv/window.c
++++ b/dlls/winemac.drv/window.c
+@@ -1155,14 +1155,12 @@ struct macdrv_client_surface *macdrv_client_surface_create(HWND hwnd)
+     NtUserMapWindowPoints(hwnd, toplevel, (POINT *)&rect, 2, NtUserGetWinMonitorDpi(toplevel, MDT_RAW_DPI));
+ 
+     surface = client_surface_create(sizeof(*surface), &macdrv_client_surface_funcs, hwnd);
++    if (!surface) return NULL;
+     surface->cocoa_view = macdrv_create_view(cgrect_from_rect(rect));
+     macdrv_set_view_hidden(surface->cocoa_view, TRUE);
+ 
+-    if (surface)
+-    {
+-        macdrv_client_surface_update(&surface->client);
+-        macdrv_client_surface_present(&surface->client, 0);
+-    }
++    macdrv_client_surface_update(&surface->client);
++    macdrv_client_surface_present(&surface->client, 0);
+ 
+     return surface;
+ }

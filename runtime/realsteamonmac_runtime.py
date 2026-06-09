@@ -311,8 +311,60 @@ def load_steamworks_bridge(package, manifest, wine_root, renderer):
     }
 
 
+def load_dxmt_winemac_compat(package, manifest, wine_root, renderer):
+    if renderer != "dxmt":
+        return None
+
+    metadata = manifest.get("dxmt_winemac_compat")
+    if not isinstance(metadata, dict):
+        raise RuntimeErrorWithContext(
+            f"runtime is missing DXMT Wine compatibility metadata: {package}"
+        )
+    driver_relative = metadata.get("winemac_driver")
+    shim_relative = metadata.get("visibility_shim")
+    if not isinstance(driver_relative, str) or not isinstance(
+        shim_relative, str
+    ):
+        raise RuntimeErrorWithContext(
+            f"runtime DXMT Wine compatibility paths are invalid: {package}"
+        )
+
+    driver = package / driver_relative
+    expected_driver = (
+        wine_root / "lib" / "wine" / "x86_64-unix" / "winemac.so"
+    )
+    shim = package / shim_relative
+    expected_shim = (
+        wine_root
+        / "lib"
+        / "librealsteamonmac_dxmt_macdrv_shim.dylib"
+    )
+    if driver.resolve() != expected_driver.resolve():
+        raise RuntimeErrorWithContext(
+            f"runtime DXMT winemac driver path is invalid: {driver}"
+        )
+    if shim.resolve() != expected_shim.resolve():
+        raise RuntimeErrorWithContext(
+            f"runtime DXMT visibility shim path is invalid: {shim}"
+        )
+    for path in (driver, shim):
+        if not path.is_file():
+            raise RuntimeErrorWithContext(
+                f"runtime DXMT Wine compatibility payload is missing: {path}"
+            )
+    return {
+        "metadata": metadata,
+        "driver": driver,
+        "visibility_shim": shim,
+    }
+
+
 def build_environment(
-    context, config, wine_root, steamworks_bridge=None
+    context,
+    config,
+    wine_root,
+    steamworks_bridge=None,
+    dxmt_winemac_compat=None,
 ):
     environment = dict(os.environ)
     environment["WINEPREFIX"] = str(context["prefix"])
@@ -336,6 +388,7 @@ def build_environment(
         "MVK_CONFIG_RESUME_LOST_DEVICE",
         "WINEDLLOVERRIDES",
         "STEAM_COMPAT_CLIENT_INSTALL_PATH",
+        "DYLD_INSERT_LIBRARIES",
     ):
         environment.pop(key, None)
 
@@ -353,6 +406,10 @@ def build_environment(
         environment["ROSETTA_ADVERTISE_AVX"] = "1"
     if config["renderer"] == "dxvk":
         environment["MVK_CONFIG_RESUME_LOST_DEVICE"] = "1"
+    if dxmt_winemac_compat is not None:
+        environment["DYLD_INSERT_LIBRARIES"] = str(
+            dxmt_winemac_compat["visibility_shim"]
+        )
     dll_overrides = ["winemenubuilder.exe=d"]
     if steamworks_bridge is not None:
         environment["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = str(
@@ -653,8 +710,15 @@ def prepare(context, runtime_root, config):
     bridge = load_steamworks_bridge(
         package, manifest, wine_root, config["renderer"]
     )
+    dxmt_winemac_compat = load_dxmt_winemac_compat(
+        package, manifest, wine_root, config["renderer"]
+    )
     environment = build_environment(
-        context, config, wine_root, bridge
+        context,
+        config,
+        wine_root,
+        bridge,
+        dxmt_winemac_compat,
     )
     initialize_prefix(context, wine64, environment)
     install_steamworks_files(context, manifest, bridge)
@@ -675,8 +739,15 @@ def plan(context, runtime_root, config, arguments):
     bridge = load_steamworks_bridge(
         package, manifest, wine_root, config["renderer"]
     )
+    dxmt_winemac_compat = load_dxmt_winemac_compat(
+        package, manifest, wine_root, config["renderer"]
+    )
     environment = build_environment(
-        context, config, wine_root, bridge
+        context,
+        config,
+        wine_root,
+        bridge,
+        dxmt_winemac_compat,
     )
     interesting = {
         key: environment[key]
@@ -690,6 +761,7 @@ def plan(context, runtime_root, config, arguments):
             "STEAM_COMPAT_APP_ID",
             "STEAM_COMPAT_DATA_PATH",
             "STEAM_COMPAT_CLIENT_INSTALL_PATH",
+            "DYLD_INSERT_LIBRARIES",
         }
     }
     return {
@@ -707,6 +779,13 @@ def plan(context, runtime_root, config, arguments):
         "steamworks_bridge": (
             bridge["metadata"].get("name", "lsteamclient")
             if bridge is not None
+            else None
+        ),
+        "dxmt_winemac_compat": (
+            dxmt_winemac_compat["metadata"].get(
+                "name", "DXMT Wine macdrv compatibility"
+            )
+            if dxmt_winemac_compat is not None
             else None
         ),
         "wine_root": str(wine_root),
