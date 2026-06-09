@@ -311,6 +311,67 @@ authoritative complete rollback source.
 6. In progress: implement the independent versioned compatibility runtime and
    Proton-compatible prefix path.
 
+## Phase 4 Runtime Foundation Update
+
+The independent runtime inputs are now fixed and checksum-verified:
+
+- Gcenx game-porting-toolkit Wine `3.0-3`;
+- Apple GPTK 3 D3DMetal files copied only from the user's official local DMG;
+- DXMT `v0.80`;
+- Wine Staging `11.10`;
+- DXVK-macOS `v1.10.3-20230507` builtin.
+
+The Gcenx package includes `wine64`, `wineserver`, WineD3D, `winevulkan`, and
+MoltenVK. CrossOver is not required by the planned runtime.
+
+The runtime design uses immutable packages under
+`~/Library/Application Support/RealSteamOnMac/runtimes/packages`, an atomic
+`current` symlink, and exact Proton-compatible prefixes under each Steam
+library's `steamapps/compatdata/<appid>/pfx`.
+
+A live Play probe at 12:16 local time established the next implementation
+boundary. Steam retained the mapping from AppID `1118200` to
+`realsteamonmac-experimental` and advanced through Cloud, stats, controller,
+license, and launch-delay tasks. It then failed at `CreatingProcess` with
+`AppError_46` before invoking the compatibility tool's logging stub.
+
+Therefore the current UI compatibility-tool bridge is presentation-only. The
+remaining launch work must either refresh the native tool list after Steam has
+initialized, or add an allowlist-scoped dispatcher that invokes the wrapper.
+The startup environment variable path remains prohibited because prior A/B
+testing proved that a valid `STEAM_EXTRA_COMPAT_TOOLS_PATHS` removes Cloud
+settings on this Steam build.
+
+Detailed evidence and package acceptance gates are recorded in
+`docs/research/independent-runtime-foundation-2026-06-09.md`.
+
+The runtime foundation is now implemented and installed. The active immutable
+package is:
+
+```text
+~/Library/Application Support/RealSteamOnMac/runtimes/packages/
+  gptk3.0-3-wine11.10-dxmt0.80-dxvkmacos1.10.3
+```
+
+It contains separate GPTK, DXMT, DXVK-macOS, and WineD3D roots. Upstream DXVK
+2.7.1 is not exposed because current Gcenx documentation states that MoltenVK
+lacks extensions it requires; the macOS-specific builtin release is used
+instead.
+
+All package hashes pass, all four Wine entrypoints execute independently of
+CrossOver, and a People Playground dry-run resolves the exact
+`steamapps/compatdata/1118200/pfx` path without creating it.
+
+The native engine now implements the selected launch-dispatch solution. It
+replaces only steamclient's resolved `posix_spawn` pointer for the exact known
+build and redirects only live-allowlisted PE executables. It preserves Steam's
+spawn actions, attributes, environment, and game arguments, then starts the
+project runtime through `/usr/bin/python3`. Unmanaged AppIDs and native
+executables retain the original system call. A dynamic engine harness verifies
+that decision boundary. The complete pre-deployment matrix passes with 51 Node
+tests, 18 Python tests, and all 22 shell contracts. Live Steam deployment is
+the next acceptance step.
+
 ## Recovery And Rollback
 
 Claude prototype recovery branch:

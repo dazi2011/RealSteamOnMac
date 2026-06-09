@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <libkern/OSCacheControl.h>
 #include <mach/mach.h>
@@ -7,6 +8,7 @@
 #include <mach-o/loader.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <spawn.h>
 #include <stdbool.h>
 #include <stdatomic.h>
 #include <stdint.h>
@@ -29,6 +31,11 @@
 #define STEAMCLIENT_INSTALL_GATE_FALLTHROUGH_OFFSET ((uintptr_t)0x00625060)
 #define STEAMCLIENT_INSTALL_GATE_INVALID_OFFSET ((uintptr_t)0x0062508C)
 #define STEAMUI_PLATFORM_FLAGS_GETTER_OFFSET ((uintptr_t)0x005EAC3C)
+#if defined(__x86_64__)
+#define STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET ((uintptr_t)0x01945548)
+#else
+#define STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET ((uintptr_t)0x018F9500)
+#endif
 #define PLATFORM_INVALID_BIT ((uint32_t)0x10)
 #define MAX_ALLOWLIST_APPIDS ((size_t)256)
 #define MAX_TRACKED_APP_OBJECTS ((size_t)64)
@@ -66,6 +73,7 @@ static _Atomic bool gAllowlistLoaded = false;
 static _Atomic uint64_t gAllowlistGeneration = 0;
 static bool gRegistered = false;
 static bool gSteamClientPatched = false;
+static bool gSteamClientSpawnPatched = false;
 static _Atomic bool gSteamClientInstallGatePatched = false;
 static _Atomic bool gInstallGateRefreshRequested = false;
 static bool gDataScanStartedLogged = false;
@@ -73,6 +81,18 @@ static bool gDataScanSummaryLogged = false;
 static bool gWorkerStarted = false;
 static bool gRegistryServerStarted = false;
 static pthread_mutex_t gRegistryServerLock = PTHREAD_MUTEX_INITIALIZER;
+
+typedef int (*posix_spawn_function)(
+    pid_t *restrict pid,
+    const char *restrict path,
+    const posix_spawn_file_actions_t *file_actions,
+    const posix_spawnattr_t *restrict attributes,
+    char *const argv[restrict],
+    char *const envp[restrict]);
+
+static posix_spawn_function gOriginalPosixSpawn = NULL;
+
+static void ensure_allowlist_loaded(void);
 
 static void log_line(const char *message) {
   const char *home = getenv("HOME");
@@ -278,6 +298,222 @@ static bool is_allowlisted(uint32_t appid) {
   bool found = is_allowlisted_unlocked(appid);
   (void)pthread_mutex_unlock(&gAllowlistLock);
   return found;
+}
+
+static const char *environment_value(
+    char *const environment[], const char *name) {
+  if (environment == NULL || name == NULL) {
+    return NULL;
+  }
+  size_t name_length = strlen(name);
+  for (size_t index = 0; environment[index] != NULL; ++index) {
+    if (
+        strncmp(environment[index], name, name_length) == 0 &&
+        environment[index][name_length] == '='
+    ) {
+      return environment[index] + name_length + 1;
+    }
+  }
+  return NULL;
+}
+
+static uint32_t spawn_appid(char *const environment[]) {
+  static const char *const names[] = {
+      "STEAM_COMPAT_APP_ID",
+      "SteamAppId",
+      "SteamGameId",
+  };
+  for (size_t index = 0; index < sizeof(names) / sizeof(names[0]); ++index) {
+    const char *value = environment_value(environment, names[index]);
+    if (value == NULL || *value == '\0') {
+      continue;
+    }
+    errno = 0;
+    char *end = NULL;
+    unsigned long parsed = strtoul(value, &end, 10);
+    if (
+        errno == 0 && end != value && *end == '\0' &&
+        parsed > 0 && parsed <= UINT32_MAX
+    ) {
+      return (uint32_t)parsed;
+    }
+  }
+  return 0;
+}
+
+static bool has_exe_suffix(const char *path) {
+  if (path == NULL) {
+    return false;
+  }
+  size_t length = strlen(path);
+  return length >= 4 && strcasecmp(path + length - 4, ".exe") == 0;
+}
+
+static bool is_pe_executable(const char *path) {
+  if (!has_exe_suffix(path)) {
+    return false;
+  }
+  FILE *stream = fopen(path, "rb");
+  if (stream == NULL) {
+    return false;
+  }
+  unsigned char magic[2] = {0, 0};
+  bool matches =
+      fread(magic, sizeof(magic), 1, stream) == 1 &&
+      magic[0] == 'M' && magic[1] == 'Z';
+  fclose(stream);
+  return matches;
+}
+
+__attribute__((visibility("default")))
+int realsteamonmac_should_redirect_spawn(
+    const char *path, char *const environment[]) {
+  ensure_allowlist_loaded();
+  uint32_t appid = spawn_appid(environment);
+  return appid != 0 && is_allowlisted(appid) && is_pe_executable(path);
+}
+
+static int realsteamonmac_posix_spawn(
+    pid_t *restrict pid,
+    const char *restrict path,
+    const posix_spawn_file_actions_t *file_actions,
+    const posix_spawnattr_t *restrict attributes,
+    char *const argv[restrict],
+    char *const envp[restrict]) {
+  if (
+      gOriginalPosixSpawn == NULL ||
+      !realsteamonmac_should_redirect_spawn(path, envp)
+  ) {
+    return gOriginalPosixSpawn != NULL
+               ? gOriginalPosixSpawn(
+                     pid, path, file_actions, attributes, argv, envp)
+               : ENOSYS;
+  }
+
+  const char *home = environment_value(envp, "HOME");
+  if (home == NULL || *home == '\0') {
+    return gOriginalPosixSpawn(
+        pid, path, file_actions, attributes, argv, envp);
+  }
+  char runtime[1200];
+  if (
+      snprintf(
+          runtime, sizeof(runtime),
+          "%s/Library/Application Support/RealSteamOnMac/"
+          "runtimes/bin/realsteamonmac-runtime",
+          home) >= (int)sizeof(runtime) ||
+      access(runtime, R_OK) != 0
+  ) {
+    log_line("spawn: runtime entrypoint is unavailable");
+    return gOriginalPosixSpawn(
+        pid, path, file_actions, attributes, argv, envp);
+  }
+
+  uint32_t appid = spawn_appid(envp);
+  char appid_text[16];
+  snprintf(appid_text, sizeof(appid_text), "%u", appid);
+
+  size_t original_count = 0;
+  if (argv != NULL) {
+    while (argv[original_count] != NULL && original_count < 1024) {
+      ++original_count;
+    }
+    if (original_count == 1024) {
+      log_line("spawn: refused oversized argument vector");
+      return E2BIG;
+    }
+  }
+
+  // python3, runtime, launch, --appid, value, executable, original args...
+  size_t redirected_count = 6 + (original_count > 0 ? original_count - 1 : 0);
+  char **redirected = calloc(redirected_count + 1, sizeof(*redirected));
+  if (redirected == NULL) {
+    return ENOMEM;
+  }
+  redirected[0] = "/usr/bin/python3";
+  redirected[1] = runtime;
+  redirected[2] = "launch";
+  redirected[3] = "--appid";
+  redirected[4] = appid_text;
+  redirected[5] = (char *)path;
+  for (size_t index = 1; index < original_count; ++index) {
+    redirected[5 + index] = argv[index];
+  }
+
+  char message[1500];
+  snprintf(
+      message, sizeof(message),
+      "spawn: redirecting AppID %u PE target %s through %s",
+      appid, path, runtime);
+  log_line(message);
+  int result = gOriginalPosixSpawn(
+      pid, "/usr/bin/python3", file_actions, attributes, redirected, envp);
+  free(redirected);
+  return result;
+}
+
+static void patch_steamclient_spawn_redirect(
+    const struct mach_header *header) {
+  if (
+      gSteamClientSpawnPatched ||
+      !image_uuid_matches(header, kSteamClientUUID)
+  ) {
+    return;
+  }
+
+  void **slot = (void **)(
+      (uintptr_t)header + STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET);
+  void *current = NULL;
+  memcpy(&current, slot, sizeof(current));
+  void *expected = dlsym(RTLD_DEFAULT, "posix_spawn");
+  if (current == (void *)&realsteamonmac_posix_spawn) {
+    gSteamClientSpawnPatched = true;
+    return;
+  }
+  if (current == NULL || expected == NULL || current != expected) {
+    log_line("spawn: refused unexpected steamclient posix_spawn pointer");
+    return;
+  }
+
+  Dl_info information;
+  memset(&information, 0, sizeof(information));
+  if (
+      dladdr(current, &information) == 0 ||
+      information.dli_fname == NULL ||
+      (
+          strstr(information.dli_fname, "libsystem_kernel.dylib") == NULL &&
+          strstr(information.dli_fname, "libSystem.B.dylib") == NULL
+      )
+  ) {
+    log_line("spawn: refused non-system posix_spawn implementation");
+    return;
+  }
+
+  long raw_page_size = sysconf(_SC_PAGESIZE);
+  if (raw_page_size <= 0) {
+    return;
+  }
+  uintptr_t page_size = (uintptr_t)raw_page_size;
+  uintptr_t page = (uintptr_t)slot & ~(page_size - 1);
+  if (
+      mach_vm_protect(
+          mach_task_self(), (mach_vm_address_t)page,
+          (mach_vm_size_t)page_size, false,
+          VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY) != KERN_SUCCESS
+  ) {
+    log_line("spawn: could not make symbol pointer writable");
+    return;
+  }
+
+  gOriginalPosixSpawn = (posix_spawn_function)current;
+  void *replacement = (void *)&realsteamonmac_posix_spawn;
+  memcpy(slot, &replacement, sizeof(replacement));
+  (void)mach_vm_protect(
+      mach_task_self(), (mach_vm_address_t)page,
+      (mach_vm_size_t)page_size, false,
+      VM_PROT_READ | VM_PROT_WRITE);
+  gSteamClientSpawnPatched = true;
+  log_line("spawn: installed allowlist-scoped PE redirect");
 }
 
 static void add_allowlist_appid(uint32_t appid) {
@@ -698,6 +934,7 @@ static void patch_steamclient(const struct mach_header *header,
 static void image_added(const struct mach_header *header, intptr_t slide) {
   patch_steamclient(header, slide);
   patch_steamclient_install_gate(header, slide);
+  patch_steamclient_spawn_redirect(header);
 }
 
 __attribute__((visibility("default")))
@@ -1303,6 +1540,13 @@ static void *data_override_worker(void *context) {
           find_image_by_uuid(kSteamClientUUID);
       if (steamclient != NULL) {
         patch_steamclient_install_gate(steamclient, 0);
+      }
+    }
+    if (!gSteamClientSpawnPatched) {
+      const struct mach_header *steamclient =
+          find_image_by_uuid(kSteamClientUUID);
+      if (steamclient != NULL) {
+        patch_steamclient_spawn_redirect(steamclient);
       }
     }
     const struct mach_header *steamui = find_image_by_uuid(kSteamUIUUID);

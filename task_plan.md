@@ -57,12 +57,12 @@ Phase 4: independent compatibility runtime foundation
 
 ### Phase 4: Independent Compatibility Runtime Foundation
 
-- [ ] Inventory locally available GPTK and installed Wine/CrossOver components.
-- [ ] Research current upstream DXMT, DXVK, Wine, GPTK requirements and licenses.
-- [ ] Define the package format under `compatibilitytools.d`.
-- [ ] Implement a runtime registry with versioned, transactional packages.
+- [x] Inventory locally available GPTK and installed Wine/CrossOver components.
+- [x] Research current upstream DXMT, DXVK, Wine, GPTK requirements and licenses.
+- [x] Define the independent package and Proton-compatible per-game layout.
+- [x] Implement a runtime registry with versioned, transactional packages.
 - [ ] Create Proton-compatible `steamapps/compatdata/<appid>/pfx` prefixes.
-- [ ] Implement Steam-to-wrapper launch argument and environment propagation.
+- [x] Implement Steam-to-wrapper launch argument and environment propagation.
 - [ ] Add smoke-test executables and failure diagnostics.
 - [ ] Document, commit, and push each independently testable runtime milestone.
 - **Status:** pending
@@ -146,6 +146,8 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Synchronize AppIDs over an authenticated loopback endpoint | Steam's browser context can reach loopback with `no-cors`; a private token and strict parser avoid a global unauthenticated patch-control surface. |
 | Subscribe directly to native app details after registry sync | Steam's shared details cache remained at status `14` without active subscriptions; `RegisterForAppDetails` provides the authoritative install, launch, and update state. |
 | Keep the SteamUI platform getter unmodified | Data-object reconciliation plus native detail subscriptions passed 34/34 live; redirecting the global getter was redundant, version-sensitive, and contrary to the narrow production design. |
+| Build on Gcenx custom Wine and user-supplied official GPTK files | The independent archive contains Wine, WineD3D, winevulkan, and MoltenVK; Apple supplies D3DMetal but not Wine, and its binaries must not be committed. |
+| Keep runtimes immutable and activate them transactionally | Side-by-side package IDs support rollback and multi-version selection without deleting a working runtime or prefix. |
 
 ## Errors Encountered
 
@@ -153,3 +155,6 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 |-------|---------|------------|
 | Memory registry search returned no RealSteamOnMac entry | 1 | Continue from repository evidence; no prior memory facts will be assumed. |
 | SteamUI near-branch allocation failed and retried every worker tick | 2 | Removed the redundant global getter redirect; retained the getter address only as a vtable identity check for allowlist-scoped data objects. |
+| Native Play reached `CreatingProcess` but did not invoke the tool stub | 1 | Confirmed AppID mapping exists; investigate post-init native tool refresh or an allowlist-scoped launch dispatcher. |
+| Wine Staging 11.10 had no separate `wine64` executable | 1 | Added a package-local `wine64 -> wine` compatibility symlink for its unified WoW64 launcher. |
+| Upstream DXVK 2.7.1 is incompatible with current MoltenVK extensions | 1 | Replaced the active mode with Gcenx DXVK-macOS builtin; retained upstream DXVK only as research evidence. |

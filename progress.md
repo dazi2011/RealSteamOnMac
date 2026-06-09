@@ -223,6 +223,38 @@
     availability, and clean Helper activation environment.
   - Confirmed the new-run native log contains no SteamUI getter patch or
     allocation error.
+  - Inventoried the user-supplied official GPTK 3 image, local renderer
+    archives, and installed reference applications.
+  - Verified current Gcenx GPTK Wine 3.0-3, DXMT v0.80, Wine Staging 11.10,
+    DXVK-macOS v1.10.3, and upstream DXVK v2.7.1 release checksums.
+  - Confirmed the independent Gcenx runtime contains `wine64`, `wineserver`,
+    WineD3D, `winevulkan`, and MoltenVK.
+  - Defined immutable runtime packages, atomic activation, and exact
+    `steamapps/compatdata/<appid>/pfx` per-game layout.
+  - Triggered native Steam Play for People Playground with the logging stub
+    installed. Steam completed Cloud/stat/controller/license stages but failed
+    at `CreatingProcess` with `AppError_46`; the stub was not invoked.
+  - Confirmed Steam persists the AppID-to-tool mapping, isolating the remaining
+    gap to native tool registration or launch dispatch.
+  - Corrected the DXVK plan after current Gcenx documentation confirmed that
+    upstream DXVK requires Vulkan extensions absent from MoltenVK.
+  - Downloaded and checksum-verified Wine Staging 11.10 and the latest
+    DXVK-macOS builtin release.
+  - Implemented an immutable four-root package containing GPTK, DXMT,
+    DXVK-macOS, and WineD3D modes.
+  - Implemented a Python runtime manager with exact Proton path resolution,
+    atomic private per-game configuration, MSync, Retina, Metal HUD, MetalFX,
+    DXR, AVX, prefix preparation, structured logs, and `execve` launch.
+  - Installed and activated package
+    `gptk3.0-3-wine11.10-dxmt0.80-dxvkmacos1.10.3`.
+  - Verified all package hashes and all four Wine entrypoints.
+  - Verified a People Playground dry-run resolves the exact requested prefix
+    without creating it.
+  - Implemented a build-UUID-gated steamclient `posix_spawn` pointer redirect
+    that accepts only managed PE targets and preserves native/unmanaged calls.
+  - Added a dynamic engine harness proving the redirect decision boundary.
+  - Ran the complete pre-deployment matrix: 51 Node tests, 18 Python tests,
+    and all 22 shell contracts passed.
 
 ## Test Results
 
@@ -269,6 +301,15 @@
 | For Honor visible action | AppID `304390` library page | Native enabled blue Install action | `安装`, pointer events auto, status `9/9` | PASS |
 | People Playground visible action | AppID `1118200` library page | Native enabled Play action | `开始游戏`, green gradient, status `11/11` | PASS |
 | Cloud after Phase 3 | Shared settings store | Dynamic registry must not regress Cloud | `cloud_enabled=true`; CloudStorage available | PASS |
+| Independent Wine inventory | Gcenx GPTK Wine 3.0-3 archive | No CrossOver dependency; Wine and graphics loaders present | `wine64`, `wineserver`, WineD3D, winevulkan, MoltenVK present | PASS |
+| Renderer release integrity | Cached GPTK Wine, DXMT, and DXVK archives | Exact upstream SHA-256 digests | All three matched published digests | PASS |
+| Native Play dispatch probe | `steam://rungameid/1118200` with logging stub | Capture compatibility-tool invocation | Mapping present, but spawn failed before stub with `AppError_46` | BLOCKED |
+| Runtime manager unit suite | PE/path/config/environment fixtures | Exact Proton paths and valid control mapping | 8 tests passed | PASS |
+| Runtime package install | Verified local archives plus official GPTK redist | Atomic four-mode active package | Package installed; all recorded hashes passed | PASS |
+| Independent Wine entrypoints | Four installed renderer roots | Each Wine launcher executes without CrossOver | GPTK Wine and three Wine Staging 11.10 roots executed | PASS |
+| People Playground dry-run | Installed runtime plus AppID 1118200 | Exact prefix and no mutation | Exact `/compatdata/1118200/pfx`; prefix remained absent | PASS |
+| Spawn redirect harness | Managed PE, unmanaged PE, native binary | Redirect only managed PE target | Decision boundary passed | PASS |
+| Full Phase 4 pre-deployment suite | 51 Node, 18 Python, 22 shell contracts | No regression before live installation | All passed | PASS |
 
 ## Error Log
 
@@ -283,6 +324,8 @@
 | 2026-06-09 | Rollback fixture lacked the new registry token | 1 | Added the same private token fixture required by UI installation, then reran the complete suite successfully. |
 | 2026-06-09 | SteamUI getter near-branch allocator failed under the cold ASLR layout and logged every tick | 2 | Removed the redundant global getter hook; retained only allowlist-scoped data repair and native detail subscriptions. |
 | 2026-06-09 | Shell matrix was first invoked by executable bit and stopped on a non-executable probe contract | 1 | Re-ran with the documented `sh "$test_file"` invocation; all 20 shell contracts passed. |
+| 2026-06-09 | Native Play did not enter the compatibility-tool logging stub | 1 | Logs proved the request reached `CreatingProcess` and failed with `AppError_46`; mapping exists, so Phase 4 now targets post-init registration or scoped launch dispatch. |
+| 2026-06-09 | First runtime package build stopped at Wine Staging `wine64` validation | 1 | Wine 11.10 uses unified `wine`; package now supplies a local `wine64 -> wine` compatibility symlink. |
 
 ## 5-Question Reboot Check
 

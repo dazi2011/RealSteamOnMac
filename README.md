@@ -52,12 +52,17 @@ download prototype to a cloud-safe, independent compatibility runtime.
 - The native engine does not redirect SteamUI's global platform getter. It uses
   that getter address only to identify real app objects before applying
   allowlist-scoped data changes, avoiding a redundant version-sensitive hook.
-
-Launching the installed Windows binary (CrossOver/Proton routing) and
-renderer/package management remain future work. A download may briefly park as
-`Disabled (Suspended)` — that is Steam's normal client-side download scheduler,
-not a project limit; resuming it (or relaunching Steam) lets it finish, as it
-did here.
+- The independent runtime package is installed under
+  `~/Library/Application Support/RealSteamOnMac/runtimes`. It contains separate
+  GPTK, DXMT, DXVK-macOS, and WineD3D roots and does not use either installed
+  CrossOver application.
+- Runtime configuration resolves prefixes to the Proton-compatible
+  `steamapps/compatdata/<appid>/pfx` layout. MSync, Retina mode, Metal HUD,
+  MetalFX, DXR, and AVX environment/registry mappings have automated coverage.
+- The pre-deployment native launch bridge redirects only managed PE
+  executables through the project runtime while preserving Steam's spawn
+  attributes, environment, and arguments. Live Steam deployment, first prefix
+  creation, and a real game-window acceptance test are still pending.
 
 ## How It Works
 
@@ -85,6 +90,13 @@ did here.
   button.
 - The launcher reapplies the known-build UI patch before every Steam start and
   fails back to the original bootstrap on a signature mismatch.
+- The runtime installer verifies every upstream archive, copies Apple's
+  D3DMetal files only from a user-supplied official GPTK disk image, builds an
+  immutable package in a staging directory, and atomically switches `current`.
+- The delayed native engine replaces the known steamclient build's resolved
+  `posix_spawn` pointer. It invokes the runtime only when the live allowlist
+  contains the AppID and the target is an existing PE `.exe`; native programs
+  and unmanaged games keep the original system implementation.
 
 ## Build And Test
 
@@ -92,7 +104,7 @@ did here.
 sh script/build_compat_gate_hook.sh
 sh script/build_steam_launcher.sh
 node --test tests/*.mjs
-python3 -m unittest tests/test_steamui_patch.py
+python3 -m unittest discover -s tests -p 'test_*.py'
 for test_file in tests/test_*.sh; do
   sh "$test_file"
 done
@@ -110,6 +122,19 @@ The installer refuses unknown Steam modifications, signs only the runtime main
 executable with the minimum DYLD entitlements, installs the minimal startup
 guard plus delayed native engine, creates the private registry token, and
 installs a universal launcher in `Steam.app`.
+
+Install or update the independent runtime package using an official local GPTK
+3 disk image:
+
+```sh
+sh script/install_runtime_package.sh \
+  --gptk-dmg \
+  "$HOME/Downloads/Game_Porting_Toolkit_3.0.dmg"
+```
+
+Apple binaries are never committed to this repository. Runtime versions are
+kept side by side; the installer verifies checksums and changes only the
+`current` symlink after a package passes validation.
 
 Verify the installed UI resources while Steam is stopped:
 
