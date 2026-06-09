@@ -50,11 +50,12 @@ did here.
 ## How It Works
 
 - `libRealSteamCompatGate.dylib` is now a minimal startup guard. Its constructor
-  only clears inherited injection variables before Steam creates Helper
-  processes.
+  preserves injection through Steam's bootstrap fork, then clears inherited
+  variables in every Helper and schedules one engine activation in the final
+  runtime.
 - `libRealSteamNativeEngine.dylib` contains the proven allowlist-gated app-data
-  and `GetAppForInstallation` patches, but has no dyld constructor and is not
-  loaded during Steam initialization.
+  and `GetAppForInstallation` patches, has no dyld constructor, and is loaded
+  by the guard only after a 30-second initialization delay.
 - The launcher explicitly removes `STEAM_EXTRA_COMPAT_TOOLS_PATHS`. Runtime
   packages remain installed but dormant until the project-owned registry and
   post-initialization activation path are ready.

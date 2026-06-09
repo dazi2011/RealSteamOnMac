@@ -7,6 +7,8 @@ ENGINE="$ROOT/artifacts/compat-gate-hook/libRealSteamNativeEngine.dylib"
 HOOK_SOURCE="$ROOT/hook/injection_guard.c"
 ENGINE_SOURCE="$ROOT/hook/compat_gate_hook.c"
 HARNESS_SOURCE="$ROOT/tests/fixtures/hook_environment_harness.c"
+ACTIVATION_HARNESS_SOURCE="$ROOT/tests/fixtures/delayed_activation_harness.c"
+FAKE_ENGINE_SOURCE="$ROOT/tests/fixtures/fake_native_engine.c"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
@@ -36,6 +38,14 @@ if grep -q '__attribute__((constructor))' "$ENGINE_SOURCE"; then
 fi
 test -f "$ENGINE"
 
+grep -q 'REALSTEAMONMAC_DELAYED_ENGINE_PATH' "$HOOK_SOURCE"
+grep -q 'REALSTEAMONMAC_INJECTION_STAGE' "$HOOK_SOURCE"
+grep -q 'getprogname' "$HOOK_SOURCE"
+grep -q 'dispatch_source_create' "$HOOK_SOURCE"
+grep -q 'DISPATCH_SOURCE_TYPE_TIMER' "$HOOK_SOURCE"
+grep -q 'dlopen' "$HOOK_SOURCE"
+grep -q 'realsteamonmac_start_native_worker' "$HOOK_SOURCE"
+
 RUNTIME_DIR="$TMP/Steam.AppBundle/Steam/Contents/MacOS"
 RUNTIME="$RUNTIME_DIR/steam_osx"
 mkdir -p "$RUNTIME_DIR" "$TMP/home"
@@ -47,5 +57,26 @@ xcrun clang \
   "$HARNESS_SOURCE"
 
 HOME="$TMP/home" "$RUNTIME" "$HOOK"
+
+FAKE_ENGINE="$TMP/libFakeNativeEngine.dylib"
+ACTIVATION_HARNESS="$TMP/delayed_activation_harness"
+MARKER="$TMP/activation.marker"
+xcrun clang \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -dynamiclib \
+  -o "$FAKE_ENGINE" \
+  "$FAKE_ENGINE_SOURCE"
+xcrun clang \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -o "$ACTIVATION_HARNESS" \
+  "$ACTIVATION_HARNESS_SOURCE"
+
+HOME="$TMP/home" "$ACTIVATION_HARNESS" \
+  "$HOOK" "$FAKE_ENGINE" "$MARKER"
+test -s "$MARKER"
 
 echo "hook environment isolation: PASS"

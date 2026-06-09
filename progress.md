@@ -153,6 +153,20 @@
   - Added policy and reconciliation coverage for mapping installed managed
     games to native ready-to-launch status `11`, while rejecting inconsistent
     local-content/status combinations.
+  - Rejected external Mach injection as the shipping path because it would
+    require debugger/task entitlements and weaken the installed runtime.
+  - Added an environment-gated, one-shot dispatch timer to the minimal guard.
+  - Added a fake-engine harness proving delayed `dlopen` and worker invocation,
+    while preserving the original no-engine guard behavior.
+  - Added launcher contracts for the engine path, 30-second delay, and explicit
+    bootstrap/runtime injection stage.
+  - Diagnosed Steam's startup fork and adjusted the stage handshake so the
+    guard survives into the final runtime but every Helper clears the inherited
+    environment and refuses activation.
+  - Completed a live two-stage A/B launch: guard present before activation,
+    engine automatically mapped after 30 seconds, worker/gate active, Cloud
+    intact, People Playground backend status `11`, and all Helper environments
+    clean.
 
 ## Test Results
 
@@ -186,6 +200,8 @@
 | UI patch migration | Previous static compatibility gate | Upgrade atomically to dynamic predicate | Python and shell contracts passed | PASS |
 | Post-init engine load | LLDB load plus explicit worker call | Install backend gate without breaking Cloud | Engine mapped, gate patched, Cloud fields preserved | PASS |
 | Installed state mapping | People Playground plus native installed titles | Derive correct Play state | Backend `11` + local content maps overview to `11` | PASS |
+| Delayed activation harness | Fake native engine and marker | Invoke only after configured delay | Marker written; inherited environment cleared | PASS |
+| Live automatic activation | Two-stage guard launch | Load engine after initialization without Cloud regression | Engine/gate active; Cloud intact; Helpers clean | PASS |
 
 ## Error Log
 

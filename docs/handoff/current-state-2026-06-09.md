@@ -124,6 +124,28 @@ Automated tests now cover both states and reject mismatched local-content/state
 combinations. A production post-initialization loader is still required; LLDB
 is diagnostic evidence, not the shipping mechanism.
 
+The production replacement for the debugger path has now also passed a live
+A/B test. The launcher supplies a `bootstrap` stage, guard path, engine path,
+and 30-second delay. Steam's first runtime stage forks the final process, so the
+guard preserves injection through that stage. The final `steam_osx` retains a
+one-shot dispatch timer; each Steam Helper exec loads the guard only long
+enough to clear every injection/activation variable and refuses engine
+activation because it is not the runtime process.
+
+After 30 seconds the final runtime loaded the engine automatically and started
+the worker. Verified at that point:
+
+- both guard and engine were mapped;
+- the install gate and data reconciliation worker were active;
+- People Playground details were status `11` with local content;
+- global Cloud fields remained present and enabled;
+- no Helper process retained DYLD, compatibility-tool, or RealSteamOnMac
+  activation variables.
+
+The loader no longer requires LLDB, `task_for_pid`, `get-task-allow`, or an
+administrator prompt. The next native task is synchronizing the browser's
+dynamic 34-AppID registry into the already-running engine.
+
 ## What Is Not Implemented
 
 The installed compatibility tool's `run` script only logs Steam's verb,

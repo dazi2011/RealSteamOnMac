@@ -65,6 +65,8 @@ ditto "$RUNTIME_APP" "$BACKUP/SteamRuntime.app"
 
 test -f "$SUPPORT/libRealSteamCompatGate.dylib"
 test -f "$SUPPORT/libRealSteamNativeEngine.dylib"
+grep -q 'REALSTEAMONMAC_DELAYED_ENGINE_PATH' \
+    "$STEAM_APP/Contents/MacOS/realsteamonmac_launcher"
 test -x "$SUPPORT/compat-tool/realsteamonmac-experimental/run"
 test -f "$SUPPORT/allowlist.txt"
 test -x "$SUPPORT/patch_steamui.py"

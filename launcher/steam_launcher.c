@@ -133,6 +133,9 @@ static int exec_original_bootstrap(int argc, char **argv,
 
   unsetenv("DYLD_INSERT_LIBRARIES");
   unsetenv("REALSTEAMONMAC_FORCE_COMPAT");
+  unsetenv("REALSTEAMONMAC_DELAYED_ENGINE_PATH");
+  unsetenv("REALSTEAMONMAC_ACTIVATION_DELAY_MS");
+  unsetenv("REALSTEAMONMAC_INJECTION_STAGE");
   unsetenv("STEAM_EXTRA_COMPAT_TOOLS_PATHS");
   log_line("fallback to original Steam bootstrap: %s", reason);
   execv(original, child_argv);
@@ -180,6 +183,7 @@ int main(int argc, char **argv) {
           : default_support;
 
   char hook[PATH_MAX];
+  char engine[PATH_MAX];
   char patcher[PATH_MAX];
   char ui_source[PATH_MAX];
   char allowlist[PATH_MAX];
@@ -187,6 +191,8 @@ int main(int argc, char **argv) {
   char steamui[PATH_MAX];
   if (!build_path(hook, sizeof(hook), support,
                   "libRealSteamCompatGate.dylib") ||
+      !build_path(engine, sizeof(engine), support,
+                  "libRealSteamNativeEngine.dylib") ||
       !build_path(patcher, sizeof(patcher), support,
                   "patch_steamui.py") ||
       !build_path(ui_source, sizeof(ui_source), support,
@@ -203,6 +209,7 @@ int main(int argc, char **argv) {
                                    "Steam runtime is unavailable");
   }
   if (access(hook, R_OK) != 0 ||
+      access(engine, R_OK) != 0 ||
       access(patcher, X_OK) != 0 ||
       access(ui_source, R_OK) != 0 ||
       access(allowlist, R_OK) != 0) {
@@ -216,7 +223,10 @@ int main(int argc, char **argv) {
 
   if (unsetenv("STEAM_EXTRA_COMPAT_TOOLS_PATHS") != 0 ||
       setenv("DYLD_INSERT_LIBRARIES", hook, 1) != 0 ||
-      setenv("REALSTEAMONMAC_FORCE_COMPAT", "1", 1) != 0) {
+      setenv("REALSTEAMONMAC_FORCE_COMPAT", "1", 1) != 0 ||
+      setenv("REALSTEAMONMAC_DELAYED_ENGINE_PATH", engine, 1) != 0 ||
+      setenv("REALSTEAMONMAC_ACTIVATION_DELAY_MS", "30000", 1) != 0 ||
+      setenv("REALSTEAMONMAC_INJECTION_STAGE", "bootstrap", 1) != 0) {
     return exec_original_bootstrap(argc, argv,
                                    "could not configure runtime environment");
   }
@@ -243,6 +253,11 @@ int main(int argc, char **argv) {
   if (dry_run != NULL && strcmp(dry_run, "1") == 0) {
     printf("steamui=verified\n");
     printf("dyld=%s\n", getenv("DYLD_INSERT_LIBRARIES"));
+    printf("engine=%s\n", getenv("REALSTEAMONMAC_DELAYED_ENGINE_PATH"));
+    printf("activation_delay_ms=%s\n",
+           getenv("REALSTEAMONMAC_ACTIVATION_DELAY_MS"));
+    printf("injection_stage=%s\n",
+           getenv("REALSTEAMONMAC_INJECTION_STAGE"));
     printf("enabled=%s\n", getenv("REALSTEAMONMAC_FORCE_COMPAT"));
     printf("tools=disabled\n");
     fputs("args=", stdout);

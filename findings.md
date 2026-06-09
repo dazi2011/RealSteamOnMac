@@ -118,6 +118,24 @@
 - The UI bridge must therefore synchronize an invalid managed overview to the
   matching backend status `9` or `11`, while preserving download, update,
   running, and other active statuses.
+- Steam's runtime startup has a forked/two-stage shape. Clearing the injection
+  environment in the first constructor removes the guard from the final
+  process; preserving it through the bootstrap stage keeps the guard mapped in
+  the final `steam_osx`.
+- The production activation handshake is:
+  - launcher sets injection stage `bootstrap`, guard path, engine path, and a
+    30-second delay;
+  - bootstrap guard changes the stage to `runtime` without starting a worker;
+  - the final runtime keeps the inherited one-shot dispatch timer;
+  - every Helper exec loads the guard, clears all injection/activation
+    variables, rejects engine activation because its process name is not
+    `steam_osx`;
+  - the final runtime timer loads the engine and starts its worker after normal
+    Steam initialization.
+- A live two-stage launch proved the timer survives Steam's startup fork. After
+  30 seconds both guard and engine were mapped, the install gate and data worker
+  were active, People Playground details were status `11`, Cloud remained
+  enabled, and no Helper process retained a DYLD or RealSteamOnMac variable.
 
 ## Documentation Audit Findings
 
@@ -226,6 +244,7 @@
 | Identify targets from Steam app/depot metadata | A title must have a Windows launch/depot path and no usable macOS launch/depot path; `InvalidPlatform` alone is insufficient. |
 | Use the live app store plus requested details as the authoritative registry | It is already decoded by Steam, reflects ownership and visibility, and supports in-process hot updates without parsing binary cache files. |
 | Activate the native engine only after Steam initialization | Live LLDB loading proved the install gate can be installed without removing Cloud settings; startup-time worker creation remains forbidden. |
+| Use a two-stage guard plus one-shot dispatch timer | It survives Steam's startup fork, avoids debugger entitlements, activates after Cloud initialization, and sanitizes every Helper exec. |
 | Restore Steam UI before any other rollback mutation | A failed UI restore now aborts before Steam.app, runtime binaries, or support files are moved. |
 | Treat missing `cloud_enabled` as the primary cloud symptom | The blank page and false “globally disabled” state share this backend omission; changing account/cloud data would hide evidence without proving a cause. |
 
