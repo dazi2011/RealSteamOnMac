@@ -52,6 +52,10 @@ BACKUP_RUNTIME_EXECUTABLE="$BACKUP_RUNTIME/Contents/MacOS/steam_osx"
 BACKUP_STEAMCLIENT="$BACKUP_RUNTIME/Contents/MacOS/steamclient.dylib"
 RUNTIME_EXECUTABLE="$RUNTIME_APP/Contents/MacOS/steam_osx"
 RUNTIME_STEAMCLIENT="$RUNTIME_APP/Contents/MacOS/steamclient.dylib"
+STEAMUI_ROOT="$RUNTIME_APP/Contents/MacOS/steamui"
+STEAMUI_PATCHER="$SUPPORT_ROOT/patch_steamui.py"
+STEAMUI_INDEX_BACKUP="$STEAMUI_ROOT/index.html.realsteamonmac.original"
+STEAMUI_COMPAT_BACKUP="$STEAMUI_ROOT/chunk~2dcc5aaf7.js.realsteamonmac.original"
 
 [ -d "$BACKUP_APP" ] || {
     echo "backup Steam.app is missing: $BACKUP_APP" >&2
@@ -73,6 +77,19 @@ RUNTIME_STEAMCLIENT="$RUNTIME_APP/Contents/MacOS/steamclient.dylib"
 if pgrep -f "^$RUNTIME_EXECUTABLE( |$)" >/dev/null 2>&1; then
     echo "Steam is running; refusing to restore live files" >&2
     exit 1
+fi
+
+if [ -e "$STEAMUI_INDEX_BACKUP" ] || [ -e "$STEAMUI_COMPAT_BACKUP" ]; then
+    [ -f "$STEAMUI_INDEX_BACKUP" ] &&
+        [ -f "$STEAMUI_COMPAT_BACKUP" ] || {
+        echo "Steam UI patch backups are incomplete; refusing rollback" >&2
+        exit 1
+    }
+    [ -x "$STEAMUI_PATCHER" ] || {
+        echo "Steam UI patcher is unavailable; refusing rollback" >&2
+        exit 1
+    }
+    "$STEAMUI_PATCHER" restore --steamui-root "$STEAMUI_ROOT"
 fi
 
 STAMP=$(date -u '+%Y%m%dT%H%M%SZ')

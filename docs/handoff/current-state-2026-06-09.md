@@ -102,21 +102,24 @@ The installer is guarded against a running Steam process, unknown bootstrap
 modifications, and unknown runtime signing state. It applies the known Steam UI
 patch, installs the launcher/hook/tool, and signs the modified executables.
 
-Two gaps must be fixed before the next real-machine installer run:
+One gap remains before the runtime package manager is complete:
 
-1. The rollback script restores `Steam.app`, the runtime executable, and
-   `steamclient.dylib`, but does not restore patched Steam UI resources. Moving
-   the support directory away can leave `index.html` referencing missing
-   project scripts.
-2. Compatibility-tool replacement uses `rm -rf` followed by `cp`, which is not
+1. Compatibility-tool replacement uses `rm -rf` followed by `cp`, which is not
    transactional and cannot preserve multiple installed runtime versions.
 
-The first gap is a rollback correctness bug. The second will be replaced by the
-versioned runtime package manager.
+The rollback correctness bug was fixed in the first 2026-06-09 implementation
+step. The rollback now detects both guarded Steam UI backup files and requires
+the installed patcher to restore `index.html`, the compatibility chunk, and
+project assets before it moves the support directory or replaces application
+files. Incomplete backups or a missing patcher make rollback fail closed.
+
+The focused regression test installs the real UI patch in a temporary runtime,
+runs the rollback, and verifies exact original resources and asset removal. The
+complete repository suite passes with the fix.
 
 ## Next Execution Order
 
-1. Add a failing rollback test for Steam UI restoration and fix the rollback.
+1. Done: Steam UI restoration is covered by the rollback regression test.
 2. Relaunch Steam through the existing launcher with CEF debugging enabled.
 3. Reproduce the Cloud page failure and capture page exceptions, account
    settings, roaming-store state, and per-game cloud state through read-only
@@ -141,5 +144,5 @@ Current clean Steam backup:
 /Users/wudazi/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z
 ```
 
-Do not run the current rollback script on the real installation until the
-Steam UI restoration gap above is fixed and tested.
+The rollback is now automated-test verified, but still requires Steam to be
+fully stopped and the clean backup path above to remain intact.

@@ -28,7 +28,7 @@ Phase 2: rollback safety and cloud root-cause investigation
 
 ### Phase 2: Live Steam Health And Cloud Root Cause
 
-- [ ] Fix and test complete Steam UI resource restoration in rollback.
+- [x] Fix and test complete Steam UI resource restoration in rollback.
 - [ ] Capture Steam process, build, launcher, hook, config, and log state.
 - [ ] Reproduce the blank global Cloud page and per-game cloud-status behavior.
 - [ ] Trace console errors and configuration reads without changing cloud data.

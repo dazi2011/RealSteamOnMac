@@ -82,9 +82,10 @@
   The independent runtime and dynamic library work needs a new decomposed spec.
 - The current compatibility `run` script only logs its inputs and exits `0`;
   it does not create a prefix or launch a Windows process.
-- The current rollback script does not restore patched Steam UI resources before
-  removing the support directory. This can leave `index.html` referencing
-  missing project scripts and is a correctness bug.
+- The original rollback script did not restore patched Steam UI resources before
+  removing the support directory. A TDD regression now requires restoration of
+  `index.html`, the compatibility chunk, backups, and project assets before
+  support removal.
 - Current compatibility-tool installation deletes and recopies a single fixed
   directory. The multi-version runtime manager must replace this with staged,
   validated, atomic activation.
@@ -130,7 +131,7 @@
 | Reject Claude's global NOP as the production design | It broadens the backend gate beyond proven Windows-only games and is not paired with a complete UI predicate. |
 | Preserve Claude's prototype on a recovery branch | It protects interrupted work while keeping incomplete behavior out of the verified mainline. |
 | Identify targets from Steam app/depot metadata | A title must have a Windows launch/depot path and no usable macOS launch/depot path; `InvalidPlatform` alone is insufficient. |
-| Fix rollback before the next real installer mutation | A rollback that leaves patched UI resources is not a valid safety mechanism. |
+| Restore Steam UI before any other rollback mutation | A failed UI restore now aborts before Steam.app, runtime binaries, or support files are moved. |
 
 ## Issues Encountered
 
@@ -139,7 +140,7 @@
 | The requested scope spans several independent subsystems | Decomposed into audit/cloud, dynamic eligibility, runtime foundation, controls, and end-to-end launch phases. |
 | The user requested uninterrupted autonomous execution while the brainstorming skill normally asks for approval | Treat the user's detailed architecture and explicit delegation of decisions as authorization; document decisions and proceed without pausing for approval. |
 | The full test suite passed while the UI target predicate was missing | Add an integration contract that loads `config.js` and `ui.js` together and proves the compatibility-page predicate exists before accepting dynamic enablement. |
-| Rollback tests did not cover Steam UI resource restoration | Add a failing fixture with patched `index.html`, compatibility chunk, backups, and support removal before changing the script. |
+| Rollback tests did not cover Steam UI resource restoration | Resolved with a real patch-install/restore fixture in `tests/test_restore_steam_from_backup.sh`. |
 
 ## Resources
 

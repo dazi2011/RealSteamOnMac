@@ -42,6 +42,11 @@
     restored before the support directory is removed.
   - Stopped Claude's orphaned twelve-hour log watcher without touching Steam.
   - Added the 2026-06-09 technical handoff.
+  - Wrote a failing rollback regression that installed the real guarded Steam
+    UI patch and proved the old rollback left injected resources behind.
+  - Updated the rollback to restore Steam UI before moving any application,
+    runtime, or support files.
+  - Re-ran the focused rollback test and complete repository suite; all passed.
 - Files created/modified:
   - `task_plan.md` (created)
   - `findings.md` (created)
@@ -65,6 +70,8 @@
 | Installed game verification | Manifest, content tree, content log | Prove completed Windows depot | StateFlags 4, UpdateResult 0, depot 1118201, 436 MB content | PASS |
 | Live CDP endpoint | `http://127.0.0.1:8080/json/list` | Enumerate Steam targets | Connection refused; process lacks debug flag | EXPECTED FAIL |
 | Active recovered-head suite | Node, Python, and all shell tests | Clean recovered baseline | All tests passed | PASS |
+| Rollback RED | Patched temporary Steam UI | Old rollback should fail exact-resource assertions | Failed because patched `index.html` remained | PASS |
+| Rollback GREEN | Same fixture after minimal fix | Exact originals restored and assets removed | Focused and full suites passed | PASS |
 
 ## Error Log
 
