@@ -13,6 +13,7 @@ const {
   refreshAppActionComponents,
   reconcileCompatDetails,
   reconcileAppState,
+  DETAILS_REFRESH_INTERVAL_MS,
 } = require("../ui/realsteamonmac_ui.js");
 
 function gameOverview(appid, overrides = {}) {
@@ -191,19 +192,16 @@ test("normalizes an installed backend-ready app to ready-to-launch", () => {
   );
 });
 
-for (const [detailsStatus, hasAnyLocalContent] of [
-  [9, true],
-  [11, false],
-]) {
-  test(`rejects inconsistent backend state ${detailsStatus}/${hasAnyLocalContent}`, () => {
+for (const detailsStatus of [3, 7, 9, 11, 19, 35]) {
+  test(`mirrors authoritative native status ${detailsStatus}`, () => {
     assert.deepEqual(
       decideOverviewPatch({
         allowlisted: true,
         detailsStatus,
         overviewStatus: 14,
-        hasAnyLocalContent,
+        hasAnyLocalContent: detailsStatus !== 9,
       }),
-      { normalize: false },
+      { normalize: true },
     );
   });
 }
@@ -232,10 +230,10 @@ test("does not change a non-allowlisted app", () => {
   );
 });
 
-test("does not change an app with local content", () => {
+test("does not change an app before the native registry is synchronized", () => {
   assert.deepEqual(
     decideOverviewPatch({
-      allowlisted: true,
+      allowlisted: false,
       detailsStatus: 9,
       overviewStatus: 14,
       hasAnyLocalContent: true,
@@ -244,7 +242,7 @@ test("does not change an app with local content", () => {
   );
 });
 
-for (const overviewStatus of [3, 4, 5, 7, 9, 10, 11, 12, 13]) {
+for (const overviewStatus of [3, 4, 5, 7, 9, 10, 11, 12, 13, 19, 35]) {
   test(`preserves active or non-invalid overview status ${overviewStatus}`, () => {
     assert.deepEqual(
       decideOverviewPatch({
@@ -257,6 +255,10 @@ for (const overviewStatus of [3, 4, 5, 7, 9, 10, 11, 12, 13]) {
     );
   });
 }
+
+test("uses a bounded retry interval for stale native detail caches", () => {
+  assert.equal(DETAILS_REFRESH_INTERVAL_MS, 1000);
+});
 
 test("normalizes the shared app store object when backend details are ready", () => {
   const selected = {
@@ -389,6 +391,30 @@ test("renormalizes a tracked overview when Steam writes invalid platform again",
   assert.equal(selected.display_status, 9);
   assert.equal(selected.is_available_on_current_platform, true);
   assert.equal(selected.is_invalid_os_type, false);
+});
+
+test("does not repeatedly normalize an already synchronized overview", () => {
+  const selected = {
+    display_status: 14,
+    is_available_on_current_platform: false,
+    is_invalid_os_type: true,
+  };
+  const state = {
+    overview: {
+      appid: 1118200,
+      selected_per_client_data: selected,
+    },
+    details: {
+      unAppID: 1118200,
+      eDisplayStatus: 11,
+      bHasAnyLocalContent: true,
+    },
+    allowlist: new Set([1118200]),
+    originalStates: new WeakMap(),
+  };
+
+  assert.equal(reconcileAppState(state), "normalized");
+  assert.equal(reconcileAppState(state), "unchanged");
 });
 
 test("retains the original state through an active install and restores if backend readiness is lost", () => {

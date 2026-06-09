@@ -48,6 +48,19 @@ done
 }
 
 RUNTIME_EXECUTABLE="$RUNTIME_APP/Contents/MacOS/steam_osx"
+STEAM_EXECUTABLE_NAME=$(
+    /usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' \
+        "$STEAM_APP/Contents/Info.plist" 2>/dev/null || true
+)
+[ -n "$STEAM_EXECUTABLE_NAME" ] || {
+    echo "Steam bootstrap executable name is unavailable" >&2
+    exit 1
+}
+STEAM_EXECUTABLE="$STEAM_APP/Contents/MacOS/$STEAM_EXECUTABLE_NAME"
+[ -f "$STEAM_EXECUTABLE" ] || {
+    echo "Steam bootstrap executable not found: $STEAM_EXECUTABLE" >&2
+    exit 1
+}
 if [ -x "$RUNTIME_EXECUTABLE" ] && pgrep -f "$RUNTIME_EXECUTABLE" >/dev/null 2>&1; then
     echo "Steam is still running; refusing to create a non-clean backup" >&2
     exit 1
@@ -83,22 +96,26 @@ verify_signature_if_source_is_strict() {
     printf 'created_utc=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     printf 'steam_app_source=%s\n' "$STEAM_APP"
     printf 'runtime_app_source=%s\n' "$RUNTIME_APP"
+    printf 'steam_executable=%s\n' "$STEAM_EXECUTABLE_NAME"
     printf 'steam_app_bytes=%s\n' "$(du -sk "$STEAM_APP" | awk '{print $1 * 1024}')"
     printf 'runtime_app_bytes=%s\n' "$(du -sk "$RUNTIME_APP" | awk '{print $1 * 1024}')"
 } >"$DESTINATION/backup-metadata.txt"
 
 (
     cd "$DESTINATION"
-    FILES="Steam.app/Contents/MacOS/steam_osx SteamRuntime.app/Contents/MacOS/steam_osx"
+    FILES="Steam.app/Contents/MacOS/$STEAM_EXECUTABLE_NAME SteamRuntime.app/Contents/MacOS/steam_osx"
+    if [ -f "Steam.app/Contents/MacOS/steam_osx.original" ]; then
+        FILES="$FILES Steam.app/Contents/MacOS/steam_osx.original"
+    fi
     if [ -f "SteamRuntime.app/Contents/MacOS/steamclient.dylib" ]; then
         FILES="$FILES SteamRuntime.app/Contents/MacOS/steamclient.dylib"
     fi
 
     : >SHA256SUMS
     for file in $FILES; do
-        shasum -a 256 "$file" >>SHA256SUMS
+        /usr/bin/shasum -a 256 "$file" >>SHA256SUMS
     done
-    shasum -a 256 -c SHA256SUMS
+    /usr/bin/shasum -a 256 -c SHA256SUMS
 )
 
 echo "$DESTINATION"

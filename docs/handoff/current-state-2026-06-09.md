@@ -54,7 +54,7 @@ Manifest        9210503819883706733
   `~/Library/Application Support/RealSteamOnMac`
 - Startup guard:
   `~/Library/Application Support/RealSteamOnMac/libRealSteamCompatGate.dylib`
-- Dormant native engine:
+- Delayed native engine:
   `~/Library/Application Support/RealSteamOnMac/libRealSteamNativeEngine.dylib`
 - Dormant compatibility-tool package:
   `~/Library/Application Support/RealSteamOnMac/compat-tool`
@@ -65,14 +65,11 @@ The launcher does not set `STEAM_EXTRA_COMPAT_TOOLS_PATHS`. The valid tool
 package remains on disk for later project-owned discovery, but native macOS
 Steam is not asked to discover it during startup.
 
-The installed startup guard, dormant engine, launcher, Python patcher, and
-browser UI asset were rebuilt from the active working tree and deployed on
-2026-06-09 at 10:39 Asia/Shanghai.
-
-The dynamic browser registry implementation is tested in the repository but
-has not yet been deployed to the live Steam runtime. The installed browser
-assets therefore remain at the preceding cloud-safe baseline until the
-post-initialization backend design is ready for a coordinated live test.
+The installed startup guard, delayed engine, launcher, Python patcher, and
+browser UI asset were rebuilt from the active working tree and cold-deployed on
+2026-06-09 at 12:03 Asia/Shanghai. Source/deployed SHA-256 pairs matched, Steam
+passed deep signature verification, and the registry token remained mode
+`0600`.
 
 ## Dynamic Windows-Only Registry
 
@@ -95,7 +92,11 @@ The browser asset now:
 - restores any project-normalized state before removing an AppID;
 - supplies RealSteamOnMac compatibility tools from project configuration;
 - persists per-AppID selection without calling Steam's native tool registration
-  for project-owned tools.
+  for project-owned tools;
+- subscribes directly to each accepted AppID's native detail stream and
+  publishes callbacks into the shared details store;
+- retries only stale status-`14` details at a bounded one-second interval and
+  unregisters removed games.
 
 The known-build compatibility chunk migrates atomically from the previous
 static AppID gate to the dynamic predicate. Unit, browser-context, migration,
@@ -129,9 +130,35 @@ rejection, and direct managed-AppID queries. The UI integration harness also
 proves that an initial connection failure does not cache the payload and that
 the next five-second scan retries it.
 
-This bridge is repository-tested but not yet installed persistently in
-`/Applications/Steam.app`. The next step is a coordinated live deployment and
-verification against all 34 current candidates while rechecking Cloud.
+This bridge is installed persistently in `/Applications/Steam.app`. A cold
+start synchronized all 34 current candidates with zero invalid-platform details
+or overviews. Garry's Mod remained excluded at native status `31`.
+
+### Live Phase 3 Acceptance
+
+The final repository matrix passed with 51 Node tests, 10 Python tests, and all
+20 shell contracts.
+
+Live checks after the cold deployment proved:
+
+- the delayed engine opened `127.0.0.1:57344`;
+- the install gate rebuilt from the bootstrap AppID to all 34 managed AppIDs;
+- the data scan patched the remaining 33 app objects;
+- 24 uninstalled games expose Steam's native blue `安装` state;
+- seven locally installed games expose the appropriate native launch state;
+- active update states remain untouched;
+- For Honor AppID `304390` visibly exposes an enabled native `安装` action at
+  status `9/9`;
+- People Playground visibly exposes the green native `开始游戏` action at
+  status `11/11`;
+- `cloud_enabled=true`, `show_screenshot_manager=false`, and CloudStorage
+  remains available.
+
+The earlier SteamUI platform-getter trampoline was removed. It was redundant
+with the allowlist-scoped data scan and native detail subscriptions, failed
+near-branch allocation under one ASLR layout, and retried every worker tick.
+The new cold-run log begins at line `4774` and contains no `steamui:` patch or
+allocation error.
 
 ## Post-Initialization Native Activation Experiment
 
@@ -175,8 +202,8 @@ the worker. Verified at that point:
   activation variables.
 
 The loader no longer requires LLDB, `task_for_pid`, `get-task-allow`, or an
-administrator prompt. Browser-to-engine synchronization is now implemented and
-automated-test verified; coordinated persistent deployment is the next task.
+administrator prompt. Browser-to-engine synchronization is now persistently
+deployed and live-verified.
 
 ## What Is Not Implemented
 
@@ -192,9 +219,10 @@ It does not:
   or run-command controls.
 
 No `compatdata/1118200/pfx` exists. The independent launch path is therefore
-unimplemented. In the current cloud-safe startup, People Playground remains
-installed but reports display status `14`; the compatibility page exists, while
-the native tool list is intentionally empty and the Play action is not forced.
+unimplemented. People Playground now reports display status `11` and exposes
+Steam's native Play action, but the selected compatibility tool is still a
+logging stub, so clicking Play cannot yet create a prefix or launch the Windows
+executable.
 
 ## Cloud Root Cause And Fix
 
@@ -276,11 +304,11 @@ authoritative complete rollback source.
 1. Done: Steam UI restoration is covered by the rollback regression test.
 2. Done: Cloud root cause isolated and the guarded startup deployed.
 3. Done: generated browser registry from Steam ownership and platform details.
-4. Done in repository: authenticated hot synchronization into the delayed
+4. Done and deployed: authenticated hot synchronization into the delayed
    native backend.
-5. Deploy and verify blue download/Play presentation for all current
-   candidates while confirming native-title exclusions and Cloud health.
-6. Implement the independent versioned compatibility runtime and
+5. Done: verified blue download/Play presentation for all current candidates,
+   native-title exclusions, and Cloud health.
+6. In progress: implement the independent versioned compatibility runtime and
    Proton-compatible prefix path.
 
 ## Recovery And Rollback

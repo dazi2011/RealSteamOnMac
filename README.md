@@ -29,8 +29,8 @@ download prototype to a cloud-safe, independent compatibility runtime.
   scan.
 - The repository patch exposes Steam's original `兼容性` properties page for
   managed Windows-only games while leaving native and dual-platform macOS games
-  on their original page set. Live deployment of this dynamic revision is
-  pending coordinated backend activation.
+  on their original page set. This dynamic revision is installed in the current
+  Steam client.
 - The tested compatibility-page bridge provides a project-owned tool list
   without invoking Steam's cloud-breaking native tool discovery path.
 - The startup path intentionally does **not** register
@@ -41,13 +41,17 @@ download prototype to a cloud-safe, independent compatibility runtime.
   the final Steam runtime starts. It accepts bounded AppID registry updates,
   rebuilds the allowlist-gated install trampoline, and restores the original
   instruction when the registry becomes empty.
-- The currently installed persistent Steam files remain at the earlier
-  cloud-safe baseline until the coordinated dynamic-registry deployment. The
-  newer delayed activation and registry bridge have passed isolated and live
-  A/B tests from the repository.
-- In the current cloud-safe startup, People Playground remains installed but
-  reports Steam display status `14`; restoring the blue/Play action is the
-  active Phase 3 task.
+- The installed shared UI subscribes directly to Steam's native app-detail
+  stream after the authenticated registry sync. On the current library all 34
+  managed games match their authoritative native status: 24 show the original
+  blue `安装` action, seven locally installed games are ready to launch, and
+  active update states remain unchanged.
+- Live cold-start verification shows For Honor with an enabled native blue
+  `安装` button and People Playground with the original green `开始游戏`
+  button at status `11/11`. Garry's Mod remains excluded at native status `31`.
+- The native engine does not redirect SteamUI's global platform getter. It uses
+  that getter address only to identify real app objects before applying
+  allowlist-scoped data changes, avoiding a redundant version-sensitive hook.
 
 Launching the installed Windows binary (CrossOver/Proton routing) and
 renderer/package management remain future work. A download may briefly park as
@@ -72,7 +76,8 @@ did here.
   browser bridge supplies their compatibility-page entries instead.
 - A guarded Steam UI resource patch dynamically identifies owned, visible
   games whose platform list contains `windows` and not `osx`; it synchronizes
-  only backend-ready managed overview state.
+  each managed overview to the authoritative status delivered by Steam's
+  native detail subscription.
 - The same known-build patch extends Steam's native compatibility-page gate
   from Linux to the dynamic managed-AppID predicate.
 - The shared UI context refreshes Steam's own matching React action components

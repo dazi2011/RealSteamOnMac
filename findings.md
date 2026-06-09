@@ -137,6 +137,50 @@
   were active, People Playground details were status `11`, Cloud remained
   enabled, and no Helper process retained a DYLD or RealSteamOnMac variable.
 
+## Phase 3 Live Deployment Findings
+
+- Steam's `appDetailsStore` was not an authoritative source by itself. All 34
+  managed entries remained cached at status `14` because no active consumer had
+  subscribed to their native detail stream.
+- Direct
+  `SteamClient.Apps.RegisterForAppDetails(appid, callback)` subscriptions
+  returned the real states: 24 ready to install, locally installed games ready
+  to launch, and the remaining games in their native update states.
+- The browser bridge now creates subscriptions only after the authenticated
+  native registry update succeeds. It feeds each callback into
+  `appDetailsStore.AppDetailsChanged`, retries stale status `14` at a bounded
+  one-second interval, and unregisters games removed from the dynamic registry.
+- A cold deployment on 2026-06-09 synchronized all 34 managed games:
+  - `nativeStatusSyncedCount=34`;
+  - `invalidPlatformDetailsCount=0`;
+  - `invalidPlatformOverviewCount=0`;
+  - `projectToolAvailableCount=34`;
+  - Garry's Mod AppID `4000` remained excluded at native status `31`.
+- The visible Steam library UI matched the backend:
+  - For Honor AppID `304390` showed the original enabled blue `安装` action at
+    status `9/9`;
+  - People Playground AppID `1118200` showed the original green `开始游戏`
+    action at status `11/11`, with local content and
+    `realsteamonmac-experimental` selected.
+- A controlled click on For Honor's real React action reached Steam's native
+  install manager with AppID `304390`, install state `7`, app error `0`, and
+  the expected disk requirement. The experiment immediately called
+  `CancelInstall` before `ContinueInstall`; no game payload was downloaded.
+- Cloud remained healthy after the dynamic deployment:
+  `cloud_enabled=true`, `show_screenshot_manager=false`, and CloudStorage was
+  available.
+- The attempted hot-rebuild of SteamUI's platform getter was unnecessary. It
+  failed near-branch allocation under the live ASLR layout and retried every
+  worker tick, while all 34 games still reached correct states through data
+  reconciliation and native detail subscriptions.
+- The global getter redirect was removed. The cold run beginning at platform
+  log line `4774` contains no `steamui:` patch/error entries; the install gate
+  rebuilt from one bootstrap AppID to all 34 and the data scan patched the
+  remaining 33 objects.
+- The backup script now recognizes an already-installed RealSteamOnMac
+  bootstrap, records the active `CFBundleExecutable`, and hashes the launcher,
+  original bootstrap, runtime executable, and steamclient library.
+
 ## Documentation Audit Findings
 
 - `docs/handoff/current-state-2026-06-07.md` is intentionally historical and
@@ -246,6 +290,8 @@
 | Activate the native engine only after Steam initialization | Live LLDB loading proved the install gate can be installed without removing Cloud settings; startup-time worker creation remains forbidden. |
 | Use a two-stage guard plus one-shot dispatch timer | It survives Steam's startup fork, avoids debugger entitlements, activates after Cloud initialization, and sanitizes every Helper exec. |
 | Use an authenticated loopback registry bridge | It lets the decoded Steam library update the delayed native allowlist without restart, native tool discovery, debugger entitlements, or a global wildcard. |
+| Subscribe to native details only after native registry acceptance | The browser must fail closed until the backend install gate owns the same AppID set; direct subscriptions then provide current install/launch/update states. |
+| Do not redirect SteamUI's platform getter | The data scan and detail stream are sufficient and allowlist-scoped; a global code hook adds ASLR allocation failure, log spam, and a wider crash surface without improving live behavior. |
 | Restore Steam UI before any other rollback mutation | A failed UI restore now aborts before Steam.app, runtime binaries, or support files are moved. |
 | Treat missing `cloud_enabled` as the primary cloud symptom | The blank page and false “globally disabled” state share this backend omission; changing account/cloud data would hide evidence without proving a cause. |
 
@@ -259,6 +305,8 @@
 | Rollback tests did not cover Steam UI resource restoration | Resolved with a real patch-install/restore fixture in `tests/test_restore_steam_from_backup.sh`. |
 | Steam cloud UI showed no console exception | Traced the rendered DOM, protobuf schema, settings store, and CloudStorage state; the deterministic failure is an omitted native setting field. |
 | Computer Use could not start ScreenCaptureKit | Two element-aware session attempts returned `SCStreamErrorDomain -3811`; no coordinate fallback was used, and CDP supplied exact DOM/state evidence. |
+| Shared app details stayed at status `14` after native data changes | Registered direct native detail subscriptions and published callbacks into the shared details store. |
+| SteamUI getter trampoline retried continuously | Removed the redundant global getter patch and added a contract that rejects its reintroduction. |
 
 ## Resources
 

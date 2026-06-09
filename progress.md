@@ -111,7 +111,7 @@
 
 ### Phase 3: Dynamic Windows-Only Library Enablement
 
-- **Status:** in progress
+- **Status:** complete
 - Actions taken:
   - Inspected Steam's live SharedJSContext application and details stores.
   - Selected `appStore.allApps` plus
@@ -191,6 +191,38 @@
     tests sequentially; all passed.
   - Ran the complete repository matrix after implementation: 43 Node tests,
     10 Python tests, and every shell contract passed.
+  - Traced the remaining 34 cached status-`14` entries to an inactive
+    `appDetailsStore` subscription path rather than incorrect native install
+    state.
+  - Added allowlist-scoped direct native detail subscriptions after successful
+    registry synchronization and published authoritative callbacks into
+    Steam's shared details store.
+  - Preserved native install, launch, download, and update display states rather
+    than reducing every game to only status `9` or `11`.
+  - Added bounded stale-cache refresh, removal/unregister handling, subscription
+    metrics, and tests for dynamic add/remove behavior.
+  - Removed repeated normalization of already-correct overview objects.
+  - Fixed the backup script so a deployed RealSteamOnMac installation can be
+    backed up and verified without assuming `steam_osx` is still the active
+    bundle executable.
+  - Removed the redundant SteamUI global platform-getter redirect after live
+    evidence proved the data scan plus detail subscriptions cover all managed
+    games. Added a source contract that fails if the redirect returns.
+  - Ran the final complete matrix: 51 Node tests, 10 Python tests, and all 20
+    shell contracts passed.
+  - Quit Steam normally, installed the verified revision, matched source and
+    deployed hashes, verified deep signing, and confirmed token mode `0600`.
+  - Cold-started through the production launcher and verified the delayed
+    engine, loopback registry, one-to-34 AppID install-gate rebuild, and 33
+    additional data-object repairs.
+  - Verified all 34 managed games match native detail and overview status, with
+    no remaining invalid-platform state and Garry's Mod excluded.
+  - Verified For Honor's real blue `安装` action and People Playground's green
+    `开始游戏` action after the cold start.
+  - Reconfirmed `cloud_enabled=true`, screenshot setting false, CloudStorage
+    availability, and clean Helper activation environment.
+  - Confirmed the new-run native log contains no SteamUI getter patch or
+    allocation error.
 
 ## Test Results
 
@@ -229,6 +261,14 @@
 | Native registry protocol | Production engine loaded by C harness | Authenticated hot add/remove with fail-closed rejection | `204` add/clear, `403` wrong token, `400` malformed body | PASS |
 | Browser registry retry | First loopback request fails | Retry unchanged payload on next five-second scan | Second request succeeds and clears error state | PASS |
 | Registry token install | Temporary Steam/support fixture | Private valid token shared by patcher and engine | 32 hex characters, mode `0600`, generated config verified | PASS |
+| Native detail subscriptions | 34 managed AppIDs | Replace stale status `14` with current native state | 34/34 details and overview statuses synchronized | PASS |
+| Full Phase 3 suite | 51 Node, 10 Python, 20 shell contracts | No regression across install/cloud/rollback/runtime | All passed | PASS |
+| Installed source hashes | Built engine/UI versus deployed files | Exact tested artifacts installed | SHA-256 pairs matched | PASS |
+| Cold native log | New run from log line `4774` | No global SteamUI getter retry | Zero `steamui:` entries; gate rebuilt 1 -> 34 | PASS |
+| Cold dynamic registry | Current owned library | Every managed app native-synchronized | 34/34 synced, zero invalid details/overviews | PASS |
+| For Honor visible action | AppID `304390` library page | Native enabled blue Install action | `安装`, pointer events auto, status `9/9` | PASS |
+| People Playground visible action | AppID `1118200` library page | Native enabled Play action | `开始游戏`, green gradient, status `11/11` | PASS |
+| Cloud after Phase 3 | Shared settings store | Dynamic registry must not regress Cloud | `cloud_enabled=true`; CloudStorage available | PASS |
 
 ## Error Log
 
@@ -241,13 +281,15 @@
 | 2026-06-09 | Computer Use could not start a capture stream | 2 | Recorded ScreenCaptureKit `-3811`; retained element-aware policy and used read-only CDP evidence. |
 | 2026-06-09 | New native headers were accidentally appended after the final function | 1 | Strict `-Werror` build exposed undeclared atomic APIs; moved headers to the include block and rebuilt all three architectures. |
 | 2026-06-09 | Rollback fixture lacked the new registry token | 1 | Added the same private token fixture required by UI installation, then reran the complete suite successfully. |
+| 2026-06-09 | SteamUI getter near-branch allocator failed under the cold ASLR layout and logged every tick | 2 | Removed the redundant global getter hook; retained only allowlist-scoped data repair and native detail subscriptions. |
+| 2026-06-09 | Shell matrix was first invoked by executable bit and stopped on a non-executable probe contract | 1 | Re-ran with the documented `sh "$test_file"` invocation; all 20 shell contracts passed. |
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phase 3, repository implementation complete through browser-to-native hot registry; persistent live deployment is next. |
-| Where am I going? | Rollback fix, cloud root cause, dynamic Windows-only enablement, independent runtimes, controls, and real launch. |
+| Where am I? | Phase 4, after completing and deploying dynamic Windows-only download/compatibility enablement. |
+| Where am I going? | Independent versioned runtimes, Proton-style prefixes, controls, and real launch. |
 | What's the goal? | Native macOS Steam downloads and launches Windows-only games through independent selectable compatibility tools. |
-| What have I learned? | Constructor threads and valid native compatibility-tool discovery break the macOS settings bridge; the engine load alone does not. |
-| What have I done? | Recovered Claude's work, fixed rollback and Cloud, implemented dynamic eligibility, delayed native activation, and authenticated hot registry synchronization. |
+| What have I learned? | Constructor threads and native tool discovery break Cloud; direct native detail subscriptions are required for current app state; the global SteamUI getter patch is unnecessary. |
+| What have I done? | Recovered Claude's work, fixed rollback and Cloud, deployed 34-game dynamic eligibility, verified native Install/Play actions, and removed the redundant getter hook. |

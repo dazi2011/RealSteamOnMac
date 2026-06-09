@@ -57,6 +57,8 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     [4000, details(4000, ["windows", "osx", "linux"])],
   ]);
   const nativeSpecifyCalls = [];
+  const nativeDetailRegistrations = [];
+  const nativeDetailUnregistrations = [];
   const registryRequests = [];
   const intervalCallbacks = new Map();
   const storage = new Map();
@@ -86,6 +88,9 @@ test("installs the predicate before dynamically replacing the bootstrap registry
       async RequestAppDetails(appid) {
         return detailsByAppid.get(appid) ?? null;
       },
+      AppDetailsChanged(nextDetails) {
+        detailsByAppid.set(nextDetails.unAppID, nextDetails);
+      },
     },
     SteamClient: {
       Apps: {
@@ -94,6 +99,20 @@ test("installs the predicate before dynamically replacing the bootstrap registry
         },
         async SpecifyCompatTool(appid, tool) {
           nativeSpecifyCalls.push([appid, tool]);
+        },
+        RegisterForAppDetails(appid, callback) {
+          nativeDetailRegistrations.push(appid);
+          const nextDetails = {
+            ...detailsByAppid.get(appid),
+            eDisplayStatus: appid === 1118200 ? 11 : 9,
+            bHasAnyLocalContent: appid === 1118200,
+          };
+          callback(nextDetails);
+          return {
+            unregister() {
+              nativeDetailUnregistrations.push(appid);
+            },
+          };
         },
       },
     },
@@ -131,7 +150,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     typeof context.__REALSTEAMONMAC_IS_MANAGED_APP__,
     "function",
   );
-  assert.equal(context.__REALSTEAMONMAC_UI_STATUS__.version, 6);
+  assert.equal(context.__REALSTEAMONMAC_UI_STATUS__.version, 7);
   assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(1118200), true);
 
   await waitFor(
@@ -166,6 +185,24 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     context.__REALSTEAMONMAC_UI_STATUS__.registryLastNativeSyncError,
     null,
   );
+  assert.deepEqual(
+    [...nativeDetailRegistrations].sort((left, right) => left - right),
+    [990080, 1118200],
+  );
+  assert.equal(
+    context.__REALSTEAMONMAC_UI_STATUS__.nativeDetailsSubscriptions,
+    2,
+  );
+  assert.equal(detailsByAppid.get(990080).eDisplayStatus, 9);
+  assert.equal(detailsByAppid.get(1118200).eDisplayStatus, 11);
+  assert.equal(
+    overviews[0].selected_per_client_data.display_status,
+    11,
+  );
+  assert.equal(
+    overviews[1].selected_per_client_data.display_status,
+    9,
+  );
   assert.equal(
     registryRequests[1].url,
     "http://127.0.0.1:57344/registry" +
@@ -188,4 +225,16 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     "realsteamonmac-experimental",
   );
   assert.deepEqual(nativeSpecifyCalls, []);
+
+  overviews[1].subscribed_to = false;
+  await intervalCallbacks.get(5000)();
+  await waitFor(
+    () => context.__REALSTEAMONMAC_UI_STATUS__.registryScans === 3,
+  );
+  assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(990080), false);
+  assert.deepEqual(nativeDetailUnregistrations, [990080]);
+  assert.equal(
+    context.__REALSTEAMONMAC_UI_STATUS__.nativeDetailsSubscriptions,
+    1,
+  );
 });

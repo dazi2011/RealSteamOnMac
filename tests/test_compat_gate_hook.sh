@@ -13,13 +13,11 @@ test -x "$BUILD_SCRIPT"
 grep -q 'REALSTEAMONMAC_FORCE_COMPAT' "$SOURCE"
 grep -q '0x00A012D0' "$SOURCE"
 grep -q '0x005EAC3C' "$SOURCE"
-grep -q '0xB9401C00' "$SOURCE"
 grep -q '0xD101C3FF' "$SOURCE"
 grep -q '0xA9054FF4' "$SOURCE"
 grep -q 'REALSTEAMONMAC_APPIDS' "$SOURCE"
 grep -q 'allowlist.txt' "$SOURCE"
 grep -q 'PLATFORM_INVALID_BIT' "$SOURCE"
-grep -q 'realsteamonmac_platform_flags' "$SOURCE"
 grep -q 'unsetenv("DYLD_INSERT_LIBRARIES")' "$SOURCE"
 grep -q 'realsteamonmac_apply_data_overrides' "$SOURCE"
 grep -q 'is_steam_runtime_process' "$SOURCE"
@@ -77,10 +75,19 @@ grep -q 'INADDR_LOOPBACK' "$SOURCE"
 grep -q 'registry-token' "$SOURCE"
 grep -q 'REGISTRY_REQUEST_CAPACITY' "$SOURCE"
 grep -q 'gInstallGateRefreshRequested' "$SOURCE"
+grep -q 'distance += page_size' "$SOURCE"
 grep -q 'gAllowlistGeneration' "$SOURCE"
 grep -q 'finish_install_gate_update' "$SOURCE"
 grep -q 'memory_order_release' "$SOURCE"
 grep -q 'registry: accepted %zu managed AppID(s)' "$SOURCE"
+
+# Keep SteamUI's getter intact. The native engine uses its vtable address only
+# to identify real app objects before applying allowlist-scoped data changes.
+if grep -q 'build_platform_filter_trampoline' "$SOURCE" ||
+    grep -Fq 'patch_steamui(' "$SOURCE"; then
+    echo "native engine must not globally redirect the SteamUI platform getter" >&2
+    exit 1
+fi
 
 "$BUILD_SCRIPT"
 

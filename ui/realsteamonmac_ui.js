@@ -14,6 +14,7 @@
   const GAME_APP_TYPE = 1;
   const RECONCILE_INTERVAL_MS = 1000;
   const REGISTRY_REFRESH_INTERVAL_MS = 5000;
+  const DETAILS_REFRESH_INTERVAL_MS = 1000;
 
   function isOwnedVisibleGameOverview(overview) {
     return (
@@ -88,22 +89,15 @@
   }
 
   function getManagedTargetStatus(state) {
-    if (state.allowlisted !== true) {
+    if (
+      state.allowlisted !== true ||
+      !Number.isSafeInteger(state.detailsStatus) ||
+      state.detailsStatus <= 0 ||
+      state.detailsStatus === INVALID_PLATFORM
+    ) {
       return null;
     }
-    if (
-      state.detailsStatus === READY_TO_INSTALL &&
-      state.hasAnyLocalContent !== true
-    ) {
-      return READY_TO_INSTALL;
-    }
-    if (
-      state.detailsStatus === READY_TO_LAUNCH &&
-      state.hasAnyLocalContent === true
-    ) {
-      return READY_TO_LAUNCH;
-    }
-    return null;
+    return state.detailsStatus;
   }
 
   function decideOverviewPatch(state) {
@@ -246,6 +240,14 @@
     if (original) {
       if (targetStatus !== null) {
         if (
+          selected.display_status === targetStatus &&
+          selected.is_available_on_current_platform === true &&
+          selected.is_invalid_os_type === false
+        ) {
+          original.normalizedStatus = targetStatus;
+          return "unchanged";
+        }
+        if (
           selected.display_status === original.displayStatus ||
           selected.display_status === original.normalizedStatus ||
           selected.display_status === INVALID_PLATFORM
@@ -368,6 +370,7 @@
       reconcileCompatDetails,
       reconcileAppState,
       COMPAT_TOOL_PRIORITY,
+      DETAILS_REFRESH_INTERVAL_MS,
       INVALID_PLATFORM,
       READY_TO_INSTALL,
       READY_TO_LAUNCH,
@@ -397,7 +400,7 @@
     projectCompatTools.map((tool) => tool.strToolName),
   );
   const status = {
-    version: 6,
+    version: 7,
     mode: "dynamic-owned-windows-only-registry",
     enabled: true,
     appids: [...managedAppids],
@@ -409,6 +412,10 @@
     registryNativeSyncs: 0,
     registryLastNativeSyncAt: null,
     registryLastNativeSyncError: null,
+    nativeDetailsSubscriptions: 0,
+    nativeDetailsRefreshes: 0,
+    nativeDetailsRefreshErrors: 0,
+    nativeDetailsLastError: null,
     scans: 0,
     normalized: 0,
     restored: 0,
@@ -430,10 +437,89 @@
   const refreshedActions = new WeakSet();
   const availableCompatTools = new Map();
   const compatSelections = new Map();
+  const nativeSyncedAppids = new Set();
+  const nativeDetailsSubscriptions = new Map();
+  const nativeDetailsRefreshAt = new Map();
   let storedCompatSelections = {};
   let reconcileRunning = false;
   let registryRefreshRunning = false;
   let lastNativeRegistryPayload = null;
+
+  function releaseNativeDetailsSubscription(appid) {
+    const subscription = nativeDetailsSubscriptions.get(appid);
+    if (subscription) {
+      try {
+        subscription.unregister?.();
+      } catch {
+        // Steam can tear down a subscription during a window/process refresh.
+      }
+    }
+    nativeDetailsSubscriptions.delete(appid);
+    nativeDetailsRefreshAt.delete(appid);
+    status.nativeDetailsSubscriptions =
+      nativeDetailsSubscriptions.size;
+  }
+
+  function refreshNativeDetailsSubscription(appid, force = false) {
+    if (!nativeSyncedAppids.has(appid)) {
+      releaseNativeDetailsSubscription(appid);
+      return false;
+    }
+
+    const now = Date.now();
+    const lastRefresh = nativeDetailsRefreshAt.get(appid) ?? 0;
+    if (
+      !force &&
+      nativeDetailsSubscriptions.has(appid) &&
+      now - lastRefresh < DETAILS_REFRESH_INTERVAL_MS
+    ) {
+      return false;
+    }
+
+    releaseNativeDetailsSubscription(appid);
+    nativeDetailsRefreshAt.set(appid, now);
+    try {
+      const subscription =
+        globalObject.SteamClient.Apps.RegisterForAppDetails(
+          appid,
+          (details) => {
+            if (
+              !nativeSyncedAppids.has(appid) ||
+              details?.unAppID !== appid
+            ) {
+              return;
+            }
+            globalObject.appDetailsStore?.AppDetailsChanged?.(details);
+            void reconcile();
+          },
+        );
+      nativeDetailsSubscriptions.set(appid, subscription);
+      status.nativeDetailsSubscriptions =
+        nativeDetailsSubscriptions.size;
+      status.nativeDetailsRefreshes += 1;
+      status.nativeDetailsLastError = null;
+      return true;
+    } catch (error) {
+      status.nativeDetailsRefreshErrors += 1;
+      status.nativeDetailsLastError = String(error);
+      return false;
+    }
+  }
+
+  function publishNativeSyncedApps() {
+    for (const appid of [...nativeDetailsSubscriptions.keys()]) {
+      if (!managedAppids.has(appid)) {
+        releaseNativeDetailsSubscription(appid);
+      }
+    }
+    nativeSyncedAppids.clear();
+    for (const appid of managedAppids) {
+      nativeSyncedAppids.add(appid);
+      if (!nativeDetailsSubscriptions.has(appid)) {
+        refreshNativeDetailsSubscription(appid, true);
+      }
+    }
+  }
 
   async function syncNativeRegistry() {
     const endpoint = config.registryEndpoint;
@@ -450,7 +536,7 @@
       .sort((left, right) => left - right)
       .join(",");
     if (payload === lastNativeRegistryPayload) {
-      return;
+      return true;
     }
     try {
       await globalObject.fetch(
@@ -466,8 +552,11 @@
       status.registryNativeSyncs += 1;
       status.registryLastNativeSyncAt = new Date().toISOString();
       status.registryLastNativeSyncError = null;
+      publishNativeSyncedApps();
+      return true;
     } catch (error) {
       status.registryLastNativeSyncError = String(error);
+      return false;
     }
   }
 
@@ -634,6 +723,7 @@
     }
     compatSelections.delete(appid);
     availableCompatTools.delete(appid);
+    releaseNativeDetailsSubscription(appid);
   }
 
   async function applyManagedRegistry(nextManagedAppids) {
@@ -716,6 +806,12 @@
           status.missingDetails += 1;
           continue;
         }
+        if (
+          nativeSyncedAppids.has(appid) &&
+          details.eDisplayStatus === INVALID_PLATFORM
+        ) {
+          refreshNativeDetailsSubscription(appid);
+        }
 
         const compatResult = reconcileCompatDetails({
           details,
@@ -733,7 +829,7 @@
         const result = reconcileAppState({
           overview,
           details,
-          allowlist: managedAppids,
+          allowlist: nativeSyncedAppids,
           originalStates,
         });
         if (result === "normalized") {

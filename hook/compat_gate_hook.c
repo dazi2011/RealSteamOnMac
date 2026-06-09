@@ -57,11 +57,6 @@ static const uint32_t kSteamClientForcedTrue[2] = {
 };
 static const uint32_t kSteamClientInstallGateExpected =
     0x37200188;  // tbnz w8, #4, 0x62508c
-static const uint32_t kSteamUIExpected[2] = {
-    0xB9401C00,  // ldr w0, [x0, #0x1c]
-    0xD65F03C0,  // ret
-};
-
 static uint32_t gAllowlist[MAX_ALLOWLIST_APPIDS];
 static size_t gAllowlistCount = 0;
 static pthread_mutex_t gAllowlistLock = PTHREAD_MUTEX_INITIALIZER;
@@ -73,7 +68,6 @@ static bool gRegistered = false;
 static bool gSteamClientPatched = false;
 static _Atomic bool gSteamClientInstallGatePatched = false;
 static _Atomic bool gInstallGateRefreshRequested = false;
-static bool gSteamUIPatched = false;
 static bool gDataScanStartedLogged = false;
 static bool gDataScanSummaryLogged = false;
 static bool gWorkerStarted = false;
@@ -382,24 +376,6 @@ static void ensure_allowlist_loaded(void) {
   }
 }
 
-__attribute__((noinline, visibility("default")))
-uint32_t realsteamonmac_platform_flags(void *app) {
-  if (app == NULL) {
-    return 0;
-  }
-
-  uint8_t *bytes = (uint8_t *)app;
-  uint32_t appid = 0;
-  uint32_t flags = 0;
-  memcpy(&appid, bytes + 0x08, sizeof(appid));
-  memcpy(&flags, bytes + 0x1C, sizeof(flags));
-  if (is_allowlisted(appid)) {
-    flags &= ~PLATFORM_INVALID_BIT;
-    memcpy(bytes + 0x1C, &flags, sizeof(flags));
-  }
-  return flags;
-}
-
 static bool encode_branch(void *source, void *destination,
                           uint32_t *instruction_out) {
   intptr_t delta = (uint8_t *)destination - (uint8_t *)source;
@@ -422,22 +398,32 @@ static void *allocate_near_page(void *target, size_t *page_size_out) {
   uintptr_t target_page =
       (uintptr_t)target & ~((uintptr_t)page_size - (uintptr_t)1);
 
-  for (uintptr_t distance = 0; distance <= 0x07000000;
-       distance += 0x01000000) {
+  for (uintptr_t distance = page_size; distance <= 0x07000000;
+       distance += page_size) {
     for (int direction = 0; direction < 2; ++direction) {
-      uintptr_t hint = direction == 0
-                           ? target_page + distance
-                           : target_page - distance;
-      void *memory = mmap((void *)hint, page_size,
-                          PROT_READ | PROT_WRITE,
-                          MAP_PRIVATE | MAP_ANON, -1, 0);
-      if (memory == MAP_FAILED) {
+      if (
+          (direction == 0 && target_page > UINTPTR_MAX - distance) ||
+          (direction == 1 && target_page < distance)
+      ) {
         continue;
       }
+      mach_vm_address_t candidate =
+          direction == 0
+              ? (mach_vm_address_t)(target_page + distance)
+              : (mach_vm_address_t)(target_page - distance);
+      kern_return_t result =
+          mach_vm_allocate(
+              mach_task_self(), &candidate,
+              (mach_vm_size_t)page_size, VM_FLAGS_FIXED);
+      if (result != KERN_SUCCESS) {
+        continue;
+      }
+      void *memory = (void *)(uintptr_t)candidate;
 
       uint32_t branch = 0;
       if (!encode_branch(target, memory, &branch)) {
-        (void)munmap(memory, page_size);
+        (void)mach_vm_deallocate(
+            mach_task_self(), candidate, (mach_vm_size_t)page_size);
         continue;
       }
       *page_size_out = page_size;
@@ -447,65 +433,10 @@ static void *allocate_near_page(void *target, size_t *page_size_out) {
   return NULL;
 }
 
-static void *build_platform_filter_trampoline(void *target) {
-  uint32_t allowlist[MAX_ALLOWLIST_APPIDS];
-  size_t allowlist_count = copy_allowlist(allowlist);
-  size_t page_size = 0;
-  void *memory = allocate_near_page(target, &page_size);
-  if (memory == NULL) {
-    return NULL;
-  }
-
-  size_t required_words = 2 + (allowlist_count * 4) + 2 + 4;
-  if (required_words > page_size / sizeof(uint32_t)) {
-    (void)munmap(memory, page_size);
-    return NULL;
-  }
-
-  uint32_t *instructions = (uint32_t *)memory;
-  size_t branch_indices[MAX_ALLOWLIST_APPIDS];
-  size_t cursor = 0;
-  instructions[cursor++] = 0xB9400808;  // ldr w8, [x0, #0x08]
-  instructions[cursor++] = 0xB9401C09;  // ldr w9, [x0, #0x1c]
-
-  for (size_t index = 0; index < allowlist_count; ++index) {
-    uint32_t appid = allowlist[index];
-    uint32_t low = appid & 0xFFFF;
-    uint32_t high = appid >> 16;
-    instructions[cursor++] = 0x5280000A | (low << 5);
-    instructions[cursor++] = 0x72A0000A | (high << 5);
-    instructions[cursor++] = 0x6B0A011F;  // cmp w8, w10
-    branch_indices[index] = cursor;
-    instructions[cursor++] = 0;
-  }
-
-  instructions[cursor++] = 0x2A0903E0;  // mov w0, w9
-  instructions[cursor++] = 0xD65F03C0;  // ret
-  size_t clear_index = cursor;
-  instructions[cursor++] = 0x121B7929;  // and w9, w9, #0xffffffef
-  instructions[cursor++] = 0xB9001C09;  // str w9, [x0, #0x1c]
-  instructions[cursor++] = 0x2A0903E0;  // mov w0, w9
-  instructions[cursor++] = 0xD65F03C0;  // ret
-
-  for (size_t index = 0; index < allowlist_count; ++index) {
-    intptr_t delta =
-        (intptr_t)clear_index - (intptr_t)branch_indices[index];
-    if (delta < -(1 << 18) || delta >= (1 << 18)) {
-      (void)munmap(memory, page_size);
-      return NULL;
-    }
-    uint32_t immediate = (uint32_t)delta & 0x7FFFF;
-    instructions[branch_indices[index]] =
-        0x54000000 | (immediate << 5);  // b.eq clear
-  }
-
-  size_t code_size = cursor * sizeof(uint32_t);
-  sys_icache_invalidate(memory, code_size);
-  if (mprotect(memory, page_size, PROT_READ | PROT_EXEC) != 0) {
-    (void)munmap(memory, page_size);
-    return NULL;
-  }
-  return memory;
+static void release_allocated_page(void *memory, size_t page_size) {
+  (void)mach_vm_deallocate(
+      mach_task_self(), (mach_vm_address_t)(uintptr_t)memory,
+      (mach_vm_size_t)page_size);
 }
 
 // Builds a near branch island that reproduces `tbnz w8, #4, <invalid>` for
@@ -541,7 +472,7 @@ static void *build_install_gate_trampoline(void *target,
 
   size_t required_words = (allowlist_count * 4) + 3;
   if (required_words > page_size / sizeof(uint32_t)) {
-    (void)munmap(memory, page_size);
+    release_allocated_page(memory, page_size);
     return NULL;
   }
 
@@ -569,7 +500,7 @@ static void *build_install_gate_trampoline(void *target,
   for (size_t index = 0; index < allowlist_count; ++index) {
     intptr_t delta = (intptr_t)skip_index - (intptr_t)branch_indices[index];
     if (delta < -(1 << 18) || delta >= (1 << 18)) {
-      (void)munmap(memory, page_size);
+      release_allocated_page(memory, page_size);
       return NULL;
     }
     uint32_t immediate = (uint32_t)delta & 0x7FFFF;
@@ -589,7 +520,7 @@ static void *build_install_gate_trampoline(void *target,
           &instructions[skip_index],
           (void *)(module_base + STEAMCLIENT_INSTALL_GATE_FALLTHROUGH_OFFSET),
           &branch)) {
-    (void)munmap(memory, page_size);
+    release_allocated_page(memory, page_size);
     return NULL;
   }
   instructions[skip_index] = branch;
@@ -598,7 +529,7 @@ static void *build_install_gate_trampoline(void *target,
           &instructions[invalid_index],
           (void *)(module_base + STEAMCLIENT_INSTALL_GATE_INVALID_OFFSET),
           &branch)) {
-    (void)munmap(memory, page_size);
+    release_allocated_page(memory, page_size);
     return NULL;
   }
   instructions[invalid_index] = branch;
@@ -606,7 +537,7 @@ static void *build_install_gate_trampoline(void *target,
   size_t code_size = cursor * sizeof(uint32_t);
   sys_icache_invalidate(memory, code_size);
   if (mprotect(memory, page_size, PROT_READ | PROT_EXEC) != 0) {
-    (void)munmap(memory, page_size);
+    release_allocated_page(memory, page_size);
     return NULL;
   }
   return memory;
@@ -764,56 +695,9 @@ static void patch_steamclient(const struct mach_header *header,
   log_line(message);
 }
 
-static void patch_steamui(const struct mach_header *header,
-                          intptr_t slide) {
-  if (gSteamUIPatched || !image_uuid_matches(header, kSteamUIUUID)) {
-    return;
-  }
-
-  uint8_t *target =
-      (uint8_t *)((uintptr_t)header + STEAMUI_PLATFORM_FLAGS_GETTER_OFFSET);
-  uint32_t current[2];
-  memcpy(current, target, sizeof(current));
-  if (memcmp(current, kSteamUIExpected, sizeof(current)) != 0) {
-    log_line("steamui: refused unexpected platform getter bytes");
-    return;
-  }
-
-  void *branch_target = build_platform_filter_trampoline(target);
-  if (branch_target == NULL) {
-    log_line("steamui: could not build a reachable platform filter");
-    return;
-  }
-
-  uint32_t branch = 0;
-  if (!encode_branch(target, branch_target, &branch)) {
-    log_line("steamui: generated platform filter is not reachable");
-    return;
-  }
-
-  uintptr_t page = 0;
-  size_t protected_size = 0;
-  if (!make_text_writable(target, sizeof(branch),
-                          &page, &protected_size)) {
-    log_line("steamui: could not make platform getter writable");
-    return;
-  }
-  memcpy(target, &branch, sizeof(branch));
-  sys_icache_invalidate(target, sizeof(branch));
-  restore_text_protection(page, protected_size);
-  gSteamUIPatched = true;
-
-  char message[224];
-  snprintf(message, sizeof(message),
-           "steamui: patched slide=%p target=%p branch_target=%p",
-           (void *)slide, (void *)target, branch_target);
-  log_line(message);
-}
-
 static void image_added(const struct mach_header *header, intptr_t slide) {
   patch_steamclient(header, slide);
   patch_steamclient_install_gate(header, slide);
-  patch_steamui(header, slide);
 }
 
 __attribute__((visibility("default")))
@@ -1421,7 +1305,8 @@ static void *data_override_worker(void *context) {
         patch_steamclient_install_gate(steamclient, 0);
       }
     }
-    if (find_image_by_uuid(kSteamUIUUID) != NULL) {
+    const struct mach_header *steamui = find_image_by_uuid(kSteamUIUUID);
+    if (steamui != NULL) {
       tracked_refresh_result refresh = refresh_tracked_objects();
       if (refresh.patched > 0) {
         char message[160];

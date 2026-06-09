@@ -9,7 +9,7 @@ requiring CrossOver.
 
 ## Current Phase
 
-Phase 3: dynamic Windows-only library enablement
+Phase 4: independent compatibility runtime foundation
 
 ## Phases
 
@@ -49,11 +49,11 @@ Phase 3: dynamic Windows-only library enablement
       an authenticated loopback-only endpoint.
 - [x] Keep native and dual-platform macOS titles on their original path in
       policy, browser, and native-registry tests.
-- [ ] Enable native blue download actions and compatibility pages dynamically.
+- [x] Enable native blue download actions and compatibility pages dynamically.
 - [x] Update the installer, README, and handoff for registry synchronization.
-- [ ] Install and verify against the current Steam library.
-- [ ] Commit and push the verified phase.
-- **Status:** in progress
+- [x] Install and verify against the current Steam library.
+- [x] Commit and push the verified phase.
+- **Status:** complete
 
 ### Phase 4: Independent Compatibility Runtime Foundation
 
@@ -144,9 +144,12 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Never start the native worker from a dyld constructor | A delayed no-op worker still removes Cloud settings before patching anything. |
 | Do not set `STEAM_EXTRA_COMPAT_TOOLS_PATHS` to a valid tool on macOS | A/B testing proves valid native tool discovery removes the Cloud settings fields on build `1780705203`. |
 | Synchronize AppIDs over an authenticated loopback endpoint | Steam's browser context can reach loopback with `no-cors`; a private token and strict parser avoid a global unauthenticated patch-control surface. |
+| Subscribe directly to native app details after registry sync | Steam's shared details cache remained at status `14` without active subscriptions; `RegisterForAppDetails` provides the authoritative install, launch, and update state. |
+| Keep the SteamUI platform getter unmodified | Data-object reconciliation plus native detail subscriptions passed 34/34 live; redirecting the global getter was redundant, version-sensitive, and contrary to the narrow production design. |
 
 ## Errors Encountered
 
 | Error | Attempt | Resolution |
 |-------|---------|------------|
 | Memory registry search returned no RealSteamOnMac entry | 1 | Continue from repository evidence; no prior memory facts will be assumed. |
+| SteamUI near-branch allocation failed and retried every worker tick | 2 | Removed the redundant global getter redirect; retained the getter address only as a vtable identity check for allowlist-scoped data objects. |
