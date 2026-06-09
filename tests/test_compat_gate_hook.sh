@@ -44,23 +44,35 @@ grep -q 'mach_vm_protect' "$SOURCE"
 grep -q 'VM_PROT_COPY' "$SOURCE"
 grep -q 'steam_osx' "$SOURCE"
 
-# GetAppForInstallation platform gate redirect (the install-time counterpart to
-# the data overrides): allowlist-gated trampoline at 0x62505c that lets an
-# allowlisted Install click reach the real depot download path instead of
-# failing with error 29 ("Invalid platform").
+# GetAppForInstallation platform gate (the install-time counterpart to the data
+# overrides): the single conditional veto at 0x62505c is overwritten with a NOP
+# so EVERY owned Windows-only title — not just an allowlist — reaches the real
+# depot download path instead of failing with error 29 ("Invalid platform").
+# Removing the allowlist from this gate is what makes new purchases installable
+# without a Steam restart.
 grep -q 'STEAMCLIENT_INSTALL_GATE_OFFSET' "$SOURCE"
 grep -q '0x0062505C' "$SOURCE"
-grep -q '0x00625060' "$SOURCE"
-grep -q '0x0062508C' "$SOURCE"
 grep -q '0x37200188' "$SOURCE"
-grep -q '0x6B0A02BF' "$SOURCE"
-grep -q 'build_install_gate_trampoline' "$SOURCE"
+grep -q '0xD503201F' "$SOURCE"
+grep -q 'kSteamClientInstallGateNop' "$SOURCE"
 grep -q 'patch_steamclient_install_gate' "$SOURCE"
 grep -q 'gSteamClientInstallGatePatched' "$SOURCE"
-grep -q 'steamclient: install gate patched' "$SOURCE"
-# The gate redirect must be driven by the proven-active data override worker,
-# not only the (currently dormant) dyld image-added callback. The worker calls
-# it with an explicit zero slide (resolved image), unlike the image_added path.
+grep -q 'steamclient: install gate cleared' "$SOURCE"
+# The allowlist-gated trampoline is gone: the gate must be neutralized
+# unconditionally, never rebuilt per-AppID.
+if grep -q 'build_install_gate_trampoline' "$SOURCE"; then
+    echo "install gate must be a NOP, not a per-AppID trampoline" >&2
+    exit 1
+fi
+# The data scan must target Windows-only overviews structurally (InvalidPlatform
+# bit + confirmed CAppOverview vtable), not an allowlist, so every Windows-only
+# title in the library is covered and hot-update needs no restart.
+grep -q 'APPID_PLAUSIBLE_MAX' "$SOURCE"
+grep -q 'vtable_is_overview' "$SOURCE"
+grep -q 'remember_overview_vtable' "$SOURCE"
+# The gate patch must be driven by the proven-active data override worker, not
+# only the (currently dormant) dyld image-added callback. The worker calls it
+# with an explicit zero slide (resolved image), unlike the image_added path.
 grep -q 'patch_steamclient_install_gate(steamclient, 0)' "$SOURCE"
 grep -q 'patch_steamclient_install_gate(header, slide)' "$SOURCE"
 

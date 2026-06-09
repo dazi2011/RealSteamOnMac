@@ -79,11 +79,17 @@ class SteamUIPatchTests(unittest.TestCase):
         patched_compat_chunk = self.compat_chunk.read_text(encoding="utf-8")
         self.assertEqual(
             patched_compat_chunk.count(
-                self.patcher.COMPAT_PAGE_ALLOWLIST_GATE
+                self.patcher.COMPAT_PAGE_TARGET_GATE
             ),
             2,
         )
         self.assertNotIn(COMPAT_PAGE_ANCHOR, patched_compat_chunk)
+        # The generalized gate delegates to a runtime predicate, not an
+        # allowlist-membership test, so every Windows-only title is covered.
+        self.assertIn(
+            "globalThis.__REALSTEAMONMAC_IS_TARGET__",
+            patched_compat_chunk,
+        )
 
         config_path = self.steamui / "realsteamonmac" / "config.js"
         config_text = config_path.read_text(encoding="utf-8")
@@ -91,10 +97,9 @@ class SteamUIPatchTests(unittest.TestCase):
         self.assertEqual(
             json.loads(payload),
             {
-                "appids": [1118200],
-                "compatTools": {
-                    "1118200": "realsteamonmac-experimental",
-                },
+                "mode": "all-windows-only",
+                "defaultCompatTool": "realsteamonmac-experimental",
+                "forceIncludeAppids": [1118200],
             },
         )
 

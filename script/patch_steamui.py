@@ -34,13 +34,20 @@ CONFIG_TAG = '<script defer="defer" src="/realsteamonmac/config.js"></script>'
 UI_TAG = '<script defer="defer" src="/realsteamonmac/ui.js"></script>'
 CONFIG_PREFIX = "globalThis.__REALSTEAMONMAC_CONFIG__ = Object.freeze("
 DEFAULT_COMPAT_TOOL = "realsteamonmac-experimental"
+CONFIG_MODE = "all-windows-only"
 COMPAT_PAGE_ANCHOR = (
     '(0,f.CI)()&&o.push({title:(0,A.we)'
     '("#AppProperties_CompatibilityPage")'
 )
-COMPAT_PAGE_ALLOWLIST_GATE = (
-    "((0,f.CI)()||globalThis.__REALSTEAMONMAC_CONFIG__"
-    "?.appids?.includes(t))&&o.push({title:(0,A.we)"
+# Generalized compatibility-page gate: the original Linux/SteamOS condition,
+# OR a runtime predicate (installed by ui.js) that returns true for any
+# Windows-only title in the library. Optional chaining keeps the gate
+# fail-safe (no tab) if ui.js has not finished loading. This replaces the old
+# allowlist-membership gate so EVERY Windows-only game exposes the native
+# compatibility page, including titles bought after Steam started.
+COMPAT_PAGE_TARGET_GATE = (
+    "((0,f.CI)()||globalThis.__REALSTEAMONMAC_IS_TARGET__?.(t))"
+    "&&o.push({title:(0,A.we)"
     '("#AppProperties_CompatibilityPage")'
 )
 
@@ -85,11 +92,11 @@ def build_patched_compat_chunk(original):
         raise ValueError(
             "compatibility chunk does not contain two supported page gates"
         )
-    if COMPAT_PAGE_ALLOWLIST_GATE in original:
+    if COMPAT_PAGE_TARGET_GATE in original:
         raise ValueError("compatibility chunk is already partially patched")
     return original.replace(
         COMPAT_PAGE_ANCHOR,
-        COMPAT_PAGE_ALLOWLIST_GATE,
+        COMPAT_PAGE_TARGET_GATE,
     )
 
 
@@ -116,13 +123,17 @@ def atomic_write(path, content):
             temporary.unlink()
 
 
-def config_bytes(appids):
+def config_bytes(force_include_appids):
+    # The runtime now targets every Windows-only title structurally, so the
+    # config no longer carries an exclusive allowlist. It records the mode, a
+    # single default compatibility tool applied to all targets, and an optional
+    # force-include set (e.g. the People Playground fixture, or titles the user
+    # wants treated regardless of metadata).
     payload = json.dumps(
         {
-            "appids": appids,
-            "compatTools": {
-                str(appid): DEFAULT_COMPAT_TOOL for appid in appids
-            },
+            "mode": CONFIG_MODE,
+            "defaultCompatTool": DEFAULT_COMPAT_TOOL,
+            "forceIncludeAppids": force_include_appids,
         },
         separators=(",", ":"),
     )
@@ -192,7 +203,7 @@ def prepare_index(paths):
 def prepare_compat_chunk(paths):
     current = paths["compat_chunk"].read_bytes()
     current_text = current.decode("utf-8")
-    if COMPAT_PAGE_ALLOWLIST_GATE in current_text:
+    if COMPAT_PAGE_TARGET_GATE in current_text:
         original = validated_compat_original(paths["compat_backup"])
         expected = build_patched_compat_chunk(
             original.decode("utf-8")
@@ -245,7 +256,7 @@ def verify_steamui(steamui_root):
         )
     if (
         current_compat.count(
-            COMPAT_PAGE_ALLOWLIST_GATE.encode("utf-8")
+            COMPAT_PAGE_TARGET_GATE.encode("utf-8")
         )
         != 2
     ):
@@ -260,28 +271,24 @@ def verify_steamui(steamui_root):
         raise ValueError("Steam UI config format is invalid")
     payload = config[len(CONFIG_PREFIX) : -3]
     parsed = json.loads(payload)
-    appids = parsed.get("appids")
+    if parsed.get("mode") != CONFIG_MODE:
+        raise ValueError("Steam UI config mode is invalid")
+    default_tool = parsed.get("defaultCompatTool")
+    if not isinstance(default_tool, str) or not default_tool:
+        raise ValueError("Steam UI default compatibility tool is invalid")
+    # The force-include set is optional: an empty list is valid because the
+    # runtime targets every Windows-only title structurally, not from a list.
+    force_include = parsed.get("forceIncludeAppids")
     if (
-        not isinstance(appids, list)
-        or not appids
+        not isinstance(force_include, list)
         or any(
             not isinstance(appid, int) or appid <= 0 or appid > 0xFFFFFFFF
-            for appid in appids
+            for appid in force_include
         )
-        or len(appids) != len(set(appids))
+        or len(force_include) != len(set(force_include))
     ):
-        raise ValueError("Steam UI config allowlist is invalid")
-    compat_tools = parsed.get("compatTools")
-    if (
-        not isinstance(compat_tools, dict)
-        or set(compat_tools) != {str(appid) for appid in appids}
-        or any(
-            not isinstance(tool, str) or not tool
-            for tool in compat_tools.values()
-        )
-    ):
-        raise ValueError("Steam UI compatibility tool config is invalid")
-    return appids
+        raise ValueError("Steam UI force-include set is invalid")
+    return force_include
 
 
 def install_steamui(steamui_root, ui_source, allowlist):
@@ -296,9 +303,9 @@ def install_steamui(steamui_root, ui_source, allowlist):
     if not ui_source.is_file() or ui_source.stat().st_size == 0:
         raise ValueError("RealSteamOnMac UI source is missing")
 
-    appids = parse_allowlist(allowlist)
-    if not appids:
-        raise ValueError("RealSteamOnMac allowlist is empty")
+    # The allowlist is now an optional force-include set. An empty (or absent)
+    # list is valid: the runtime targets every Windows-only title structurally.
+    appids = parse_allowlist(allowlist) if allowlist else []
 
     original, expected_index, backup_index = prepare_index(paths)
     compat_original, expected_compat, backup_compat = (
@@ -354,7 +361,7 @@ def build_parser():
     install = subparsers.add_parser("install")
     install.add_argument("--steamui-root", required=True)
     install.add_argument("--ui-source", required=True)
-    install.add_argument("--allowlist", required=True)
+    install.add_argument("--allowlist", required=False, default=None)
 
     verify = subparsers.add_parser("verify")
     verify.add_argument("--steamui-root", required=True)
