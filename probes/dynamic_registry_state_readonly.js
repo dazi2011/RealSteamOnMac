@@ -1,6 +1,12 @@
 (async () => {
   const status = globalThis.__REALSTEAMONMAC_UI_STATUS__ ?? null;
   const appids = Array.isArray(status?.appids) ? status.appids : [];
+  const projectToolNames = [
+    "realsteamonmac-gptk",
+    "realsteamonmac-dxmt",
+    "realsteamonmac-dxvk",
+    "realsteamonmac-wined3d",
+  ];
 
   const loadDetails = async (appid) => {
     let result =
@@ -53,10 +59,12 @@
       compatToolName: details?.strCompatToolName ?? null,
       compatToolDisplayName: details?.strCompatToolDisplayName ?? null,
       compatToolPriority: details?.nCompatToolPriority ?? null,
-      projectToolAvailable: tools.some(
-        (tool) =>
-          tool?.strToolName === "realsteamonmac-experimental",
+      projectToolsAvailable: projectToolNames.every((toolName) =>
+        tools.some((tool) => tool?.strToolName === toolName),
       ),
+      projectToolNames: tools
+        .map((tool) => tool?.strToolName)
+        .filter((toolName) => projectToolNames.includes(toolName)),
       managedPredicate:
         globalThis.__REALSTEAMONMAC_IS_MANAGED_APP__?.(appid) ?? false,
     });
@@ -92,7 +100,7 @@
         (row) => row.overviewStatus === 14,
       ).length,
       projectToolAvailableCount: rows.filter(
-        (row) => row.projectToolAvailable,
+        (row) => row.projectToolsAvailable,
       ).length,
       windowsOnlyCount: rows.filter(
         (row) =>

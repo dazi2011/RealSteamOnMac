@@ -99,7 +99,7 @@ The browser asset now:
   for project-owned tools;
 - subscribes directly to each accepted AppID's native detail stream and
   publishes callbacks into the shared details store;
-- retries only stale status-`14` details at a bounded one-second interval and
+- retries only stale status-`14` details at a bounded five-second interval and
   unregisters removed games.
 
 The known-build compatibility chunk migrates atomically from the previous
@@ -258,22 +258,41 @@ Still not implemented or not yet accepted:
 
 - GPTK + Steamworks bridge acceptance;
 - WineD3D live game acceptance;
-- live Steam acceptance of the new per-game renderer, MSync, Retina, Metal HUD,
-  MetalFX, DXR, and AVX controls;
 - dependency search/install;
 - run-command UI and logging controls.
 
-The Phase 5A control candidate is implemented but not yet installed into the
-running Steam client. It provides four project tools, a Steam-native controls
-panel, and a token-authenticated native config endpoint. Canonical settings
-live at:
+The Phase 5A control surface is installed and accepted in the user's current
+Steam client. It provides four project tools, a Steam-native controls panel,
+and a token-authenticated native config endpoint. Canonical settings live at:
 
 ```text
 ~/Library/Application Support/RealSteamOnMac/apps/<appid>.json
 ```
 
-The full pre-deployment control matrix passes with 54 Node tests, 27 Python
-tests, and all 22 shell contracts.
+The live properties popup exposes GPTK, DXMT, DXVK, and WineD3D selections plus
+MSync, Retina, Metal HUD, MetalFX, DXR, and AVX controls. DXVK and DXMT
+selection each produced the correct runtime dry-run, the Retina checkbox wrote
+through the native endpoint, and closing/reopening the popup restored DXMT,
+MSync enabled, and Retina disabled. The final config is mode `0600`.
+
+The popup is rendered from Steam's shared React context and is tracked at
+`g_FriendsUIApp.m_IdleTracker.m_rgWindows`; the main `WindowStore` alone does
+not enumerate it. The control scan now includes both registries and prioritizes
+the actual compatibility combobox instead of accidentally selecting the
+document root. Native detail callbacks update Steam's cache without recursively
+starting another whole-library scan, preventing the earlier startup scan
+amplification.
+
+Live evidence:
+
+```text
+docs/evidence/people-playground-controls-live-2026-06-09.png
+SHA-256 daffe76b2d410377dfe5cf76897478a10f279a3ecdccf6b1311a23aa94042a10
+```
+
+The current control matrix passes 56 Node tests. The native control and runtime
+matrix remains at 27 Python tests and 22 shell contracts pending the final
+repository-wide rerun after run-command work.
 
 DXMT implementation and acceptance details:
 
@@ -369,8 +388,9 @@ authoritative complete rollback source.
    launch, Steamworks bridge, normal exit, and AutoCloud closure.
 7. Done and deployed: DXMT-compatible Wine 11 build, real menu, Steamworks,
    normal exit, AutoCloud, rollback, and idempotent installer cleanup.
-8. Automated candidate complete: per-game renderer and advanced controls.
-9. In progress: live control deployment, run-command, and dependency workflows.
+8. Done and deployed: per-game renderer and advanced controls, native private
+   persistence, popup reopen, and DXVK/DXMT runtime dry-runs.
+9. In progress: run-command and dependency workflows.
 
 ## Phase 4 Runtime Foundation Update
 
@@ -510,10 +530,8 @@ docs/research/steamworks-bridge-2026-06-09.md
 The remaining major gates are:
 
 1. verify GPTK + Steamworks and WineD3D or record their exact boundaries;
-2. expose per-game renderer, MSync, Retina, Metal HUD, MetalFX, DXR, and AVX
-   controls below the compatibility selection;
-3. add bounded run-command and dependency installation workflows;
-4. rerun Cloud, dynamic library, full test, install, rollback, and live launch
+2. add bounded run-command and dependency installation workflows;
+3. rerun Cloud, dynamic library, full test, install, rollback, and live launch
    acceptance before final release.
 
 Operational note: a single diagnostic Wine registry query omitted

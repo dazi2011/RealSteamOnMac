@@ -380,7 +380,7 @@
 
 ### Phase 5A: Per-Game Renderer And Runtime Controls
 
-- **Status:** automated candidate accepted; live Steam deployment pending
+- **Status:** complete; deployed and accepted in live Steam
 - Actions taken:
   - Replaced the single experimental compatibility entry with four explicit
     project tools: GPTK 3, DXMT 0.80, DXVK-macOS 1.10.3, and WineD3D 11.10.
@@ -406,6 +406,24 @@
     migration, and renderer-to-tool synchronization.
   - Expanded the complete matrix to 54 Node tests, 27 Python tests, and all 22
     shell contracts; all passed.
+  - Discovered that Steam properties popups are tracked through
+    `g_FriendsUIApp.m_IdleTracker.m_rgWindows`, not the main WindowStore, and
+    added popup document enumeration with deduplication.
+  - Fixed the control anchor to prioritize the compatibility combobox and skip
+    root/oversized containers.
+  - Removed recursive whole-library reconciliation from native detail
+    callbacks and changed stale detail retries from one to five seconds.
+  - Expanded focused Node coverage to 56 passing tests.
+  - Deployed the controls to the current Steam client and verified all four
+    tools are available for AppID `1118200`.
+  - Selected DXVK and verified the canonical mode-`0600` config plus a dry-run
+    using the package's DXVK Wine root.
+  - Toggled Retina through the real checkbox and verified a second native save.
+  - Restored DXMT/MSync, disabled Retina, verified the DXMT macdrv shim in the
+    dry-run, closed/reopened properties, and confirmed the state persisted.
+  - Captured
+    `docs/evidence/people-playground-controls-live-2026-06-09.png`, SHA-256
+    `daffe76b2d410377dfe5cf76897478a10f279a3ecdccf6b1311a23aa94042a10`.
 
 ## Test Results
 
@@ -480,6 +498,12 @@
 | Runtime control API | Authorized/unauthorized AppIDs, valid/invalid settings, file permissions | Fixed schema, managed scope, atomic private persistence | Native socket harness passed every boundary | PASS |
 | Four compatibility tools | Steam config, manifests, installer, runtime mapping | Unique GPTK/DXMT/DXVK/WineD3D selections | UI, patcher, compat-tool, and installer contracts passed | PASS |
 | Full Phase 5A suite | 54 Node, 27 Python, 22 shell contracts | No regression before live control deployment | All passed | PASS |
+| Properties popup discovery | Live shared Steam context | Find the independent People Playground popup | Located through idle-tracker window registry | PASS |
+| Control panel live mount | People Playground compatibility page | One Steam-native panel below project tool | Six controls rendered; DXMT selected | PASS |
+| DXVK control write | Select `realsteamonmac-dxvk` | Native private config and DXVK runtime | Save count incremented; mode `0600`; DXVK Wine selected | PASS |
+| Retina UI write | Real checkbox `change` event | Persist per-AppID Retina setting | Saved true, then restored false | PASS |
+| DXMT control restore | Select DXMT and reopen properties | Persist accepted default state | DXMT, MSync true, Retina false | PASS |
+| Startup reconcile rate | Six-second settled counter delta | Fixed cadence without callback amplification | Seven scans, zero additional detail refreshes | PASS |
 
 ## Error Log
 
@@ -507,13 +531,15 @@
 | 2026-06-09 | A shared clone of a partial Wine cache could not fetch a promisor object | 1 | Reused the fully checked-out cache through APFS clone-copy instead of `git clone --shared`. |
 | 2026-06-09 | GPTK installer could not attach an already-mounted image | 1 | Detached the inner read-only image before the outer image and reran the isolated install. |
 | 2026-06-09 | Successful live installer run left its two GPTK images mounted | 1 | Removed the fragile mount-list condition, detach unique mount points directly with a force fallback, and passed a real idempotent reinstall cleanup check. |
+| 2026-06-09 | Properties popup had no control panel despite four visible tools | 1 | Added the shared idle-tracker popup window registry and prioritized the compatibility combobox over the page root. |
+| 2026-06-09 | Initial live startup accumulated over one thousand reconcile scans | 1 | Removed per-detail callback reconciliation and widened stale-detail retries to five seconds; settled cadence is now fixed. |
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | The formal DXMT Wine 11 package is active in the user's existing Steam and has passed launch, exit, and Cloud acceptance. |
-| Where am I going? | Implement Steam compatibility controls, run-command, dependencies, and final cross-renderer regression. |
+| Where am I? | The formal DXMT package and per-game Steam compatibility controls are active and accepted in the user's existing Steam. |
+| Where am I going? | Implement bounded run-command, dependency installation, and final cross-renderer regression. |
 | What's the goal? | Native macOS Steam downloads and launches Windows-only games through independent selectable compatibility tools. |
 | What have I learned? | DXMT v0.80 needs both Wine 11 client-surface adaptation and global visibility forwarding; Wine/.NET process IDs can collide with persistent macOS PIDs. |
-| What have I done? | Deployed 34-game dynamic eligibility and the formal DXMT runtime, with Steamworks login, real PFX execution, clean exit, Cloud closure, and a tested rollback point. |
+| What have I done? | Deployed 34-game dynamic eligibility, the formal DXMT runtime, and private per-game renderer/control persistence with live Steam UI evidence. |

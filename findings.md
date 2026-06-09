@@ -368,6 +368,21 @@
 - MetalFX and DXR are GPTK-only. Presenting these switches as active under
   DXMT/DXVK/WineD3D would be a false UI contract, so both frontend and backend
   reject that state.
+- Steam's independent properties popup is absent from
+  `SteamUIStore.WindowStore.SteamUIWindows`. The shared context retains every
+  popup window in `g_FriendsUIApp.m_IdleTracker.m_rgWindows`, which is the
+  stable live path used by the accepted control mount.
+- A combined selector containing `[class]` visits `<html>` before the
+  compatibility combobox. Selector priority must be explicit or the mount
+  silently chooses an anchor without a parent.
+- Native app-detail callbacks must update the cache only. Calling a full
+  reconcile from each callback amplifies 34 subscriptions into hundreds of
+  startup scans; the fixed one-second reconcile loop and five-second stale
+  retry are sufficient.
+- Live selection of DXVK and DXMT changed both Steam's displayed tool and the
+  package Wine path returned by runtime dry-run. A real Retina checkbox event
+  wrote the canonical AppID config with mode `0600`; the final accepted state
+  is DXMT, MSync enabled, and all other switches disabled.
 
 ## Technical Decisions
 

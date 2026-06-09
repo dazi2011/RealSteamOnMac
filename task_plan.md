@@ -78,10 +78,11 @@ Phase 5: per-game compatibility controls and remaining renderer work
 - [ ] Add a run-command workflow scoped to the selected game's prefix.
 - [ ] Add dependency search/install with manifests, checksums, and uninstall logs.
 - [x] Ensure settings survive Steam and machine restarts.
-- [ ] Test each control against the actual generated environment.
-- [ ] Document, commit, and push each control group.
-- **Status:** renderer and runtime-control implementation accepted by the full
-  automated matrix; live Steam interaction acceptance pending
+- [x] Test renderer selection and control persistence against the actual
+      generated DXVK and DXMT environments.
+- [x] Document, commit, and push the renderer/control group.
+- **Status:** renderer and runtime controls accepted in live Steam; run-command
+  and dependency workflows remain
 
 ### Phase 6: End-To-End Game Launch
 
