@@ -12,9 +12,8 @@ client. The pre-action acceptance matrix passes:
 - 38 Python tests;
 - all 23 shell contracts.
 
-The live panel and dependency catalog are present. No command or dependency
-action has been accepted yet because the first live panel inspection found and
-blocked an AppID binding defect before a button was pressed.
+The corrected live panel, run-command path, and Visual C++ dependency install
+are accepted on People Playground AppID `1118200`.
 
 ## Protocol
 
@@ -153,6 +152,46 @@ docs/evidence/people-playground-actions-live-2026-06-09.png
 SHA-256 eed7b5f678a651e7b7dd0845d051b26ca128625232a278a8e520c5ee8666c0a3
 ```
 
+## Live Acceptance
+
+After redeployment and a full Steam restart, the panel reported AppID
+`1118200`, DXMT, both action sections, and idle state. The guarded command probe
+ran:
+
+```text
+C:\windows\system32\reg.exe
+query "HKCU\Software\Wine\Mac Driver"
+```
+
+Job `949c8a8a7a5032a1942d39ade381b204` completed with exit code `0`.
+Its private log returned the expected `AllowSetGamma` and `RetinaMode` values.
+The JSON and log files both use mode `0600`. Starting Wine refreshed font and
+HID timestamps/container IDs in the PFX registry; comparison against the
+pre-action snapshot found no unrelated key deletion or configuration change.
+
+The UI then installed dependency `vcrun2022`. Job
+`9c247e5ed3c0191a8cf38e60ab112b10` completed with exit code `0`. Acceptance
+evidence:
+
+- cache size: `25635768` bytes;
+- cache SHA-256:
+  `cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b`;
+- cache, job, log, and receipt mode: `0600`;
+- installed version: Microsoft Visual C++ 2015-2022 x64 `14.44.35211`;
+- PFX registry:
+  `Software\Microsoft\VisualStudio\14.0\VC\Runtimes\x64`;
+- installed files include `vcruntime140.dll`, `vcruntime140_1.dll`,
+  `vcruntime140_threads.dll`, and `msvcp140.dll`;
+- receipt binds AppID `1118200`, renderer `dxmt`, and immutable runtime package
+  `gptk3.0-3-wine11.10-dxmt0.80-dxmtmac1-dxvkmacos1.10.3-lsteamclient-proton11b5-macos2`.
+
+Completed-state screenshot:
+
+```text
+docs/evidence/people-playground-vcrun2022-completed-2026-06-09.png
+SHA-256 5855c396f234388c3b918be5142a17e0997798ff1b8fbe9a9d193733413f7950
+```
+
 ## Rollback
 
 Before live deployment, preserve the current support directory, launcher,
@@ -177,11 +216,6 @@ The complete pre-action live snapshot is:
 
 ## Next Acceptance
 
-1. Redeploy the scoped AppID resolver and restart Steam.
-2. Confirm the People Playground panel reports AppID `1118200`.
-3. Run a harmless PFX `reg.exe query` command and verify the completed job,
-   private log, and no shell interpretation.
-4. Install Visual C++ 2015-2022 x64, verify the exact downloaded digest,
-   completed receipt, and PFX registry/files.
-5. Recheck dynamic Windows-only availability, native macOS exclusions, Cloud,
+1. Recheck dynamic Windows-only availability, native macOS exclusions, Cloud,
    all four renderer selections, and a real game launch/exit.
+2. Complete or record the exact GPTK + Steamworks and WineD3D live boundaries.

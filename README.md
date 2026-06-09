@@ -76,8 +76,9 @@ download prototype to a cloud-safe, independent compatibility runtime.
 - The compatibility panel now includes a bounded `运行命令` workflow and a
   searchable fixed dependency catalog. Jobs are token-authenticated, scoped
   to one managed AppID, serialized per PFX, and reported through private
-  status/log files. Live Steam acceptance of these two new controls is the
-  current deployment gate.
+  status/log files. The live People Playground panel completed a guarded
+  `reg.exe query` and installed the pinned Microsoft Visual C++ 2015-2022 x64
+  package with exact size/SHA-256 validation and a per-PFX receipt.
 
 ## How It Works
 

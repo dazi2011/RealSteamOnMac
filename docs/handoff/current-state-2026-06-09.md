@@ -257,9 +257,7 @@ The live screenshot is
 Still not implemented or not yet accepted:
 
 - GPTK + Steamworks bridge acceptance;
-- WineD3D live game acceptance;
-- live Steam acceptance of dependency search/install;
-- live Steam acceptance of run-command UI and logging controls.
+- WineD3D live game acceptance.
 
 The Phase 5A control surface is installed and accepted in the user's current
 Steam client. It provides four project tools, a Steam-native controls panel,
@@ -328,8 +326,7 @@ the first managed library row. The corrected resolver now scopes React evidence
 to the current compatibility region, requires a unique overview/details AppID
 pair, and fails closed on ambiguity. The trigger probe also independently
 refuses any AppID other than People Playground `1118200`. This correction passes
-the complete 62-test Node matrix and awaits redeployment before live action
-acceptance.
+the complete 62-test Node matrix and is now redeployed and live-accepted.
 
 The pre-fix UI screenshot is
 `docs/evidence/people-playground-actions-live-2026-06-09.png`, SHA-256
@@ -340,6 +337,27 @@ acceptance evidence. The full live rollback snapshot is:
 ```text
 /Users/wudazi/RealSteamOnMac-Backups/
   pre-phase5b-actions-20260609T092230Z
+```
+
+After a full Steam restart, the panel reported AppID `1118200`. A guarded
+`reg.exe query "HKCU\Software\Wine\Mac Driver"` completed through job
+`949c8a8a7a5032a1942d39ade381b204` with exit code `0`; its JSON and log are
+mode `0600`, and the UI displayed completed state. The command started the
+selected DXMT Wine runtime without a shell.
+
+The panel then installed pinned dependency `vcrun2022` through job
+`9c247e5ed3c0191a8cf38e60ab112b10`, also exit `0`. The verified cache is
+`25635768` bytes with SHA-256
+`cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b`.
+The mode-`0600` receipt binds AppID `1118200`, DXMT, and the current immutable
+runtime package. The PFX contains Microsoft VC Runtime `14.44.35211` registry
+entries and x64 `vcruntime140`/`msvcp140` files.
+
+Completed-state evidence:
+
+```text
+docs/evidence/people-playground-vcrun2022-completed-2026-06-09.png
+SHA-256 5855c396f234388c3b918be5142a17e0997798ff1b8fbe9a9d193733413f7950
 ```
 
 DXMT implementation and acceptance details:
@@ -438,9 +456,11 @@ authoritative complete rollback source.
    normal exit, AutoCloud, rollback, and idempotent installer cleanup.
 8. Done and deployed: per-game renderer and advanced controls, native private
    persistence, popup reopen, and DXVK/DXMT runtime dry-runs.
-9. Implemented and fully regression-tested: run-command and dependency
-   workflows. Next gate: deploy to the current Steam client and perform live
-   command plus Visual C++ installation acceptance.
+9. Done and deployed: scoped action-panel AppID binding, run-command execution,
+   private job/log reporting, pinned Visual C++ installation, receipt, and
+   exact cache validation.
+10. Remaining: final dynamic-library, Cloud, renderer, game launch/exit, and
+    rollback regression, plus GPTK + Steamworks and WineD3D boundary closure.
 
 ## Phase 4 Runtime Foundation Update
 
@@ -580,8 +600,7 @@ docs/research/steamworks-bridge-2026-06-09.md
 The remaining major gates are:
 
 1. verify GPTK + Steamworks and WineD3D or record their exact boundaries;
-2. add bounded run-command and dependency installation workflows;
-3. rerun Cloud, dynamic library, full test, install, rollback, and live launch
+2. rerun Cloud, dynamic library, full test, install, rollback, and live launch
    acceptance before final release.
 
 Operational note: a single diagnostic Wine registry query omitted
