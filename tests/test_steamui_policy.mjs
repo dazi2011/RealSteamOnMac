@@ -11,6 +11,7 @@ const {
   decideOverviewPatch,
   discoverManagedApps,
   findAppActionComponents,
+  findCompatControlAnchor,
   getSteamUIDocuments,
   isOwnedWindowsOnlyGame,
   mergeCompatTools,
@@ -74,6 +75,42 @@ test("discovers Steam popup documents tracked by the shared context", () => {
     }),
     [mainDocument, propertiesDocument],
   );
+});
+
+test("anchors controls to the compatibility selector instead of the page root", () => {
+  const html = {
+    textContent: "RealSteamOnMac - DXMT",
+    parentElement: null,
+  };
+  const body = {
+    textContent: "RealSteamOnMac - DXMT",
+    parentElement: html,
+  };
+  const dialogBody = {
+    textContent:
+      "强制使用特定 Steam Play 兼容性工具 RealSteamOnMac - DXMT",
+    parentElement: body,
+  };
+  const label = {
+    textContent: "RealSteamOnMac - DXMT",
+    parentElement: dialogBody,
+  };
+  const combobox = {
+    textContent: "RealSteamOnMac - DXMT",
+    parentElement: label,
+  };
+  const documentObject = {
+    documentElement: html,
+    body,
+    querySelectorAll(selector) {
+      if (selector === "[role=combobox], select, button") {
+        return [combobox];
+      }
+      return [html, body, dialogBody, label, combobox];
+    },
+  };
+
+  assert.equal(findCompatControlAnchor(documentObject), dialogBody);
 });
 
 test("maps compatibility tools to runtime renderers in both directions", () => {
@@ -377,7 +414,7 @@ for (const overviewStatus of [3, 4, 5, 7, 9, 10, 11, 12, 13, 19, 35]) {
 }
 
 test("uses a bounded retry interval for stale native detail caches", () => {
-  assert.equal(DETAILS_REFRESH_INTERVAL_MS, 1000);
+  assert.equal(DETAILS_REFRESH_INTERVAL_MS, 5000);
 });
 
 test("normalizes the shared app store object when backend details are ready", () => {

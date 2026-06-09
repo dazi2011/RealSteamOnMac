@@ -16,7 +16,7 @@
   const GAME_APP_TYPE = 1;
   const RECONCILE_INTERVAL_MS = 1000;
   const REGISTRY_REFRESH_INTERVAL_MS = 5000;
-  const DETAILS_REFRESH_INTERVAL_MS = 1000;
+  const DETAILS_REFRESH_INTERVAL_MS = 5000;
   const CONTROL_DEFAULTS = Object.freeze({
     renderer: "dxmt",
     msync: true,
@@ -477,6 +477,7 @@
       decideOverviewPatch,
       discoverManagedApps,
       findAppActionComponents,
+      findCompatControlAnchor,
       getSelectedData,
       getSteamUIDocuments,
       getManagedTargetStatus,
@@ -623,7 +624,6 @@
               return;
             }
             globalObject.appDetailsStore?.AppDetailsChanged?.(details);
-            void reconcile();
           },
         );
       nativeDetailsSubscriptions.set(appid, subscription);
@@ -1114,33 +1114,50 @@
   }
 
   function findCompatControlAnchor(documentObject) {
-    const candidates = documentObject?.querySelectorAll?.(
-      "[role=combobox], select, button, [class]",
-    ) ?? [];
     let inspected = 0;
-    for (const element of candidates) {
-      inspected += 1;
-      if (inspected > 2500) {
-        break;
-      }
-      const text = String(element?.textContent ?? "").trim();
-      if (!text || !text.includes("RealSteamOnMac")) {
-        continue;
-      }
-      let anchor = element;
-      for (let depth = 0; depth < 3; depth += 1) {
-        const parent = anchor.parentElement;
-        const parentText = String(parent?.textContent ?? "").trim();
-        if (
-          !parent ||
-          !parentText.includes("RealSteamOnMac") ||
-          parentText.length > 1200
-        ) {
-          break;
+    const selectorGroups = [
+      "[role=combobox], select, button",
+      "[class]",
+    ];
+    for (const selector of selectorGroups) {
+      const candidates =
+        documentObject?.querySelectorAll?.(selector) ?? [];
+      for (const element of candidates) {
+        inspected += 1;
+        if (inspected > 2500) {
+          return null;
         }
-        anchor = parent;
+        if (
+          element === documentObject?.documentElement ||
+          element === documentObject?.body
+        ) {
+          continue;
+        }
+        const text = String(element?.textContent ?? "").trim();
+        if (
+          !text ||
+          text.length > 1200 ||
+          !text.includes("RealSteamOnMac")
+        ) {
+          continue;
+        }
+        let anchor = element;
+        for (let depth = 0; depth < 3; depth += 1) {
+          const parent = anchor.parentElement;
+          const parentText = String(parent?.textContent ?? "").trim();
+          if (
+            !parent ||
+            parent === documentObject?.documentElement ||
+            parent === documentObject?.body ||
+            !parentText.includes("RealSteamOnMac") ||
+            parentText.length > 1200
+          ) {
+            break;
+          }
+          anchor = parent;
+        }
+        return anchor;
       }
-      return anchor;
     }
     return null;
   }

@@ -59,6 +59,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   const nativeSpecifyCalls = [];
   const nativeDetailRegistrations = [];
   const nativeDetailUnregistrations = [];
+  const nativeDetailCallbacks = new Map();
   const registryRequests = [];
   const controlRequests = [];
   const intervalCallbacks = new Map();
@@ -120,6 +121,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
         },
         RegisterForAppDetails(appid, callback) {
           nativeDetailRegistrations.push(appid);
+          nativeDetailCallbacks.set(appid, callback);
           const nextDetails = {
             ...detailsByAppid.get(appid),
             eDisplayStatus: appid === 1118200 ? 11 : 9,
@@ -240,6 +242,17 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   assert.equal(
     overviews[1].selected_per_client_data.display_status,
     9,
+  );
+  const scansBeforeNativeDetailCallback =
+    context.__REALSTEAMONMAC_UI_STATUS__.scans;
+  nativeDetailCallbacks.get(1118200)({
+    ...detailsByAppid.get(1118200),
+    eDisplayStatus: 11,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    context.__REALSTEAMONMAC_UI_STATUS__.scans,
+    scansBeforeNativeDetailCallback,
   );
   assert.equal(
     registryRequests[1].url,
