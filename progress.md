@@ -775,3 +775,42 @@
 - `pkgutil --check-signature` confirms both PKGs remain unsigned because a
   Developer ID Installer identity is unavailable. The limitation remains
   disclosed in the bilingual README and release notes.
+- Completed the live transition from the clean `1780705203` backup to official
+  Steam Public Beta `1780965181`, then installed the packaged `0.1.1`
+  postinstall payload. The new clean rollback snapshot is
+  `/Users/wudazi/RealSteamOnMac-Backups/steam-20260610T054049Z`.
+- Verified the live Valve files and UUIDs exactly match the offline profile,
+  and the cold-start hook log reports the build-specific
+  `build=1780965181` installation gate before expanding from the bootstrap
+  AppID to all 34 managed Windows-only games.
+- Preserved People Playground across the full uninstall, Steam update, and
+  reinstall cycle. Its executable and PFX `user.reg` SHA-256 values were
+  identical before and after the transition.
+- Fixed a live-only compatibility-page mount failure. On macOS, Steam omits
+  the compatibility dropdown while its native row is disabled; the UI bridge
+  previously required exactly one dropdown and therefore never mounted.
+  The bridge now falls back to the exact native force-tool row, ignores its
+  own selector during later scans, and temporarily hides the unusable Steam
+  row while the replacement is active.
+- Added regression coverage for:
+  - a compatibility page with no native dropdown;
+  - repeated scans after the project selector is mounted;
+  - hiding and restoring Steam's disabled native compatibility row.
+- Final live UI acceptance on build `1780965181` passed:
+  - only one enabled Steam-style force-tool row is visible;
+  - DXMT 0.80, DXVK macOS 1.10.3, GPTK 3.0, and WineD3D 11.10 appear in the
+    native dropdown;
+  - DXMT -> GPTK -> DXMT switching updates the authenticated per-AppID config;
+  - DXMT 0.80 MetalFX can be enabled and disabled through the UI;
+  - the properties page scrolls to Run Command, Install Windows Components,
+    and Container Operations;
+  - all three secondary dialogs render inside the Steam properties window and
+    close with Escape;
+  - closing properties returns to the normal People Playground library page
+    with a green Start Game action and no persistent right-side panel.
+- Post-fix release regression passed:
+  - 70 Node tests.
+  - 61 Python tests.
+  - 27 shell contract files.
+  - `git diff --check`, shell syntax checks, Python bytecode compilation, and
+    JavaScript syntax checks.

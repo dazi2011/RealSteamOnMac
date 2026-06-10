@@ -78,3 +78,40 @@ different build. The supported transition is:
 
 This prevents a later uninstall from replacing a newer Steam runtime with an
 older backup.
+
+## Live Installation And UI Acceptance
+
+The official Steam bootstrap installed build `1780965181` on the live machine.
+The resulting Valve binaries, UUIDs, SteamUI resources, and compatibility
+chunk hashes matched the offline profile above.
+
+The `0.1.1` installer payload then created a build-specific clean backup and
+completed a cold start. The native hook reported:
+
+- the `1780965181` installation-gate profile;
+- one bootstrap AppID followed by 34 dynamically managed Windows-only AppIDs;
+- one matching SteamUI platform getter;
+- successful data reconciliation for the managed library.
+
+The first live compatibility-page check exposed one additional browser-side
+edge case: Steam's disabled macOS row did not include a combobox. The UI
+bridge had required exactly one combobox, so it did not mount despite the
+native hook and registry being healthy.
+
+The final bridge accepts either:
+
+1. Steam's native compatibility combobox; or
+2. the exact native force-tool row when the combobox is omitted.
+
+It excludes its own selector from later scans and hides Steam's unusable
+disabled row only while the managed replacement is mounted.
+
+Final visual and behavioral acceptance passed:
+
+- one Steam-style compatibility selector is visible;
+- all four installed tools are selectable;
+- DXMT to GPTK and back persists through the authenticated native config;
+- DXMT 0.80 MetalFX capability gating and writes work;
+- the page scrolls normally;
+- command, dependency, and container dialogs render and close with Escape;
+- the People Playground library page has no persistent injected side panel.

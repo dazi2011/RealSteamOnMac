@@ -657,12 +657,14 @@
       buildControlPanelMarkup,
       decideOverviewPatch,
       discoverManagedApps,
+      findCompatForceToolAnchor,
       findAppActionComponents,
       findCompatControlAnchor,
       findManagedAppidForControls,
       getSelectedData,
       getSteamUIDocuments,
       getManagedTargetStatus,
+      hideNativeCompatAnchor,
       isCompatibilityPropertiesDocument,
       isOwnedWindowsOnlyGame,
       buildControlPayload,
@@ -683,6 +685,7 @@
       reconcileCompatDetails,
       reconcileAppState,
       rendererForCompatTool,
+      restoreNativeCompatAnchors,
       CONTROL_DEFAULTS,
       ACTION_POLL_INTERVAL_MS,
       COMPAT_TOOL_PRIORITY,
@@ -724,7 +727,7 @@
     config.dependencies,
   );
   const status = {
-    version: 9,
+    version: 10,
     mode: "dynamic-owned-windows-only-registry",
     enabled: true,
     appids: [...managedAppids],
@@ -1614,6 +1617,113 @@
     );
   }
 
+  function isProjectControlElement(element) {
+    for (
+      let current = element;
+      current;
+      current = current.parentElement
+    ) {
+      const className = String(current.className ?? "");
+      if (
+        className
+          .split(/\s+/)
+          .includes("realsteamonmac-controls")
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function normalizedElementText(element) {
+    return String(element?.textContent ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function isForceToolText(value) {
+    return (
+      /^强制使用(?:特定)?\s*Steam Play\s*兼容性工具$/i.test(value) ||
+      /^Force the use of (?:a )?specific Steam Play compatibility tool$/i.test(
+        value,
+      )
+    );
+  }
+
+  function containsForceToolText(value) {
+    return (
+      /强制使用(?:特定)?\s*Steam Play\s*兼容性工具/i.test(value) ||
+      /Force the use of (?:a )?specific Steam Play compatibility tool/i.test(
+        value,
+      )
+    );
+  }
+
+  function findForceToolAncestor(element) {
+    let current = element;
+    for (let depth = 0; current && depth < 5; depth += 1) {
+      const text = normalizedElementText(current);
+      if (text.length <= 800 && containsForceToolText(text)) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+    return null;
+  }
+
+  function expandCompatAnchor(element, maxDepth, exactTextOnly = false) {
+    let anchor = element;
+    for (let depth = 0; depth < maxDepth; depth += 1) {
+      const parent = anchor?.parentElement;
+      const parentText = normalizedElementText(parent);
+      if (
+        !parent ||
+        parent === parent.ownerDocument?.documentElement ||
+        parent === parent.ownerDocument?.body ||
+        parentText.length > 800 ||
+        (exactTextOnly && !isForceToolText(parentText))
+      ) {
+        break;
+      }
+      anchor = parent;
+    }
+    return anchor;
+  }
+
+  function findCompatForceToolAnchor(documentObject) {
+    let inspected = 0;
+    const matches = [];
+    const candidates =
+      documentObject?.querySelectorAll?.("*") ?? [];
+    for (const element of candidates) {
+      inspected += 1;
+      if (inspected > 2500) {
+        break;
+      }
+      if (
+        element === documentObject?.documentElement ||
+        element === documentObject?.body ||
+        isProjectControlElement(element) ||
+        !isForceToolText(normalizedElementText(element))
+      ) {
+        continue;
+      }
+      matches.push(element);
+    }
+    const innermost = matches.filter(
+      (candidate) =>
+        !matches.some(
+          (other) =>
+            other !== candidate &&
+            candidate.contains?.(other),
+        ),
+    );
+    if (innermost.length !== 1) {
+      return null;
+    }
+    return expandCompatAnchor(innermost[0], 4, true);
+  }
+
   function findCompatControlAnchor(documentObject) {
     if (!isCompatibilityPropertiesDocument(documentObject)) {
       return null;
@@ -1631,7 +1741,8 @@
       }
       if (
         element === documentObject?.documentElement ||
-        element === documentObject?.body
+        element === documentObject?.body ||
+        isProjectControlElement(element)
       ) {
         continue;
       }
@@ -1641,27 +1752,43 @@
       }
       matches.push(element);
     }
-    if (matches.length !== 1) {
-      return null;
+    if (matches.length === 1) {
+      return (
+        findForceToolAncestor(matches[0]) ??
+        expandCompatAnchor(matches[0], 3)
+      );
     }
+    return findCompatForceToolAnchor(documentObject);
+  }
 
-    let anchor = matches[0];
-    for (let depth = 0; depth < 3; depth += 1) {
-      const parent = anchor.parentElement;
-      const parentText = String(parent?.textContent ?? "")
-        .replace(/\s+/g, " ")
-        .trim();
-      if (
-        !parent ||
-        parent === documentObject?.documentElement ||
-        parent === documentObject?.body ||
-        parentText.length > 800
-      ) {
-        break;
-      }
-      anchor = parent;
+  function hideNativeCompatAnchor(anchor) {
+    if (
+      !anchor?.style ||
+      isProjectControlElement(anchor) ||
+      anchor.dataset?.realsteamonmacNativeHidden === "true"
+    ) {
+      return;
     }
-    return anchor;
+    anchor.dataset.realsteamonmacNativeHidden = "true";
+    anchor.dataset.realsteamonmacOriginalDisplay =
+      anchor.style.display ?? "";
+    anchor.style.display = "none";
+  }
+
+  function restoreNativeCompatAnchors(documentObject) {
+    const anchors =
+      documentObject?.querySelectorAll?.(
+        '[data-realsteamonmac-native-hidden="true"]',
+      ) ?? [];
+    for (const anchor of anchors) {
+      if (!anchor?.style) {
+        continue;
+      }
+      anchor.style.display =
+        anchor.dataset?.realsteamonmacOriginalDisplay ?? "";
+      delete anchor.dataset?.realsteamonmacNativeHidden;
+      delete anchor.dataset?.realsteamonmacOriginalDisplay;
+    }
   }
 
   function ensureControlPanelStyle(documentObject) {
@@ -2537,7 +2664,20 @@
       </div>
     `;
     documentObject.body.appendChild(layer);
-    const close = () => layer.remove();
+    const onKeydown = (event) => {
+      if (event.key === "Escape") {
+        close();
+      }
+    };
+    const close = () => {
+      documentObject.removeEventListener?.(
+        "keydown",
+        onKeydown,
+        true,
+      );
+      layer.remove();
+    };
+    documentObject.addEventListener?.("keydown", onKeydown, true);
     layer.addEventListener("click", (event) => {
       if (event.target === layer) {
         close();
@@ -2773,11 +2913,13 @@
         : null;
       if (!appid) {
         existing?.remove?.();
+        restoreNativeCompatAnchors(documentObject);
         continue;
       }
       if (!anchor?.parentElement) {
         continue;
       }
+      hideNativeCompatAnchor(anchor);
       ensureControlPanelStyle(documentObject);
       let panel = existing;
       if (!panel) {
