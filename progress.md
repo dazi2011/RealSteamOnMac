@@ -838,3 +838,11 @@
 - Final packaged cold-start acceptance preserved the People Playground
   executable and PFX hashes, rebuilt the 34-AppID native registry, and rendered
   the corrected single-selector compatibility page.
+- Published public GitHub Release `v0.1.1` from commit
+  `e0fd2601c4e531fd85f74e97d1eb8d5758e0c577`.
+- Re-downloaded all five public release assets and verified they are byte-for-
+  byte identical to `dist/`; GitHub's reported SHA-256 digests also match.
+- Verified the downloaded manifest signature again with the committed public
+  key. GitHub's latest-release API returns `v0.1.1`, and the installed updater
+  reports `{"status":"current","version":"0.1.1"}` on Steam build
+  `1780965181`.
