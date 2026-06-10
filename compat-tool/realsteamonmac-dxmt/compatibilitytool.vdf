@@ -5,7 +5,7 @@
         "realsteamonmac-dxmt"
         {
             "install_path" "."
-            "display_name" "RealSteamOnMac - DXMT 0.80"
+            "display_name" "DXMT 0.80"
             "from_oslist" "windows"
             "to_oslist" "macos"
         }

@@ -5,7 +5,7 @@
         "realsteamonmac-gptk"
         {
             "install_path" "."
-            "display_name" "RealSteamOnMac - GPTK 3"
+            "display_name" "GPTK 3.0"
             "from_oslist" "windows"
             "to_oslist" "macos"
         }

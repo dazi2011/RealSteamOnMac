@@ -21,6 +21,7 @@
   const ACTION_POLL_LIMIT = 3600;
   const ACTION_JOB_ID_PATTERN = /^[0-9a-f]{32}$/;
   const CONTROL_DEFAULTS = Object.freeze({
+    compat_tool: "",
     renderer: "dxmt",
     msync: true,
     retina: false,
@@ -38,6 +39,10 @@
         ? fallbackRenderer
         : CONTROL_DEFAULTS.renderer;
     const normalized = {
+      compat_tool:
+        typeof value?.compat_tool === "string"
+          ? value.compat_tool
+          : CONTROL_DEFAULTS.compat_tool,
       renderer,
       msync:
         typeof value?.msync === "boolean"
@@ -64,9 +69,39 @@
           ? value.avx
           : CONTROL_DEFAULTS.avx,
     };
-    if (renderer !== "gptk") {
+    return normalized;
+  }
+
+  function compatToolRecord(toolName, projectTools) {
+    return (
+      (projectTools ?? []).find(
+        (candidate) => candidate?.strToolName === toolName,
+      ) ?? null
+    );
+  }
+
+  function applyToolCapabilities(value, tool) {
+    const normalized = normalizeControlConfig(
+      value,
+      tool?.renderer,
+    );
+    if (!tool?.capabilities?.metalfx) {
       normalized.metalfx = false;
+    }
+    if (!tool?.capabilities?.dxr) {
       normalized.dxr = false;
+    }
+    if (!tool?.capabilities?.metal_hud) {
+      normalized.metal_hud = false;
+    }
+    if (!tool?.capabilities?.msync) {
+      normalized.msync = false;
+    }
+    if (!tool?.capabilities?.retina) {
+      normalized.retina = false;
+    }
+    if (!tool?.capabilities?.avx) {
+      normalized.avx = false;
     }
     return normalized;
   }
@@ -91,6 +126,7 @@
   function buildControlPayload(value) {
     const config = normalizeControlConfig(value);
     return [
+      `compat_tool=${encodeURIComponent(config.compat_tool)}`,
       `renderer=${config.renderer}`,
       `msync=${config.msync ? 1 : 0}`,
       `retina=${config.retina ? 1 : 0}`,
@@ -182,6 +218,30 @@
       ["action", "install-dependency"],
       ["dependency", dependency],
     ]);
+  }
+
+  function buildContainerActionPayload(operation) {
+    const operations = new Set([
+      "open-c-drive",
+      "install-application",
+      "wine-configuration",
+      "controllers",
+      "restart",
+      "task-manager",
+      "quit-all",
+      "delete-container",
+    ]);
+    if (!operations.has(operation)) {
+      throw new Error("container operation is invalid");
+    }
+    return encodeActionPayload([
+      ["action", "container"],
+      ["operation", operation],
+    ]);
+  }
+
+  function buildChooseFilePayload() {
+    return encodeActionPayload([["action", "choose-file"]]);
   }
 
   function normalizeDependencyCatalog(value) {
@@ -594,6 +654,7 @@
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
       buildManagedAppSet,
+      buildControlPanelMarkup,
       decideOverviewPatch,
       discoverManagedApps,
       findAppActionComponents,
@@ -602,13 +663,18 @@
       getSelectedData,
       getSteamUIDocuments,
       getManagedTargetStatus,
+      isCompatibilityPropertiesDocument,
       isOwnedWindowsOnlyGame,
       buildControlPayload,
       buildControlUrl,
       buildActionUrl,
+      buildChooseFilePayload,
+      buildContainerActionPayload,
       buildDependencyPayload,
       buildJobUrl,
       buildRunCommandPayload,
+      applyToolCapabilities,
+      compatToolRecord,
       compatToolForRenderer,
       mergeCompatTools,
       normalizeControlConfig,
@@ -646,7 +712,9 @@
           tool.strDisplayName &&
           ["gptk", "dxmt", "dxvk", "wined3d"].includes(
             tool.renderer,
-          ),
+          ) &&
+          typeof tool.capabilities === "object" &&
+          tool.capabilities !== null,
       )
     : [];
   const projectCompatToolNames = new Set(
@@ -903,7 +971,23 @@
     )
       ? storedControlConfigs[key]
       : null;
-    const normalized = normalizeControlConfig(stored, renderer);
+    const selectedTool =
+      compatToolRecord(
+        compatSelections.get(appid),
+        projectCompatTools,
+      ) ??
+      projectCompatTools.find(
+        (tool) => tool.renderer === renderer,
+      ) ??
+      null;
+    const normalized = applyToolCapabilities(
+      {
+        ...stored,
+        compat_tool: selectedTool?.strToolName ?? "",
+        renderer,
+      },
+      selectedTool,
+    );
     controlConfigs.set(appid, normalized);
     return normalized;
   }
@@ -947,12 +1031,27 @@
     if (typeof response?.json !== "function") {
       throw new Error("native control response is invalid");
     }
-    const loaded = normalizeControlConfig(await response.json());
-    controlConfigs.set(appid, loaded);
-    const tool = compatToolForRenderer(
-      loaded.renderer,
-      projectCompatTools,
+    const responseValue = await response.json();
+    const loadedTool =
+      compatToolRecord(
+        responseValue?.compat_tool,
+        projectCompatTools,
+      ) ??
+      projectCompatTools.find(
+        (tool) => tool.renderer === responseValue?.renderer,
+      ) ??
+      null;
+    const loaded = applyToolCapabilities(
+      responseValue,
+      loadedTool,
     );
+    controlConfigs.set(appid, loaded);
+    const tool =
+      loaded.compat_tool ||
+      compatToolForRenderer(
+        loaded.renderer,
+        projectCompatTools,
+      );
     if (tool) {
       compatSelections.set(appid, tool);
     }
@@ -977,7 +1076,13 @@
     if (!managedAppids.has(appid)) {
       throw new Error(`AppID ${appid} is not managed`);
     }
-    const normalized = normalizeControlConfig(value);
+    const selectedTool =
+      compatToolRecord(value?.compat_tool, projectCompatTools) ??
+      projectCompatTools.find(
+        (tool) => tool.renderer === value?.renderer,
+      ) ??
+      null;
+    const normalized = applyToolCapabilities(value, selectedTool);
     const payload = buildControlPayload(normalized);
     if (lastNativeControlPayloads.get(appid) !== payload) {
       const response = await globalObject.fetch(
@@ -1112,7 +1217,7 @@
 
   async function runNativeAction(appid, payload, label, panel) {
     if (actionStateFor(appid).state === "running") {
-      return;
+      return null;
     }
     setActionState(
       appid,
@@ -1157,6 +1262,7 @@
         status.actionJobsCompleted += 1;
         status.actionLastError = null;
       }
+      return result;
     } catch (error) {
       status.actionJobsFailed += 1;
       status.actionLastError = String(error);
@@ -1168,6 +1274,7 @@
         },
         panel,
       );
+      return null;
     }
   }
 
@@ -1235,6 +1342,7 @@
         );
         await saveNativeControlConfig(appid, {
           ...ensureControlConfig(appid),
+          compat_tool: tool,
           renderer,
         });
       }
@@ -1470,53 +1578,90 @@
     return uniqueAppid(documentEvidence.strong);
   }
 
+  function isCompatibilityPropertiesDocument(documentObject) {
+    const bodyText = String(
+      documentObject?.body?.innerText ??
+        documentObject?.body?.textContent ??
+        "",
+    );
+    const lines = bodyText
+      .split(/\r?\n/)
+      .map((line) => line.replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+    const hasCompatibilityHeading = lines.some((line) =>
+      /^(兼容性|Compatibility)$/i.test(line),
+    );
+    const hasForceToolText =
+      /强制使用(?:特定)?\s*Steam Play\s*兼容性工具/i.test(bodyText) ||
+      /Force the use of (?:a )?specific Steam Play compatibility tool/i.test(
+        bodyText,
+      );
+    const title = String(documentObject?.title ?? "").trim();
+    const locationText = [
+      documentObject?.location?.href,
+      documentObject?.location?.hash,
+    ]
+      .filter((value) => typeof value === "string")
+      .join(" ");
+    const hasPopupEvidence =
+      Boolean(documentObject?.querySelector?.("[role=dialog]")) ||
+      /(?:properties|app-properties|compatibility)/i.test(locationText) ||
+      Boolean(title && title.toLowerCase() !== "steam");
+    return (
+      hasPopupEvidence &&
+      hasCompatibilityHeading &&
+      hasForceToolText
+    );
+  }
+
   function findCompatControlAnchor(documentObject) {
-    let inspected = 0;
-    const selectorGroups = [
-      "[role=combobox], select, button",
-      "[class]",
-    ];
-    for (const selector of selectorGroups) {
-      const candidates =
-        documentObject?.querySelectorAll?.(selector) ?? [];
-      for (const element of candidates) {
-        inspected += 1;
-        if (inspected > 2500) {
-          return null;
-        }
-        if (
-          element === documentObject?.documentElement ||
-          element === documentObject?.body
-        ) {
-          continue;
-        }
-        const text = String(element?.textContent ?? "").trim();
-        if (
-          !text ||
-          text.length > 1200 ||
-          !text.includes("RealSteamOnMac")
-        ) {
-          continue;
-        }
-        let anchor = element;
-        for (let depth = 0; depth < 3; depth += 1) {
-          const parent = anchor.parentElement;
-          const parentText = String(parent?.textContent ?? "").trim();
-          if (
-            !parent ||
-            parent === documentObject?.documentElement ||
-            parent === documentObject?.body ||
-            !parentText.includes("RealSteamOnMac") ||
-            parentText.length > 1200
-          ) {
-            break;
-          }
-          anchor = parent;
-        }
-        return anchor;
-      }
+    if (!isCompatibilityPropertiesDocument(documentObject)) {
+      return null;
     }
-    return null;
+    let inspected = 0;
+    const matches = [];
+    const candidates =
+      documentObject?.querySelectorAll?.(
+        "[role=combobox], select",
+      ) ?? [];
+    for (const element of candidates) {
+      inspected += 1;
+      if (inspected > 250) {
+        return null;
+      }
+      if (
+        element === documentObject?.documentElement ||
+        element === documentObject?.body
+      ) {
+        continue;
+      }
+      const text = String(element?.textContent ?? "").trim();
+      if (!text || text.length > 240) {
+        continue;
+      }
+      matches.push(element);
+    }
+    if (matches.length !== 1) {
+      return null;
+    }
+
+    let anchor = matches[0];
+    for (let depth = 0; depth < 3; depth += 1) {
+      const parent = anchor.parentElement;
+      const parentText = String(parent?.textContent ?? "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (
+        !parent ||
+        parent === documentObject?.documentElement ||
+        parent === documentObject?.body ||
+        parentText.length > 800
+      ) {
+        break;
+      }
+      anchor = parent;
+    }
+    return anchor;
   }
 
   function ensureControlPanelStyle(documentObject) {
@@ -1820,6 +1965,282 @@
       .realsteamonmac-controls__status[data-state="error"] {
         color: #ff7b72;
       }
+      .realsteamonmac-controls {
+        margin: 12px 0 2px;
+        padding: 0;
+        width: 100%;
+        max-width: none;
+        background: transparent;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+      }
+      .realsteamonmac-settings {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+        color: #dcdedf;
+        font-family: "Motiva Sans", "Noto Sans SC", sans-serif;
+      }
+      .realsteamonmac-settings__heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 34px;
+        color: #8b929a;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .realsteamonmac-settings__renderer {
+        color: #66c0f4;
+        font-size: 12px;
+        font-weight: 500;
+      }
+      .realsteamonmac-settings__rows {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .realsteamonmac-setting-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        min-height: 54px;
+        padding: 8px 14px;
+        background: #25282e;
+        cursor: pointer;
+      }
+      .realsteamonmac-setting-row:first-child {
+        border-radius: 3px 3px 0 0;
+      }
+      .realsteamonmac-setting-row:last-child {
+        border-radius: 0 0 3px 3px;
+      }
+      .realsteamonmac-setting-row:hover {
+        background: #2d3138;
+      }
+      .realsteamonmac-setting-row[data-disabled="true"] {
+        opacity: .42;
+        cursor: not-allowed;
+      }
+      .realsteamonmac-setting-row__copy {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+      .realsteamonmac-setting-row__label {
+        color: #f0f1f1;
+        font-size: 14px;
+      }
+      .realsteamonmac-setting-row__hint {
+        overflow: hidden;
+        color: #8b929a;
+        font-size: 11px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .realsteamonmac-switch {
+        position: relative;
+        flex: 0 0 auto;
+        width: 42px;
+        height: 24px;
+      }
+      .realsteamonmac-switch input {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+      .realsteamonmac-switch__track {
+        position: absolute;
+        inset: 0;
+        background: #4a4d52;
+        border-radius: 14px;
+        transition: background .12s ease;
+      }
+      .realsteamonmac-switch__track::after {
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 18px;
+        height: 18px;
+        background: #dfe3e6;
+        border-radius: 50%;
+        content: "";
+        transition: transform .12s ease;
+      }
+      .realsteamonmac-switch input:checked + .realsteamonmac-switch__track {
+        background: #1a9fff;
+      }
+      .realsteamonmac-switch input:checked +
+        .realsteamonmac-switch__track::after {
+        transform: translateX(18px);
+      }
+      .realsteamonmac-switch input:focus-visible +
+        .realsteamonmac-switch__track {
+        box-shadow: 0 0 0 2px rgba(102,192,244,.55);
+      }
+      .realsteamonmac-settings__actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding-top: 4px;
+      }
+      .realsteamonmac-native-button {
+        min-height: 34px;
+        padding: 0 16px;
+        color: #dfe3e6;
+        background: #3d4450;
+        border: 0;
+        border-radius: 2px;
+        font: 13px "Motiva Sans", "Noto Sans SC", sans-serif;
+        cursor: pointer;
+      }
+      .realsteamonmac-native-button:hover:not(:disabled) {
+        color: #fff;
+        background: #4e5968;
+      }
+      .realsteamonmac-native-button.primary {
+        color: #fff;
+        background: linear-gradient(90deg, #06bfff, #2d73ff);
+      }
+      .realsteamonmac-native-button:disabled {
+        opacity: .45;
+        cursor: wait;
+      }
+      .realsteamonmac-settings__status {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        color: #8b929a;
+        font-size: 11px;
+      }
+      .realsteamonmac-settings__status[data-state="completed"] {
+        color: #75d17e;
+      }
+      .realsteamonmac-settings__status[data-state="failed"] {
+        color: #ff7b72;
+      }
+      .realsteamonmac-modal-layer {
+        position: fixed;
+        z-index: 100000;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(0,0,0,.62);
+      }
+      .realsteamonmac-modal {
+        display: flex;
+        flex-direction: column;
+        width: min(680px, calc(100vw - 48px));
+        max-height: min(760px, calc(100vh - 48px));
+        color: #dcdedf;
+        background: #24282f;
+        border: 1px solid #434953;
+        border-radius: 3px;
+        box-shadow: 0 18px 70px rgba(0,0,0,.56);
+        font-family: "Motiva Sans", "Noto Sans SC", sans-serif;
+      }
+      .realsteamonmac-modal__title {
+        padding: 18px 20px 14px;
+        color: #f3f3f3;
+        font-size: 20px;
+        font-weight: 500;
+      }
+      .realsteamonmac-modal__body {
+        overflow: auto;
+        padding: 4px 20px 18px;
+      }
+      .realsteamonmac-modal__field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 12px;
+        color: #b8bcbf;
+        font-size: 12px;
+      }
+      .realsteamonmac-modal__field input,
+      .realsteamonmac-modal__field textarea,
+      .realsteamonmac-modal__search {
+        width: 100%;
+        padding: 9px 10px;
+        color: #f2f2f2;
+        background: #1b1e23;
+        border: 1px solid #3b414a;
+        border-radius: 2px;
+        outline: none;
+        font: 13px "Motiva Sans", "Noto Sans SC", sans-serif;
+      }
+      .realsteamonmac-modal__field textarea {
+        min-height: 78px;
+        resize: vertical;
+      }
+      .realsteamonmac-modal__browse-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+      }
+      .realsteamonmac-modal__check {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 14px;
+        font-size: 13px;
+      }
+      .realsteamonmac-modal__actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 14px 20px 18px;
+      }
+      .realsteamonmac-modal__dependency-list,
+      .realsteamonmac-modal__menu {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        margin-top: 10px;
+      }
+      .realsteamonmac-modal__dependency {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        background: #2b2f36;
+      }
+      .realsteamonmac-modal__dependency[hidden] {
+        display: none;
+      }
+      .realsteamonmac-modal__dependency span {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .realsteamonmac-modal__dependency small {
+        color: #9299a1;
+      }
+      .realsteamonmac-modal__menu button {
+        min-height: 46px;
+        padding: 0 14px;
+        color: #e6e7e8;
+        text-align: left;
+        background: #2b2f36;
+        border: 0;
+        cursor: pointer;
+      }
+      .realsteamonmac-modal__menu button:hover {
+        background: #343a43;
+      }
+      .realsteamonmac-modal__menu button.danger {
+        color: #ff7b72;
+      }
       @media (max-width: 640px) {
         .realsteamonmac-controls__grid,
         .realsteamonmac-run__grid,
@@ -1831,188 +2252,368 @@
     documentObject.head.appendChild(style);
   }
 
-  function controlDefinitions(renderer) {
+  function controlDefinitions(tool) {
+    const capabilities = tool?.capabilities ?? {};
     return [
       {
         key: "msync",
         label: "启用 MSync",
         hint: "降低 Wine 同步开销，默认开启",
-        enabled: true,
+        enabled: capabilities.msync === true,
       },
       {
         key: "retina",
         label: "高分辨率模式",
         hint: "写入当前 PFX 的 Wine RetinaMode",
-        enabled: true,
+        enabled: capabilities.retina === true,
       },
       {
         key: "metal_hud",
         label: "Metal HUD",
         hint: "显示 Metal 图形性能叠加层",
-        enabled: renderer !== "wined3d",
+        enabled: capabilities.metal_hud === true,
       },
       {
         key: "metalfx",
         label: "DLSS 转 MetalFX",
-        hint: "安装并启用 GPTK MetalFX 映射",
-        enabled: renderer === "gptk",
+        hint: "将受支持的 DLSS 超分辨率请求映射到 MetalFX",
+        enabled: capabilities.metalfx === true,
       },
       {
         key: "dxr",
         label: "DXR",
         hint: "向游戏公开 GPTK 光线追踪能力",
-        enabled: renderer === "gptk",
+        enabled: capabilities.dxr === true,
       },
       {
         key: "avx",
         label: "Rosetta AVX",
         hint: "为需要 AVX 的游戏公开指令能力",
-        enabled: true,
+        enabled: capabilities.avx === true,
       },
     ];
+  }
+
+  function buildControlPanelMarkup({
+    appid,
+    value,
+    rendererLabel,
+    tool,
+    actionState,
+  }) {
+    const normalized = applyToolCapabilities(value, tool);
+    const definitions = controlDefinitions(tool);
+    const running = actionState?.state === "running";
+    return `
+      <div class="realsteamonmac-settings">
+        <div class="realsteamonmac-settings__heading">
+          <span>兼容性设置</span>
+          <span class="realsteamonmac-settings__renderer">${escapeHtml(rendererLabel)}</span>
+        </div>
+        <div class="realsteamonmac-settings__rows">
+          ${definitions
+            .map(
+              (definition) => `
+                <label class="realsteamonmac-setting-row"
+                       data-disabled="${definition.enabled ? "false" : "true"}">
+                  <span class="realsteamonmac-setting-row__copy">
+                    <span class="realsteamonmac-setting-row__label">${escapeHtml(definition.label)}</span>
+                    <span class="realsteamonmac-setting-row__hint">${escapeHtml(definition.hint)}</span>
+                  </span>
+                  <span class="realsteamonmac-switch">
+                    <input type="checkbox"
+                           role="switch"
+                           data-control="${definition.key}"
+                           ${normalized[definition.key] ? "checked" : ""}
+                           ${definition.enabled ? "" : "disabled"}>
+                    <span class="realsteamonmac-switch__track"></span>
+                  </span>
+                </label>
+              `,
+            )
+            .join("")}
+        </div>
+        <div class="realsteamonmac-settings__actions">
+          <button type="button"
+                  class="realsteamonmac-native-button"
+                  data-open-dialog="run-command"
+                  ${running ? "disabled" : ""}>运行命令</button>
+          <button type="button"
+                  class="realsteamonmac-native-button"
+                  data-open-dialog="dependencies"
+                  ${running ? "disabled" : ""}>安装 Windows 组件</button>
+          <button type="button"
+                  class="realsteamonmac-native-button"
+                  data-open-dialog="container"
+                  ${running ? "disabled" : ""}>容器操作</button>
+        </div>
+        <div class="realsteamonmac-settings__status"
+             data-state="${escapeHtml(actionState?.state ?? "idle")}">
+          <span class="realsteamonmac-settings__status-text">${escapeHtml(
+            actionState?.message ?? "已保存",
+          )}</span>
+          <span>AppID ${appid}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function buildActionDialogMarkup(kind) {
+    if (kind === "run-command") {
+      return `
+        <div class="realsteamonmac-modal__title">运行命令</div>
+        <div class="realsteamonmac-modal__body">
+          <label class="realsteamonmac-modal__field">
+            <span>命令</span>
+            <span class="realsteamonmac-modal__browse-row">
+              <input type="text" data-run-target
+                     placeholder="C:\\windows\\system32\\reg.exe">
+              <button type="button" class="realsteamonmac-native-button"
+                      data-browse-target>浏览...</button>
+            </span>
+          </label>
+          <label class="realsteamonmac-modal__field">
+            <span>参数</span>
+            <textarea data-run-arguments
+                      placeholder='query "HKCU\\Software\\Wine"'></textarea>
+          </label>
+          <label class="realsteamonmac-modal__field">
+            <span>环境变量 · 每行 NAME=VALUE</span>
+            <textarea data-run-environment
+                      placeholder="DXVK_HUD=fps"></textarea>
+          </label>
+          <label class="realsteamonmac-modal__check">
+            <input type="checkbox" data-create-log>
+            <span>创建日志文件</span>
+          </label>
+        </div>
+        <div class="realsteamonmac-modal__actions">
+          <button type="button" class="realsteamonmac-native-button"
+                  data-close-dialog>取消</button>
+          <button type="button" class="realsteamonmac-native-button primary"
+                  data-submit-run>运行</button>
+        </div>
+      `;
+    }
+    if (kind === "dependencies") {
+      return `
+        <div class="realsteamonmac-modal__title">安装 Windows 组件</div>
+        <div class="realsteamonmac-modal__body">
+          <input type="search"
+                 class="realsteamonmac-modal__search"
+                 data-dependency-search
+                 placeholder="搜索 C++、.NET、字体或发布者">
+          <div class="realsteamonmac-modal__dependency-list">
+            ${dependencies
+              .map(
+                (dependency) => `
+                  <article class="realsteamonmac-modal__dependency"
+                           data-dependency-card
+                           data-search="${escapeHtml(
+                             `${dependency.name} ${dependency.description} ${dependency.publisher}`.toLowerCase(),
+                           )}">
+                    <span>
+                      <strong>${escapeHtml(dependency.name)}</strong>
+                      <small>${escapeHtml(dependency.publisher)} · ${formatByteSize(dependency.size)}</small>
+                      <small>${escapeHtml(dependency.description)}</small>
+                    </span>
+                    <button type="button"
+                            class="realsteamonmac-native-button primary"
+                            data-install-dependency="${escapeHtml(dependency.id)}">安装</button>
+                  </article>
+                `,
+              )
+              .join("")}
+          </div>
+        </div>
+        <div class="realsteamonmac-modal__actions">
+          <button type="button" class="realsteamonmac-native-button"
+                  data-close-dialog>关闭</button>
+        </div>
+      `;
+    }
+    return `
+      <div class="realsteamonmac-modal__title">容器操作</div>
+      <div class="realsteamonmac-modal__body">
+        <div class="realsteamonmac-modal__menu">
+          <button type="button" data-container-action="open-c-drive">打开 C: 盘</button>
+          <button type="button" data-container-action="install-application">安装应用程序到容器</button>
+          <button type="button" data-container-action="wine-configuration">Wine 配置</button>
+          <button type="button" data-container-action="controllers">Game Controllers</button>
+          <button type="button" data-container-action="restart">模拟重启</button>
+          <button type="button" data-container-action="task-manager">任务管理器</button>
+          <button type="button" data-container-action="quit-all">退出所有应用程序</button>
+          <button type="button" class="danger" data-container-action="delete-container">删除容器</button>
+        </div>
+      </div>
+      <div class="realsteamonmac-modal__actions">
+        <button type="button" class="realsteamonmac-native-button"
+                data-close-dialog>关闭</button>
+      </div>
+    `;
+  }
+
+  function openActionDialog(documentObject, panel, appid, kind) {
+    documentObject
+      .querySelector?.(".realsteamonmac-modal-layer")
+      ?.remove?.();
+    const layer = documentObject.createElement("div");
+    layer.className = "realsteamonmac-modal-layer";
+    layer.innerHTML = `
+      <div class="realsteamonmac-modal" role="dialog" aria-modal="true">
+        ${buildActionDialogMarkup(kind)}
+      </div>
+    `;
+    documentObject.body.appendChild(layer);
+    const close = () => layer.remove();
+    layer.addEventListener("click", (event) => {
+      if (event.target === layer) {
+        close();
+      }
+    });
+    layer
+      .querySelector("[data-close-dialog]")
+      ?.addEventListener("click", close);
+
+    if (kind === "run-command") {
+      layer
+        .querySelector("[data-browse-target]")
+        ?.addEventListener("click", () => {
+          void (async () => {
+            const result = await runNativeAction(
+              appid,
+              buildChooseFilePayload(),
+              "选择可执行文件",
+              panel,
+            );
+            const target = result?.result?.target;
+            if (typeof target === "string" && target) {
+              const input = layer.querySelector("[data-run-target]");
+              if (input) {
+                input.value = target;
+              }
+            }
+          })();
+        });
+      layer
+        .querySelector("[data-submit-run]")
+        ?.addEventListener("click", () => {
+          const target =
+            layer.querySelector("[data-run-target]")?.value ?? "";
+          const commandArguments =
+            layer.querySelector("[data-run-arguments]")?.value ?? "";
+          const environment =
+            layer.querySelector("[data-run-environment]")?.value ?? "";
+          close();
+          void runNativeAction(
+            appid,
+            buildRunCommandPayload({
+              target,
+              arguments: commandArguments,
+              environment,
+            }),
+            "运行命令",
+            panel,
+          );
+        });
+      return;
+    }
+
+    if (kind === "dependencies") {
+      for (const button of layer.querySelectorAll(
+        "[data-install-dependency]",
+      )) {
+        button.addEventListener("click", () => {
+          const dependencyId = button.dataset.installDependency;
+          const dependency = dependencies.find(
+            (candidate) => candidate.id === dependencyId,
+          );
+          if (!dependency) {
+            return;
+          }
+          close();
+          void runNativeAction(
+            appid,
+            buildDependencyPayload(dependency.id),
+            `安装 ${dependency.name}`,
+            panel,
+          );
+        });
+      }
+      const search = layer.querySelector(
+        "[data-dependency-search]",
+      );
+      search?.addEventListener("input", () => {
+        const query = search.value.trim().toLowerCase();
+        for (const card of layer.querySelectorAll(
+          "[data-dependency-card]",
+        )) {
+          card.hidden =
+            Boolean(query) &&
+            !String(card.dataset.search ?? "").includes(query);
+        }
+      });
+      return;
+    }
+
+    for (const button of layer.querySelectorAll(
+      "[data-container-action]",
+    )) {
+      button.addEventListener("click", () => {
+        const operation = button.dataset.containerAction;
+        close();
+        void runNativeAction(
+          appid,
+          buildContainerActionPayload(operation),
+          button.textContent?.trim() || "容器操作",
+          panel,
+        );
+      });
+    }
   }
 
   function renderControlPanel(panel, appid) {
     const value = ensureControlConfig(appid);
     const actionState = actionStateFor(appid);
-    const actionRunning = actionState.state === "running";
-    const rendererLabel =
+    const selectedTool =
+      compatToolRecord(value.compat_tool, projectCompatTools) ??
       projectCompatTools.find(
         (tool) => tool.renderer === value.renderer,
-      )?.strDisplayName ?? value.renderer.toUpperCase();
-    const definitions = controlDefinitions(value.renderer);
+      ) ??
+      null;
+    const rendererLabel =
+      selectedTool?.strDisplayName?.replace(
+        /^RealSteamOnMac\s*-\s*/i,
+        "",
+      ) ?? value.renderer.toUpperCase();
     const signature = JSON.stringify({ value, actionState });
     if (panel.dataset.signature === signature) {
       return;
     }
     panel.dataset.signature = signature;
     panel.dataset.appid = String(appid);
-    panel.innerHTML = `
-      <div class="realsteamonmac-controls__head">
-        <div>
-          <div class="realsteamonmac-controls__eyebrow">Independent Steam Play</div>
-          <div class="realsteamonmac-controls__title">RealSteamOnMac 运行控制</div>
-        </div>
-        <div class="realsteamonmac-controls__renderer">${rendererLabel}</div>
-      </div>
-      <div class="realsteamonmac-controls__grid">
-        ${definitions
-          .map(
-            (definition) => `
-              <label class="realsteamonmac-toggle"
-                     data-disabled="${definition.enabled ? "false" : "true"}">
-                <input type="checkbox"
-                       data-control="${definition.key}"
-                       ${value[definition.key] ? "checked" : ""}
-                       ${definition.enabled ? "" : "disabled"}>
-                <span class="realsteamonmac-toggle__copy">
-                  <span class="realsteamonmac-toggle__label">${definition.label}</span>
-                  <span class="realsteamonmac-toggle__hint">${definition.hint}</span>
-                </span>
-              </label>
-            `,
-          )
-          .join("")}
-      </div>
-      <div class="realsteamonmac-tools realsteamonmac-run">
-        <div class="realsteamonmac-tools__head">
-          <div>
-            <div class="realsteamonmac-tools__title">运行命令</div>
-            <div class="realsteamonmac-tools__copy">在当前游戏的 Proton 风格 PFX 中启动 Windows 程序。目标仅允许位于游戏目录或该 PFX 内。</div>
-          </div>
-          <div class="realsteamonmac-tools__badge">NO SHELL</div>
-        </div>
-        <label class="realsteamonmac-field">
-          <span class="realsteamonmac-field__label">目标程序 · 留空时使用游戏主程序</span>
-          <input type="text" data-run-target
-                 placeholder="C:\\windows\\system32\\reg.exe"
-                 ${actionRunning ? "disabled" : ""}>
-        </label>
-        <div class="realsteamonmac-run__grid">
-          <label class="realsteamonmac-field">
-            <span class="realsteamonmac-field__label">参数</span>
-            <textarea data-run-arguments
-                      placeholder='query "HKCU\\Software\\Wine"'
-                      ${actionRunning ? "disabled" : ""}></textarea>
-          </label>
-          <label class="realsteamonmac-field">
-            <span class="realsteamonmac-field__label">环境变量 · 每行 NAME=VALUE</span>
-            <textarea data-run-environment
-                      placeholder="DXVK_HUD=fps"
-                      ${actionRunning ? "disabled" : ""}></textarea>
-          </label>
-        </div>
-        <div class="realsteamonmac-run__actions">
-          <button type="button"
-                  class="realsteamonmac-button"
-                  data-run-command
-                  ${actionRunning ? "disabled" : ""}>运行</button>
-        </div>
-      </div>
-      <div class="realsteamonmac-tools realsteamonmac-dependencies">
-        <div class="realsteamonmac-tools__head">
-          <div>
-            <div class="realsteamonmac-tools__title">安装 Windows 组件</div>
-            <div class="realsteamonmac-tools__copy">官方安装包会校验固定大小和 SHA-256 后写入当前游戏容器。</div>
-          </div>
-          <div class="realsteamonmac-tools__badge">${dependencies.length} PACKAGES</div>
-        </div>
-        <input type="search"
-               class="realsteamonmac-dependencies__search"
-               data-dependency-search
-               placeholder="搜索 C++、.NET 或发布者"
-               ${actionRunning ? "disabled" : ""}>
-        <div class="realsteamonmac-dependencies__list">
-          ${dependencies
-            .map(
-              (dependency) => `
-                <article class="realsteamonmac-dependency"
-                         data-dependency-card
-                         data-search="${escapeHtml(
-                           `${dependency.name} ${dependency.description} ${dependency.publisher}`.toLowerCase(),
-                         )}">
-                  <div>
-                    <div class="realsteamonmac-dependency__name">${escapeHtml(dependency.name)}</div>
-                    <div class="realsteamonmac-dependency__meta">${escapeHtml(dependency.publisher)} · ${formatByteSize(dependency.size)}</div>
-                    <div class="realsteamonmac-dependency__description">${escapeHtml(dependency.description)}</div>
-                  </div>
-                  <button type="button"
-                          class="realsteamonmac-button"
-                          data-install-dependency="${escapeHtml(dependency.id)}"
-                          ${actionRunning ? "disabled" : ""}>安装</button>
-                </article>
-              `,
-            )
-            .join("")}
-        </div>
-      </div>
-      <div class="realsteamonmac-action-status"
-           data-state="${escapeHtml(actionState.state)}">
-        <span class="realsteamonmac-action-status__lamp"></span>
-        <span><strong>${escapeHtml(actionState.label || "任务")}</strong> · ${escapeHtml(actionState.message)}</span>
-        ${
-          actionState.logPath
-            ? `<span class="realsteamonmac-action-status__log" title="${escapeHtml(actionState.logPath)}">${escapeHtml(actionState.logPath)}</span>`
-            : ""
-        }
-      </div>
-      <div class="realsteamonmac-controls__foot">
-        <span>AppID ${appid} · 配置按游戏隔离</span>
-        <span class="realsteamonmac-controls__status" data-state="saved">已保存</span>
-      </div>
-    `;
+    panel.innerHTML = buildControlPanelMarkup({
+      appid,
+      value,
+      rendererLabel,
+      tool: selectedTool,
+      actionState,
+    });
 
     const statusElement = panel.querySelector(
-      ".realsteamonmac-controls__status",
+      ".realsteamonmac-settings__status-text",
     );
     for (const input of panel.querySelectorAll("input[data-control]")) {
       input.addEventListener("change", async () => {
         const key = input.dataset.control;
         const previous = ensureControlConfig(appid);
-        const next = normalizeControlConfig({
-          ...previous,
-          [key]: input.checked,
-        });
+        const next = applyToolCapabilities(
+          {
+            ...previous,
+            [key]: input.checked,
+          },
+          selectedTool,
+        );
         statusElement.textContent = "保存中";
         statusElement.dataset.state = "saving";
         try {
@@ -2023,62 +2624,22 @@
           input.checked = previous[key];
           status.controlLastError = String(error);
           statusElement.textContent = "保存失败";
-          statusElement.dataset.state = "error";
         }
       });
     }
-
-    const runButton = panel.querySelector("[data-run-command]");
-    runButton?.addEventListener("click", () => {
-      const target =
-        panel.querySelector("[data-run-target]")?.value ?? "";
-      const commandArguments =
-        panel.querySelector("[data-run-arguments]")?.value ?? "";
-      const environment =
-        panel.querySelector("[data-run-environment]")?.value ?? "";
-      void runNativeAction(
-        appid,
-        buildRunCommandPayload({
-          target,
-          arguments: commandArguments,
-          environment,
-        }),
-        "运行命令",
-        panel,
-      );
-    });
 
     for (const button of panel.querySelectorAll(
-      "[data-install-dependency]",
+      "[data-open-dialog]",
     )) {
       button.addEventListener("click", () => {
-        const dependencyId = button.dataset.installDependency;
-        const dependency = dependencies.find(
-          (candidate) => candidate.id === dependencyId,
-        );
-        if (!dependency) {
-          return;
-        }
-        void runNativeAction(
-          appid,
-          buildDependencyPayload(dependency.id),
-          `安装 ${dependency.name}`,
+        openActionDialog(
+          panel.ownerDocument,
           panel,
+          appid,
+          button.dataset.openDialog,
         );
       });
     }
-
-    const search = panel.querySelector("[data-dependency-search]");
-    search?.addEventListener("input", () => {
-      const query = search.value.trim().toLowerCase();
-      for (const card of panel.querySelectorAll(
-        "[data-dependency-card]",
-      )) {
-        card.hidden =
-          Boolean(query) &&
-          !String(card.dataset.search ?? "").includes(query);
-      }
-    });
   }
 
   function mountControlPanels() {

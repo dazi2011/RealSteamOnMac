@@ -48,6 +48,7 @@
 #define REGISTRY_TOKEN_CAPACITY 128
 #define RUNTIME_CONFIG_CAPACITY 1024
 #define RUNTIME_CONFIG_RENDERER_CAPACITY 16
+#define RUNTIME_CONFIG_TOOL_CAPACITY 65
 #define ACTION_PAYLOAD_CAPACITY 8192
 #define ACTION_JOB_ID_BYTES 16
 #define ACTION_JOB_ID_CAPACITY ((ACTION_JOB_ID_BYTES * 2) + 1)
@@ -56,6 +57,7 @@
 extern char **environ;
 
 typedef struct {
+  char compat_tool[RUNTIME_CONFIG_TOOL_CAPACITY];
   char renderer[RUNTIME_CONFIG_RENDERER_CAPACITY];
   bool msync;
   bool retina;
@@ -1742,6 +1744,37 @@ static bool is_supported_renderer(const char *renderer) {
       strcmp(renderer, "wined3d") == 0;
 }
 
+static bool is_supported_tool_identifier(const char *tool) {
+  size_t length = strlen(tool);
+  if (length == 0) {
+    return true;
+  }
+  if (
+      length < 2 || length >= RUNTIME_CONFIG_TOOL_CAPACITY ||
+      !(
+          (tool[0] >= 'a' && tool[0] <= 'z') ||
+          (tool[0] >= '0' && tool[0] <= '9')
+      )
+  ) {
+    return false;
+  }
+  for (size_t index = 1; index < length; ++index) {
+    char character = tool[index];
+    if (
+        !(
+            (character >= 'a' && character <= 'z') ||
+            (character >= '0' && character <= '9') ||
+            character == '.' ||
+            character == '_' ||
+            character == '-'
+        )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static bool parse_runtime_config_payload(
     const char *payload, runtime_config *config_out) {
   if (payload == NULL || strlen(payload) >= RUNTIME_CONFIG_CAPACITY) {
@@ -1768,8 +1801,14 @@ static bool parse_runtime_config_payload(
     const char *value = separator + 1;
     unsigned int bit = 0;
     bool *boolean_target = NULL;
-    if (strcmp(key, "renderer") == 0) {
+    if (strcmp(key, "compat_tool") == 0) {
       bit = 1u << 0;
+      if (!is_supported_tool_identifier(value)) {
+        return false;
+      }
+      strcpy(config.compat_tool, value);
+    } else if (strcmp(key, "renderer") == 0) {
+      bit = 1u << 1;
       if (
           !is_supported_renderer(value) ||
           strlen(value) >= sizeof(config.renderer)
@@ -1778,22 +1817,22 @@ static bool parse_runtime_config_payload(
       }
       strcpy(config.renderer, value);
     } else if (strcmp(key, "msync") == 0) {
-      bit = 1u << 1;
+      bit = 1u << 2;
       boolean_target = &config.msync;
     } else if (strcmp(key, "retina") == 0) {
-      bit = 1u << 2;
+      bit = 1u << 3;
       boolean_target = &config.retina;
     } else if (strcmp(key, "metal_hud") == 0) {
-      bit = 1u << 3;
+      bit = 1u << 4;
       boolean_target = &config.metal_hud;
     } else if (strcmp(key, "metalfx") == 0) {
-      bit = 1u << 4;
+      bit = 1u << 5;
       boolean_target = &config.metalfx;
     } else if (strcmp(key, "dxr") == 0) {
-      bit = 1u << 5;
+      bit = 1u << 6;
       boolean_target = &config.dxr;
     } else if (strcmp(key, "avx") == 0) {
-      bit = 1u << 6;
+      bit = 1u << 7;
       boolean_target = &config.avx;
     } else {
       return false;
@@ -1811,9 +1850,7 @@ static bool parse_runtime_config_payload(
   }
 
   if (
-      seen != ((1u << 7) - 1) ||
-      (strcmp(config.renderer, "gptk") != 0 &&
-       (config.metalfx || config.dxr))
+      seen != ((1u << 8) - 1)
   ) {
     return false;
   }
@@ -1858,6 +1895,7 @@ static bool format_runtime_config(
       output, RUNTIME_CONFIG_CAPACITY,
       "{\n"
       "  \"avx\": %s,\n"
+      "  \"compat_tool\": \"%s\",\n"
       "  \"dxr\": %s,\n"
       "  \"metal_hud\": %s,\n"
       "  \"metalfx\": %s,\n"
@@ -1866,6 +1904,7 @@ static bool format_runtime_config(
       "  \"retina\": %s\n"
       "}\n",
       config->avx ? "true" : "false",
+      config->compat_tool,
       config->dxr ? "true" : "false",
       config->metal_hud ? "true" : "false",
       config->metalfx ? "true" : "false",

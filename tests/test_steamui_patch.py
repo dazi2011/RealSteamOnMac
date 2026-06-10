@@ -56,6 +56,24 @@ class SteamUIPatchTests(unittest.TestCase):
             "0123456789abcdef0123456789abcdef\n",
             encoding="utf-8",
         )
+        self.compat_tools = self.root / "compatibilitytools.d"
+        self.compat_tools.mkdir()
+        self.write_compat_tool(
+            "dxmt-070",
+            "dxmt-070",
+            "DXMT 0.70",
+            "dxmt",
+            "0.70",
+            "runtime-dxmt-070",
+        )
+        self.write_compat_tool(
+            "dxmt-080",
+            "realsteamonmac-dxmt",
+            "DXMT 0.80",
+            "dxmt",
+            "0.80",
+            "runtime-dxmt-080",
+        )
         dependency_directory = self.root / "dependencies"
         dependency_directory.mkdir()
         self.dependency_catalog = dependency_directory / "catalog.json"
@@ -87,6 +105,60 @@ class SteamUIPatchTests(unittest.TestCase):
 
     def tearDown(self):
         self.temporary.cleanup()
+
+    def write_compat_tool(
+        self,
+        directory_name,
+        tool,
+        display_name,
+        renderer,
+        version,
+        runtime_package,
+    ):
+        directory = self.compat_tools / directory_name
+        directory.mkdir()
+        run = directory / "run"
+        run.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        run.chmod(0o755)
+        (directory / "toolmanifest.vdf").write_text(
+            '"manifest"\n{\n'
+            '  "version" "2"\n'
+            '  "commandline" "/run %verb%"\n'
+            "}\n",
+            encoding="utf-8",
+        )
+        (directory / "compatibilitytool.vdf").write_text(
+            '"compatibilitytools"\n{\n'
+            '  "compat_tools"\n  {\n'
+            f'    "{tool}"\n    {{\n'
+            '      "install_path" "."\n'
+            f'      "display_name" "{display_name}"\n'
+            '      "from_oslist" "windows"\n'
+            '      "to_oslist" "macos"\n'
+            "    }\n  }\n}\n",
+            encoding="utf-8",
+        )
+        (directory / "realsteamonmac.json").write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "tool": tool,
+                    "display_name": display_name,
+                    "renderer": renderer,
+                    "version": version,
+                    "runtime_package": runtime_package,
+                    "capabilities": {
+                        "msync": True,
+                        "retina": True,
+                        "metal_hud": True,
+                        "metalfx": version == "0.80",
+                        "dxr": False,
+                        "avx": True,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
 
     def test_install_is_idempotent_and_restore_recovers_original(self):
         original = self.index.read_bytes()
@@ -138,28 +210,40 @@ class SteamUIPatchTests(unittest.TestCase):
                 "registryToken": "0123456789abcdef0123456789abcdef",
                 "compatTools": [
                     {
-                        "strToolName": "realsteamonmac-gptk",
-                        "strDisplayName": "RealSteamOnMac - GPTK 3",
-                        "renderer": "gptk",
+                        "strToolName": "dxmt-070",
+                        "strDisplayName": "DXMT 0.70",
+                        "renderer": "dxmt",
+                        "version": "0.70",
+                        "runtimePackage": "runtime-dxmt-070",
+                        "capabilities": {
+                            "msync": True,
+                            "retina": True,
+                            "metal_hud": True,
+                            "metalfx": False,
+                            "dxr": False,
+                            "avx": True,
+                        },
+                        "installPath": str(
+                            (self.compat_tools / "dxmt-070").resolve()
+                        ),
                     },
                     {
                         "strToolName": "realsteamonmac-dxmt",
-                        "strDisplayName": "RealSteamOnMac - DXMT 0.80",
+                        "strDisplayName": "DXMT 0.80",
                         "renderer": "dxmt",
-                    },
-                    {
-                        "strToolName": "realsteamonmac-dxvk",
-                        "strDisplayName": (
-                            "RealSteamOnMac - DXVK macOS 1.10.3"
+                        "version": "0.80",
+                        "runtimePackage": "runtime-dxmt-080",
+                        "capabilities": {
+                            "msync": True,
+                            "retina": True,
+                            "metal_hud": True,
+                            "metalfx": True,
+                            "dxr": False,
+                            "avx": True,
+                        },
+                        "installPath": str(
+                            (self.compat_tools / "dxmt-080").resolve()
                         ),
-                        "renderer": "dxvk",
-                    },
-                    {
-                        "strToolName": "realsteamonmac-wined3d",
-                        "strDisplayName": (
-                            "RealSteamOnMac - WineD3D 11.10"
-                        ),
-                        "renderer": "wined3d",
                     },
                 ],
                 "dependencies": [

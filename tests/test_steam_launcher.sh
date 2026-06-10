@@ -31,16 +31,23 @@ SUPPORT="$TMP_ROOT/support"
 RUNTIME="$TMP_ROOT/fake-runtime"
 CAPTURE="$TMP_ROOT/capture.txt"
 STEAMUI="$TMP_ROOT/steamui"
+COMPAT_TOOLS="$TMP_ROOT/compatibilitytools.d"
 mkdir -p \
     "$HOME_ROOT" \
-    "$SUPPORT/compat-tool" \
     "$SUPPORT/ui" \
     "$SUPPORT/dependencies" \
-    "$STEAMUI"
+    "$STEAMUI" \
+    "$COMPAT_TOOLS"
 touch "$SUPPORT/libRealSteamCompatGate.dylib"
 touch "$SUPPORT/libRealSteamNativeEngine.dylib"
 cp "$ROOT/script/patch_steamui.py" "$SUPPORT/patch_steamui.py"
+cp "$ROOT/runtime/compat_tool_catalog.py" \
+    "$SUPPORT/compat_tool_catalog.py"
 cp "$ROOT/ui/realsteamonmac_ui.js" "$SUPPORT/ui/realsteamonmac_ui.js"
+for tool in "$ROOT"/compat-tool/*; do
+    [ -f "$tool/run" ] || continue
+    cp -R "$tool" "$COMPAT_TOOLS/$(basename "$tool")"
+done
 printf '%s\n' 1118200 >"$SUPPORT/allowlist.txt"
 printf '%s\n' 0123456789abcdef0123456789abcdef \
     >"$SUPPORT/registry-token"
@@ -59,6 +66,7 @@ HOME="$HOME_ROOT" \
 REALSTEAMONMAC_ALLOW_TEST_FIXTURES=1 \
 REALSTEAMONMAC_RUNTIME_EXECUTABLE="$RUNTIME" \
 REALSTEAMONMAC_SUPPORT_ROOT="$SUPPORT" \
+REALSTEAMONMAC_COMPAT_TOOLS_ROOT="$COMPAT_TOOLS" \
 REALSTEAMONMAC_LAUNCHER_DRY_RUN=1 \
     "$LAUNCHER" -cef-enable-debugging >"$CAPTURE"
 

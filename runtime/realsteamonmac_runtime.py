@@ -15,6 +15,12 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+RUNTIME_MODULE_DIRECTORY = Path(__file__).resolve().parent
+if str(RUNTIME_MODULE_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(RUNTIME_MODULE_DIRECTORY))
+
+from compat_tool_catalog import CatalogError, scan_compat_tools
+
 
 RENDERERS = ("gptk", "dxmt", "dxvk", "wined3d")
 STEAMWORKS_RENDERERS = ("dxmt", "dxvk", "wined3d")
@@ -22,7 +28,20 @@ STEAMWORKS_RENDERERS = ("dxmt", "dxvk", "wined3d")
 # It can therefore survive the game indefinitely and keep Steam's AppID active.
 POST_EXIT_PREFIX_KILL_APPIDS = frozenset((1118200,))
 ACTION_JOB_ID_PATTERN = re.compile(r"[0-9a-f]{32}")
+CONTAINER_OPERATIONS = frozenset(
+    (
+        "open-c-drive",
+        "install-application",
+        "wine-configuration",
+        "controllers",
+        "restart",
+        "task-manager",
+        "quit-all",
+        "delete-container",
+    )
+)
 ENVIRONMENT_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+COMPAT_TOOL_PATTERN = re.compile(r"[a-z0-9][a-z0-9._-]{1,63}")
 RESERVED_ENVIRONMENT_NAMES = frozenset(
     (
         "HOME",
@@ -53,6 +72,7 @@ DEPENDENCY_DOWNLOAD_HOSTS = frozenset(
     )
 )
 DEFAULT_CONFIG = {
+    "compat_tool": "",
     "renderer": "dxmt",
     "msync": True,
     "retina": False,
@@ -81,6 +101,19 @@ def default_runtime_root():
         / "Application Support"
         / "RealSteamOnMac"
         / "runtimes"
+    )
+
+
+def default_compat_tools_root():
+    configured = os.environ.get("REALSTEAMONMAC_COMPAT_TOOLS_ROOT")
+    if configured:
+        return Path(configured).expanduser()
+    return (
+        Path.home()
+        / "Library"
+        / "Application Support"
+        / "Steam"
+        / "compatibilitytools.d"
     )
 
 
@@ -407,20 +440,38 @@ def normalize_config(value):
         raise RuntimeErrorWithContext(
             f"unsupported renderer: {config['renderer']}"
         )
+    if (
+        not isinstance(config["compat_tool"], str)
+        or (
+            config["compat_tool"]
+            and COMPAT_TOOL_PATTERN.fullmatch(config["compat_tool"]) is None
+        )
+    ):
+        raise RuntimeErrorWithContext(
+            "compatibility tool identifier is invalid"
+        )
     for key in DEFAULT_CONFIG:
-        if key == "renderer":
+        if key in {"compat_tool", "renderer"}:
             continue
         if not isinstance(config[key], bool):
             raise RuntimeErrorWithContext(
                 f"configuration value {key} must be boolean"
             )
-    if config["metalfx"] and config["renderer"] != "gptk":
+    if (
+        not config["compat_tool"]
+        and config["metalfx"]
+        and config["renderer"] != "gptk"
+    ):
         raise RuntimeErrorWithContext(
-            "MetalFX translation is available only with the GPTK renderer"
+            "MetalFX translation requires a capability-aware tool selection"
         )
-    if config["dxr"] and config["renderer"] != "gptk":
+    if (
+        not config["compat_tool"]
+        and config["dxr"]
+        and config["renderer"] != "gptk"
+    ):
         raise RuntimeErrorWithContext(
-            "DXR is available only with the GPTK renderer"
+            "DXR requires a capability-aware tool selection"
         )
     return config
 
@@ -450,13 +501,59 @@ def save_config(context, config):
     return normalized
 
 
-def load_package(runtime_root, renderer):
-    current = runtime_root / "current"
-    if not current.exists():
+def load_compat_tool(tool_name, root=None):
+    if not tool_name:
+        return None
+    try:
+        tools = scan_compat_tools(root or default_compat_tools_root())
+    except CatalogError as error:
         raise RuntimeErrorWithContext(
-            f"no active runtime package: {current}"
+            f"compatibility tool catalog is invalid: {error}"
+        ) from error
+    for tool in tools:
+        if tool["strToolName"] == tool_name:
+            return tool
+    raise RuntimeErrorWithContext(
+        f"compatibility tool is unavailable: {tool_name}"
+    )
+
+
+def validate_tool_capabilities(config, tool):
+    if tool is None:
+        return
+    if tool["renderer"] != config["renderer"]:
+        raise RuntimeErrorWithContext(
+            "compatibility tool renderer does not match configuration"
         )
-    package = current.resolve()
+    for key in (
+        "msync",
+        "retina",
+        "metal_hud",
+        "metalfx",
+        "dxr",
+        "avx",
+    ):
+        if config[key] and not tool["capabilities"][key]:
+            raise RuntimeErrorWithContext(
+                f"{key} is unsupported by {tool['strDisplayName']}"
+            )
+
+
+def load_package(runtime_root, renderer, runtime_package=None):
+    if runtime_package:
+        package = runtime_root / "packages" / runtime_package
+        if not package.is_dir():
+            raise RuntimeErrorWithContext(
+                f"runtime package is unavailable: {package}"
+            )
+        package = package.resolve()
+    else:
+        current = runtime_root / "current"
+        if not current.exists():
+            raise RuntimeErrorWithContext(
+                f"no active runtime package: {current}"
+            )
+        package = current.resolve()
     manifest_path = package / "manifest.json"
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -468,6 +565,13 @@ def load_package(runtime_root, renderer):
         raise RuntimeErrorWithContext(
             f"unsupported runtime manifest: {manifest_path}"
         )
+    if (
+        runtime_package
+        and manifest["package_id"] != runtime_package
+    ):
+        raise RuntimeErrorWithContext(
+            f"runtime package identity mismatch: {manifest_path}"
+        )
     wine_root = package / "wine" / renderer
     wine64 = wine_root / "bin" / "wine64"
     if not wine64.is_file() or not os.access(wine64, os.X_OK):
@@ -475,6 +579,17 @@ def load_package(runtime_root, renderer):
             f"runtime is missing executable wine64: {wine64}"
         )
     return package, manifest, wine_root, wine64
+
+
+def load_selected_package(runtime_root, config):
+    tool = load_compat_tool(config["compat_tool"])
+    validate_tool_capabilities(config, tool)
+    package, manifest, wine_root, wine64 = load_package(
+        runtime_root,
+        config["renderer"],
+        tool["runtimePackage"] if tool is not None else None,
+    )
+    return package, manifest, wine_root, wine64, tool
 
 
 def resolve_steam_client_install():
@@ -633,6 +748,7 @@ def build_environment(
         "MTL_HUD_ENABLED",
         "D3DM_ENABLE_METALFX",
         "D3DM_SUPPORT_DXR",
+        "DXMT_ENABLE_NVEXT",
         "ROSETTA_ADVERTISE_AVX",
         "MVK_CONFIG_RESUME_LOST_DEVICE",
         "WINEDLLOVERRIDES",
@@ -648,7 +764,10 @@ def build_environment(
     if config["metal_hud"]:
         environment["MTL_HUD_ENABLED"] = "1"
     if config["metalfx"]:
-        environment["D3DM_ENABLE_METALFX"] = "1"
+        if config["renderer"] == "dxmt":
+            environment["DXMT_ENABLE_NVEXT"] = "1"
+        else:
+            environment["D3DM_ENABLE_METALFX"] = "1"
     if config["dxr"]:
         environment["D3DM_SUPPORT_DXR"] = "1"
     if config["avx"]:
@@ -717,6 +836,12 @@ def initialize_prefix(context, wine64, environment):
                 environment,
                 "initialize Wine prefix",
             )
+            run_logged(
+                context,
+                [wine64, "winecfg", "-v", "win10"],
+                environment,
+                "set Wine prefix to Windows 10",
+            )
 
 
 def apply_retina_mode(context, wine64, environment, enabled):
@@ -751,32 +876,76 @@ def apply_retina_mode(context, wine64, environment, enabled):
     os.chmod(marker_path, 0o600)
 
 
-def install_metalfx_files(context, package, enabled):
+def install_metalfx_files(
+    context, package, wine_root, renderer, enabled
+):
     marker_path = context["state"] / "metalfx-files.json"
     system32 = context["prefix"] / "drive_c" / "windows" / "system32"
     names = ("nvngx.dll", "nvapi64.dll")
+    previous = {}
+    if marker_path.is_file():
+        try:
+            marker = json.loads(marker_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise RuntimeErrorWithContext(
+                f"MetalFX file ledger is invalid: {marker_path}"
+            ) from error
+        if (
+            isinstance(marker, dict)
+            and isinstance(marker.get("files"), dict)
+        ):
+            previous = marker["files"]
+        elif (
+            isinstance(marker, dict)
+            and all(
+                name in marker and isinstance(marker[name], str)
+                for name in names
+            )
+        ):
+            previous = marker
+        else:
+            raise RuntimeErrorWithContext(
+                f"MetalFX file ledger is invalid: {marker_path}"
+            )
     if not enabled:
+        removable = []
+        for name in names:
+            destination = system32 / name
+            if not destination.exists():
+                continue
+            current = file_sha256(destination)
+            if previous.get(name) != current:
+                raise RuntimeErrorWithContext(
+                    "refusing to remove an unmanaged MetalFX file: "
+                    f"{destination}"
+                )
+            removable.append(destination)
+        for destination in removable:
+            destination.unlink()
+        if marker_path.exists():
+            marker_path.unlink()
         return
 
-    source_root = (
-        package
-        / "wine"
-        / "gptk"
-        / "lib"
-        / "wine"
-        / "x86_64-windows"
+    source_root = wine_root / "lib" / "wine" / "x86_64-windows"
+    source_mapping = (
+        {
+            "nvngx.dll": source_root / "nvngx.dll",
+            "nvapi64.dll": source_root / "nvapi64.dll",
+        }
+        if renderer == "dxmt"
+        else {
+            "nvngx.dll": source_root / "nvngx-on-metalfx.dll",
+            "nvapi64.dll": source_root / "nvapi64.dll",
+        }
     )
-    source_mapping = {
-        "nvngx.dll": source_root / "nvngx-on-metalfx.dll",
-        "nvapi64.dll": source_root / "nvapi64.dll",
-    }
     system32.mkdir(parents=True, exist_ok=True)
     installed = {}
+    source_records = []
     for name in names:
         source = source_mapping[name]
         if not source.is_file():
             raise RuntimeErrorWithContext(
-                f"GPTK MetalFX payload is missing: {source}"
+                f"{renderer.upper()} MetalFX payload is missing: {source}"
             )
         destination = system32 / name
         data = source.read_bytes()
@@ -784,14 +953,25 @@ def install_metalfx_files(context, package, enabled):
         if destination.exists():
             current = hashlib.sha256(destination.read_bytes()).hexdigest()
             if current != digest:
-                raise RuntimeErrorWithContext(
-                    "refusing to replace an unmanaged MetalFX file: "
-                    f"{destination}"
-                )
-        else:
-            destination.write_bytes(data)
+                if previous.get(name) != current:
+                    raise RuntimeErrorWithContext(
+                        "refusing to replace an unmanaged MetalFX file: "
+                        f"{destination}"
+                    )
+        source_records.append((name, source, destination, digest))
+    for name, source, destination, digest in source_records:
+        if not destination.exists() or file_sha256(destination) != digest:
+            atomic_copy_file(source, destination)
         installed[name] = digest
-    atomic_write_json(marker_path, installed)
+    atomic_write_json(
+        marker_path,
+        {
+            "schema": 1,
+            "package_id": package.name,
+            "renderer": renderer,
+            "files": installed,
+        },
+    )
 
 
 def file_sha256(path):
@@ -986,8 +1166,8 @@ def configure_steam_registry(context, wine64, environment, bridge):
 
 
 def prepare(context, runtime_root, config):
-    package, manifest, wine_root, wine64 = load_package(
-        runtime_root, config["renderer"]
+    package, manifest, wine_root, wine64, _ = load_selected_package(
+        runtime_root, config
     )
     bridge = load_steamworks_bridge(
         package, manifest, wine_root, config["renderer"]
@@ -1010,7 +1190,13 @@ def prepare(context, runtime_root, config):
     apply_retina_mode(
         context, wine64, environment, config["retina"]
     )
-    install_metalfx_files(context, package, config["metalfx"])
+    install_metalfx_files(
+        context,
+        package,
+        wine_root,
+        config["renderer"],
+        config["metalfx"],
+    )
     return package, manifest, wine_root, wine64, environment
 
 
@@ -1042,10 +1228,19 @@ def parse_action_payload(payload):
             "environment",
         },
         "install-dependency": {"action", "dependency"},
+        "container": {"action", "operation"},
+        "choose-file": {"action"},
     }
     if action not in allowed or set(fields) != allowed[action]:
         raise RuntimeErrorWithContext(
             "action payload contains unsupported fields"
+        )
+    if (
+        action == "container"
+        and fields["operation"] not in CONTAINER_OPERATIONS
+    ):
+        raise RuntimeErrorWithContext(
+            "container operation is unsupported"
         )
     return fields
 
@@ -1463,6 +1658,137 @@ def execute_dependency_action(context, runtime_root, fields, log_path):
     }
 
 
+def choose_executable_file():
+    script = (
+        'set chosenFile to choose file with prompt '
+        '"Select a Windows executable or batch file"\n'
+        "return POSIX path of chosenFile"
+    )
+    result = subprocess.run(
+        ["/usr/bin/osascript", "-e", script],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeErrorWithContext(
+            "file selection was cancelled or failed"
+        )
+    raw_selected = Path(result.stdout.strip()).expanduser()
+    if (
+        raw_selected.is_symlink()
+        or not raw_selected.is_file()
+        or raw_selected.suffix.lower() not in {".exe", ".bat", ".cmd"}
+    ):
+        raise RuntimeErrorWithContext(
+            "selected file is not a supported Windows executable"
+        )
+    selected = raw_selected.resolve()
+    if selected.suffix.lower() == ".exe":
+        with selected.open("rb") as stream:
+            if stream.read(2) != b"MZ":
+                raise RuntimeErrorWithContext(
+                    "selected executable is not a PE file"
+                )
+    return selected
+
+
+def execute_choose_file_action(context):
+    selected = choose_executable_file()
+    allowed_roots = (
+        context["install_path"].resolve(),
+        context["prefix"].resolve(),
+    )
+    if not any(
+        selected == root or selected.is_relative_to(root)
+        for root in allowed_roots
+    ):
+        raise RuntimeErrorWithContext(
+            "run-command file selection must stay inside the game or prefix"
+        )
+    return 0, {"target": str(selected)}
+
+
+def execute_container_action(context, runtime_root, fields, log_path):
+    operation = fields["operation"]
+    config = load_config(context)
+    if operation == "delete-container":
+        package, manifest, wine_root, wine64, _ = load_selected_package(
+            runtime_root, config
+        )
+        environment = build_environment(
+            context, config, wine_root
+        )
+        if context["prefix"].exists():
+            run_job_process(
+                context,
+                [wine_root / "bin" / "wineserver", "-k"],
+                environment,
+                log_path,
+                "stop container processes",
+            )
+            recovery_root = context["state"] / "recovery"
+            recovery_root.mkdir(parents=True, exist_ok=True)
+            recovery_root.chmod(0o700)
+            destination = recovery_root / (
+                "pfx-" + datetime.now(timezone.utc).strftime(
+                    "%Y%m%dT%H%M%S%fZ"
+                )
+            )
+            os.replace(context["prefix"], destination)
+            log_event(
+                context,
+                {
+                    "event": "container-recovered",
+                    "path": str(destination),
+                    "package_id": manifest["package_id"],
+                },
+            )
+            return 0, {
+                "operation": operation,
+                "recovery_path": str(destination),
+            }
+        return 0, {
+            "operation": operation,
+            "recovery_path": "",
+        }
+
+    _, _, wine_root, wine64, environment = prepare(
+        context, runtime_root, config
+    )
+    if operation == "open-c-drive":
+        command = ["/usr/bin/open", context["prefix"] / "drive_c"]
+    elif operation == "install-application":
+        selected = choose_executable_file()
+        command = (
+            [wine64, "cmd", "/c", selected]
+            if selected.suffix.lower() in {".bat", ".cmd"}
+            else [wine64, selected]
+        )
+    elif operation == "wine-configuration":
+        command = [wine64, "winecfg"]
+    elif operation == "controllers":
+        command = [wine64, "control", "joy.cpl"]
+    elif operation == "restart":
+        command = [wine64, "wineboot", "--restart"]
+    elif operation == "task-manager":
+        command = [wine64, "taskmgr"]
+    else:
+        command = [wine_root / "bin" / "wineserver", "-k"]
+    result = run_job_process(
+        context,
+        command,
+        environment,
+        log_path,
+        f"container operation {operation}",
+    )
+    return result.returncode, {
+        "operation": operation,
+        "renderer": config["renderer"],
+    }
+
+
 def action_job(args):
     appid = parse_appid(args.appid)
     paths = job_paths(appid, args.job_id)
@@ -1496,10 +1822,16 @@ def action_job(args):
                     raise RuntimeErrorWithContext(
                         f"run command exited with {exit_code}"
                     )
-            else:
+            elif action == "install-dependency":
                 exit_code, result = execute_dependency_action(
                     context, runtime_root, fields, paths["log"]
                 )
+            elif action == "container":
+                exit_code, result = execute_container_action(
+                    context, runtime_root, fields, paths["log"]
+                )
+            else:
+                exit_code, result = execute_choose_file_action(context)
         write_job_status(
             paths["status"],
             appid,
@@ -1557,8 +1889,8 @@ def list_dependencies(args):
 
 
 def plan(context, runtime_root, config, arguments):
-    package, manifest, wine_root, wine64 = load_package(
-        runtime_root, config["renderer"]
+    package, manifest, wine_root, wine64, tool = load_selected_package(
+        runtime_root, config
     )
     bridge = load_steamworks_bridge(
         package, manifest, wine_root, config["renderer"]
@@ -1600,6 +1932,9 @@ def plan(context, runtime_root, config, arguments):
         "package": str(package),
         "package_id": manifest["package_id"],
         "renderer": config["renderer"],
+        "compat_tool": (
+            tool["strToolName"] if tool is not None else ""
+        ),
         "steamworks_bridge": (
             bridge["metadata"].get("name", "lsteamclient")
             if bridge is not None

@@ -10,6 +10,13 @@ import sys
 import tempfile
 from pathlib import Path
 
+MODULE_DIRECTORY = Path(__file__).resolve().parent
+REPOSITORY_RUNTIME = MODULE_DIRECTORY.parent / "runtime"
+if REPOSITORY_RUNTIME.is_dir():
+    sys.path.insert(0, str(REPOSITORY_RUNTIME))
+
+from compat_tool_catalog import CatalogError, scan_compat_tools
+
 
 KNOWN_INDEX_SHA256 = {
     "55ced284314dbc65bff38fb1333d4f4bd617635895e2c0e2197b05028c243282",
@@ -46,28 +53,6 @@ PUBLIC_DEPENDENCY_KEYS = (
     "publisher",
     "size",
 )
-COMPAT_TOOLS = [
-    {
-        "strToolName": "realsteamonmac-gptk",
-        "strDisplayName": "RealSteamOnMac - GPTK 3",
-        "renderer": "gptk",
-    },
-    {
-        "strToolName": "realsteamonmac-dxmt",
-        "strDisplayName": "RealSteamOnMac - DXMT 0.80",
-        "renderer": "dxmt",
-    },
-    {
-        "strToolName": "realsteamonmac-dxvk",
-        "strDisplayName": "RealSteamOnMac - DXVK macOS 1.10.3",
-        "renderer": "dxvk",
-    },
-    {
-        "strToolName": "realsteamonmac-wined3d",
-        "strDisplayName": "RealSteamOnMac - WineD3D 11.10",
-        "renderer": "wined3d",
-    },
-]
 COMPAT_PAGE_ANCHOR = (
     '(0,f.CI)()&&o.push({title:(0,A.we)'
     '("#AppProperties_CompatibilityPage")'
@@ -221,17 +206,27 @@ def load_public_dependencies(path):
     return public
 
 
-def config_bytes(appids, registry_token, dependencies):
+def config_bytes(appids, registry_token, dependencies, compat_tools):
+    if not compat_tools:
+        raise ValueError("Steam UI compatibility tool catalog is empty")
+    tool_names = {
+        tool["strToolName"] for tool in compat_tools
+    }
+    default_compat_tool = (
+        DEFAULT_COMPAT_TOOL
+        if DEFAULT_COMPAT_TOOL in tool_names
+        else compat_tools[0]["strToolName"]
+    )
     payload = json.dumps(
         {
             "appids": appids,
-            "defaultCompatTool": DEFAULT_COMPAT_TOOL,
+            "defaultCompatTool": default_compat_tool,
             "registryEndpoint": REGISTRY_ENDPOINT,
             "controlEndpoint": CONTROL_ENDPOINT,
             "actionEndpoint": ACTION_ENDPOINT,
             "jobEndpoint": JOB_ENDPOINT,
             "registryToken": registry_token,
-            "compatTools": COMPAT_TOOLS,
+            "compatTools": compat_tools,
             "dependencies": dependencies,
         },
         separators=(",", ":"),
@@ -411,11 +406,33 @@ def verify_steamui(steamui_root):
             or not tool["strDisplayName"]
             or tool.get("renderer")
             not in {"gptk", "dxmt", "dxvk", "wined3d"}
+            or not isinstance(tool.get("version"), str)
+            or not tool["version"]
+            or not isinstance(tool.get("runtimePackage"), str)
+            or re.fullmatch(
+                r"[a-z0-9][a-z0-9._-]{1,159}",
+                tool["runtimePackage"],
+            )
+            is None
+            or not isinstance(tool.get("installPath"), str)
+            or not tool["installPath"]
+            or not isinstance(tool.get("capabilities"), dict)
+            or set(tool["capabilities"])
+            != {
+                "msync",
+                "retina",
+                "metal_hud",
+                "metalfx",
+                "dxr",
+                "avx",
+            }
+            or any(
+                type(value) is not bool
+                for value in tool["capabilities"].values()
+            )
             for tool in compat_tools
         )
         or len({tool["strToolName"] for tool in compat_tools})
-        != len(compat_tools)
-        or len({tool["renderer"] for tool in compat_tools})
         != len(compat_tools)
         or not isinstance(default_compat_tool, str)
         or default_compat_tool
@@ -450,6 +467,7 @@ def install_steamui(
     ui_source,
     allowlist,
     dependency_catalog=None,
+    compat_tools_root=None,
 ):
     paths = paths_for(steamui_root)
     ui_source = Path(ui_source)
@@ -473,6 +491,16 @@ def install_steamui(
         if dependency_catalog is not None
         else Path(allowlist).with_name("dependencies") / "catalog.json"
     )
+    try:
+        compat_tools = scan_compat_tools(
+            compat_tools_root
+            if compat_tools_root is not None
+            else Path(allowlist).with_name("compatibilitytools.d")
+        )
+    except CatalogError as error:
+        raise ValueError(
+            f"Steam compatibility tool catalog is invalid: {error}"
+        ) from error
 
     original, expected_index, backup_index = prepare_index(paths)
     compat_original, expected_compat, backup_compat = (
@@ -491,7 +519,12 @@ def install_steamui(
     atomic_write(paths["ui"], ui_source.read_bytes())
     atomic_write(
         paths["config"],
-        config_bytes(appids, registry_token, dependencies),
+        config_bytes(
+            appids,
+            registry_token,
+            dependencies,
+            compat_tools,
+        ),
     )
     paths["config"].chmod(0o600)
     verify_steamui(paths["root"])
@@ -534,6 +567,7 @@ def build_parser():
     install.add_argument("--ui-source", required=True)
     install.add_argument("--allowlist", required=True)
     install.add_argument("--dependencies", required=True)
+    install.add_argument("--compat-tools-root", required=True)
 
     verify = subparsers.add_parser("verify")
     verify.add_argument("--steamui-root", required=True)
@@ -551,6 +585,7 @@ def main(argv=None):
             arguments.ui_source,
             arguments.allowlist,
             arguments.dependencies,
+            arguments.compat_tools_root,
         )
         print(f"steamui=installed appids={','.join(map(str, appids))}")
     elif arguments.command == "verify":

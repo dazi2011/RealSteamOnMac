@@ -76,21 +76,37 @@ test("installs the predicate before dynamically replacing the bootstrap registry
           strToolName: "realsteamonmac-gptk",
           strDisplayName: "RealSteamOnMac - GPTK 3",
           renderer: "gptk",
+          capabilities: {
+            msync: true, retina: true, metal_hud: true,
+            metalfx: true, dxr: true, avx: true,
+          },
         },
         {
           strToolName: "realsteamonmac-dxmt",
           strDisplayName: "RealSteamOnMac - DXMT 0.80",
           renderer: "dxmt",
+          capabilities: {
+            msync: true, retina: true, metal_hud: true,
+            metalfx: true, dxr: false, avx: true,
+          },
         },
         {
           strToolName: "realsteamonmac-dxvk",
           strDisplayName: "RealSteamOnMac - DXVK macOS 1.10.3",
           renderer: "dxvk",
+          capabilities: {
+            msync: true, retina: true, metal_hud: true,
+            metalfx: false, dxr: false, avx: true,
+          },
         },
         {
           strToolName: "realsteamonmac-wined3d",
           strDisplayName: "RealSteamOnMac - WineD3D 11.10",
           renderer: "wined3d",
+          capabilities: {
+            msync: true, retina: true, metal_hud: false,
+            metalfx: false, dxr: false, avx: true,
+          },
         },
       ],
     }),
@@ -162,6 +178,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
             ok: true,
             async json() {
               return {
+                compat_tool: "realsteamonmac-dxmt",
                 renderer: "dxmt",
                 msync: true,
                 retina: false,
@@ -279,7 +296,8 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   assert.equal(controlRequests.at(-1).options.method, "POST");
   assert.equal(
     controlRequests.at(-1).options.body,
-    "renderer=dxvk&msync=1&retina=0&metal_hud=0&" +
+    "compat_tool=realsteamonmac-dxvk&renderer=dxvk&" +
+      "msync=1&retina=0&metal_hud=0&" +
       "metalfx=0&dxr=0&avx=0",
   );
 

@@ -400,6 +400,7 @@ int main(int argc, char **argv) {
   const char *body = response_body(response);
   if (
       status != 200 || body == NULL ||
+      strstr(body, "\"compat_tool\": \"\"") == NULL ||
       strstr(body, "\"renderer\": \"dxmt\"") == NULL ||
       strstr(body, "\"msync\": true") == NULL
   ) {
@@ -463,6 +464,7 @@ int main(int argc, char **argv) {
   }
 
   const char *valid_config =
+      "compat_tool=realsteamonmac-dxvk&"
       "renderer=dxvk&msync=1&retina=1&metal_hud=1&"
       "metalfx=0&dxr=0&avx=1";
   if (
@@ -491,6 +493,10 @@ int main(int argc, char **argv) {
   body = response_body(response);
   if (
       status != 200 || body == NULL ||
+      strstr(
+          body,
+          "\"compat_tool\": \"realsteamonmac-dxvk\""
+      ) == NULL ||
       strstr(body, "\"renderer\": \"dxvk\"") == NULL ||
       strstr(body, "\"retina\": true") == NULL ||
       strstr(body, "\"avx\": true") == NULL
@@ -500,8 +506,9 @@ int main(int argc, char **argv) {
   }
 
   const char *invalid_config =
+      "compat_tool=../escape&"
       "renderer=dxmt&msync=1&retina=0&metal_hud=0&"
-      "metalfx=1&dxr=0&avx=0";
+      "metalfx=0&dxr=0&avx=0";
   if (
       request_config(
           port, "POST", TEST_TOKEN, 1118200,

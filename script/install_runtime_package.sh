@@ -3,6 +3,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 RUNTIME_SOURCE="$ROOT/runtime/realsteamonmac_runtime.py"
+COMPAT_CATALOG_SOURCE="$ROOT/runtime/compat_tool_catalog.py"
 DEPENDENCY_CATALOG_SOURCE="$ROOT/config/dependencies.json"
 DXMT_COMPAT_BUILDER="$ROOT/script/build_dxmt_winemac_compat.sh"
 RUNTIME_ROOT="${REALSTEAMONMAC_RUNTIME_ROOT:-$HOME/Library/Application Support/RealSteamOnMac/runtimes}"
@@ -442,6 +443,10 @@ RUNTIME_TEMP="$RUNTIME_ROOT/bin/.realsteamonmac-runtime.$$"
 cp "$RUNTIME_SOURCE" "$RUNTIME_TEMP"
 chmod 0755 "$RUNTIME_TEMP"
 mv "$RUNTIME_TEMP" "$RUNTIME_ROOT/bin/realsteamonmac-runtime"
+CATALOG_RUNTIME_TEMP="$RUNTIME_ROOT/bin/.compat_tool_catalog.py.$$"
+cp "$COMPAT_CATALOG_SOURCE" "$CATALOG_RUNTIME_TEMP"
+chmod 0644 "$CATALOG_RUNTIME_TEMP"
+mv "$CATALOG_RUNTIME_TEMP" "$RUNTIME_ROOT/bin/compat_tool_catalog.py"
 
 mkdir -p "$SUPPORT_ROOT/dependencies"
 chmod 0700 "$SUPPORT_ROOT/dependencies"

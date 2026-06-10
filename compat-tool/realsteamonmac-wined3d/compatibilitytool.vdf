@@ -5,7 +5,7 @@
         "realsteamonmac-wined3d"
         {
             "install_path" "."
-            "display_name" "RealSteamOnMac - WineD3D 11.10"
+            "display_name" "WineD3D 11.10"
             "from_oslist" "windows"
             "to_oslist" "macos"
         }

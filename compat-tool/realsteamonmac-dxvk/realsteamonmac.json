@@ -1,0 +1,16 @@
+{
+  "capabilities": {
+    "avx": true,
+    "dxr": false,
+    "metal_hud": true,
+    "metalfx": false,
+    "msync": true,
+    "retina": true
+  },
+  "display_name": "DXVK macOS 1.10.3",
+  "renderer": "dxvk",
+  "runtime_package": "gptk3.0-3-wine11.10-dxmt0.80-dxmtmac1-dxvkmacos1.10.3-lsteamclient-proton11b5-macos2",
+  "schema": 1,
+  "tool": "realsteamonmac-dxvk",
+  "version": "1.10.3"
+}

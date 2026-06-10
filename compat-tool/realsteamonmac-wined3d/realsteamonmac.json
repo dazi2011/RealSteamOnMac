@@ -1,0 +1,16 @@
+{
+  "capabilities": {
+    "avx": true,
+    "dxr": false,
+    "metal_hud": false,
+    "metalfx": false,
+    "msync": true,
+    "retina": true
+  },
+  "display_name": "WineD3D 11.10",
+  "renderer": "wined3d",
+  "runtime_package": "gptk3.0-3-wine11.10-dxmt0.80-dxmtmac1-dxvkmacos1.10.3-lsteamclient-proton11b5-macos2",
+  "schema": 1,
+  "tool": "realsteamonmac-wined3d",
+  "version": "11.10"
+}

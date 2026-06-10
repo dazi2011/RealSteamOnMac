@@ -6,11 +6,15 @@ const require = createRequire(import.meta.url);
 const {
   buildActionUrl,
   buildDependencyPayload,
+  buildContainerActionPayload,
+  buildChooseFilePayload,
   buildJobUrl,
   buildManagedAppSet,
   buildControlPayload,
   buildControlUrl,
   buildRunCommandPayload,
+  buildControlPanelMarkup,
+  applyToolCapabilities,
   compatToolForRenderer,
   decideOverviewPatch,
   discoverManagedApps,
@@ -18,6 +22,7 @@ const {
   findCompatControlAnchor,
   findManagedAppidForControls,
   getSteamUIDocuments,
+  isCompatibilityPropertiesDocument,
   isOwnedWindowsOnlyGame,
   mergeCompatTools,
   normalizeControlConfig,
@@ -34,21 +39,37 @@ const projectTools = [
     strToolName: "realsteamonmac-gptk",
     strDisplayName: "RealSteamOnMac - GPTK 3",
     renderer: "gptk",
+    capabilities: {
+      msync: true, retina: true, metal_hud: true,
+      metalfx: true, dxr: true, avx: true,
+    },
   },
   {
     strToolName: "realsteamonmac-dxmt",
     strDisplayName: "RealSteamOnMac - DXMT 0.80",
     renderer: "dxmt",
+    capabilities: {
+      msync: true, retina: true, metal_hud: true,
+      metalfx: true, dxr: false, avx: true,
+    },
   },
   {
     strToolName: "realsteamonmac-dxvk",
     strDisplayName: "RealSteamOnMac - DXVK macOS 1.10.3",
     renderer: "dxvk",
+    capabilities: {
+      msync: true, retina: true, metal_hud: true,
+      metalfx: false, dxr: false, avx: true,
+    },
   },
   {
     strToolName: "realsteamonmac-wined3d",
     strDisplayName: "RealSteamOnMac - WineD3D 11.10",
     renderer: "wined3d",
+    capabilities: {
+      msync: true, retina: true, metal_hud: false,
+      metalfx: false, dxr: false, avx: true,
+    },
   },
 ];
 
@@ -90,11 +111,15 @@ test("anchors controls to the compatibility selector instead of the page root", 
   };
   const body = {
     textContent: "RealSteamOnMac - DXMT",
+    innerText:
+      "属性\n兼容性\n强制使用特定 Steam Play 兼容性工具\nRealSteamOnMac - DXMT",
     parentElement: html,
   };
   const dialogBody = {
     textContent:
       "强制使用特定 Steam Play 兼容性工具 RealSteamOnMac - DXMT",
+    innerText:
+      "兼容性\n强制使用特定 Steam Play 兼容性工具\nRealSteamOnMac - DXMT",
     parentElement: body,
   };
   const label = {
@@ -106,10 +131,21 @@ test("anchors controls to the compatibility selector instead of the page root", 
     parentElement: label,
   };
   const documentObject = {
+    title: "People Playground - 属性",
+    location: {
+      href: "https://steamloopback.host/properties/1118200/compatibility",
+      hash: "#compatibility",
+    },
     documentElement: html,
     body,
+    querySelector(selector) {
+      if (selector === "[role=dialog]") {
+        return dialogBody;
+      }
+      return null;
+    },
     querySelectorAll(selector) {
-      if (selector === "[role=combobox], select, button") {
+      if (selector === "[role=combobox], select") {
         return [combobox];
       }
       return [html, body, dialogBody, label, combobox];
@@ -117,6 +153,65 @@ test("anchors controls to the compatibility selector instead of the page root", 
   };
 
   assert.equal(findCompatControlAnchor(documentObject), dialogBody);
+});
+
+test("rejects a Windows library details page as a compatibility properties document", () => {
+  const page = {
+    textContent:
+      "People Playground RealSteamOnMac - DXMT 0.80 安装 商店页面",
+    parentElement: null,
+  };
+  const toolButton = {
+    textContent: "RealSteamOnMac - DXMT 0.80",
+    parentElement: page,
+  };
+  const documentObject = {
+    title: "Steam",
+    location: {
+      href: "https://steamloopback.host/library/app/1118200",
+      hash: "#library",
+    },
+    documentElement: page,
+    body: page,
+    querySelector() {
+      return null;
+    },
+    querySelectorAll(selector) {
+      if (selector === "[role=combobox], select, button") {
+        return [toolButton];
+      }
+      return [page, toolButton];
+    },
+  };
+
+  assert.equal(
+    isCompatibilityPropertiesDocument(documentObject),
+    false,
+  );
+  assert.equal(findCompatControlAnchor(documentObject), null);
+});
+
+test("accepts a Steam properties compatibility page", () => {
+  const dialog = {
+    textContent: "属性 兼容性 强制使用特定 Steam Play 兼容性工具",
+    innerText: "属性\n兼容性\n强制使用特定 Steam Play 兼容性工具",
+  };
+  const documentObject = {
+    title: "People Playground - 属性",
+    location: {
+      href: "https://steamloopback.host/properties/1118200/compatibility",
+      hash: "#compatibility",
+    },
+    body: dialog,
+    querySelector(selector) {
+      return selector === "[role=dialog]" ? dialog : null;
+    },
+  };
+
+  assert.equal(
+    isCompatibilityPropertiesDocument(documentObject),
+    true,
+  );
 });
 
 function attachReactFiber(element, memoizedProps, parent = null) {
@@ -225,23 +320,62 @@ test("maps compatibility tools to runtime renderers in both directions", () => {
   assert.equal(rendererForCompatTool("unknown", projectTools), null);
 });
 
-test("normalizes controls and disables GPTK-only features elsewhere", () => {
+test("builds compact Steam-style controls without the branded dashboard or inline forms", () => {
+  const markup = buildControlPanelMarkup({
+    appid: 1118200,
+    value: {
+      compat_tool: "realsteamonmac-dxmt",
+      renderer: "dxmt",
+      msync: true,
+      retina: false,
+      metal_hud: false,
+      metalfx: false,
+      dxr: false,
+      avx: false,
+    },
+    rendererLabel: "DXMT 0.80",
+    tool: projectTools[1],
+    actionState: {
+      state: "idle",
+      label: "",
+      message: "等待操作",
+      logPath: "",
+    },
+  });
+
+  assert.match(markup, /realsteamonmac-settings/);
+  assert.match(markup, /role="switch"/);
+  assert.match(markup, /data-open-dialog="run-command"/);
+  assert.match(markup, /data-open-dialog="dependencies"/);
+  assert.match(markup, /data-open-dialog="container"/);
+  assert.doesNotMatch(markup, /RealSteamOnMac/);
+  assert.doesNotMatch(markup, /Independent Steam Play/);
+  assert.doesNotMatch(markup, /<textarea/);
+  assert.doesNotMatch(markup, /data-dependency-card/);
+});
+
+test("applies the selected tool capability matrix", () => {
   assert.deepEqual(
-    normalizeControlConfig({
+    applyToolCapabilities(
+      {
+        compat_tool: "realsteamonmac-dxmt",
+        renderer: "dxmt",
+        msync: false,
+        retina: true,
+        metal_hud: true,
+        metalfx: true,
+        dxr: true,
+        avx: true,
+      },
+      projectTools[1],
+    ),
+    {
+      compat_tool: "realsteamonmac-dxmt",
       renderer: "dxmt",
       msync: false,
       retina: true,
       metal_hud: true,
       metalfx: true,
-      dxr: true,
-      avx: true,
-    }),
-    {
-      renderer: "dxmt",
-      msync: false,
-      retina: true,
-      metal_hud: true,
-      metalfx: false,
       dxr: false,
       avx: true,
     },
@@ -251,6 +385,7 @@ test("normalizes controls and disables GPTK-only features elsewhere", () => {
 test("builds the fixed native control request shape", () => {
   assert.equal(
     buildControlPayload({
+      compat_tool: "realsteamonmac-gptk",
       renderer: "gptk",
       msync: true,
       retina: false,
@@ -259,7 +394,8 @@ test("builds the fixed native control request shape", () => {
       dxr: false,
       avx: true,
     }),
-    "renderer=gptk&msync=1&retina=0&metal_hud=1&" +
+    "compat_tool=realsteamonmac-gptk&renderer=gptk&" +
+      "msync=1&retina=0&metal_hud=1&" +
       "metalfx=1&dxr=0&avx=1",
   );
   assert.equal(
@@ -321,6 +457,15 @@ test("encodes only the supported action payload fields", () => {
   assert.equal(
     buildDependencyPayload("vcrun2022"),
     "action=install-dependency&dependency=vcrun2022",
+  );
+  assert.equal(
+    buildContainerActionPayload("open-c-drive"),
+    "action=container&operation=open-c-drive",
+  );
+  assert.equal(buildChooseFilePayload(), "action=choose-file");
+  assert.throws(
+    () => buildContainerActionPayload("../escape"),
+    /container operation is invalid/,
   );
   assert.throws(
     () => buildDependencyPayload("../custom-installer"),

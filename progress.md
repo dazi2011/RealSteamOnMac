@@ -584,3 +584,55 @@
 | What's the goal? | Native macOS Steam downloads and launches Windows-only games through independent selectable compatibility tools. |
 | What have I learned? | A shared PFX needs renderer-aware ABI reconciliation: GPTK Wine 7.7 must not inherit the Wine 11 Proton bridge. |
 | What have I done? | Completed dynamic downloads, controls, actions, dependencies, one-click installation, and live GPTK/WineD3D/DXMT acceptance with Cloud intact. |
+
+## 2026-06-10 Phase 7 Start
+
+- Received eight screenshots and a release-focused redesign request.
+- Confirmed the persistent right-side panel is caused by
+  `mountControlPanels()` scanning every Steam document and accepting an anchor
+  based on project-name text. The insertion target is not positively proven to
+  be a properties compatibility page.
+- Confirmed the current compatibility catalog is hard-coded in
+  `script/patch_steamui.py`, while the installed standard Steam directory still
+  contains only the legacy `realsteamonmac-experimental` tool.
+- Confirmed the repository is private, has no GitHub release, and uses
+  `codex/people-playground-experiment` as its default branch.
+- Preserved the verified Cloud constraint: valid startup-time native
+  compatibility-tool discovery is not re-enabled on Steam build `1780705203`.
+- Selected a validated standard-directory scanner plus Steam API bridge so
+  multiple versions can coexist without the known Cloud regression.
+- Inspected CrossOver Preview's readable application resources. Its setup
+  libraries and localized UI assets are available for behavioral research, but
+  proprietary runtime binaries and unreviewed recipes will not be copied into
+  the public project.
+- Added the Phase 7 design and implementation plan:
+  - `docs/superpowers/specs/2026-06-10-steam-native-release-design.md`
+  - `docs/superpowers/plans/2026-06-10-steam-native-release.md`
+- Replaced the hard-coded compatibility-tool installation location with
+  `~/Library/Application Support/Steam/compatibilitytools.d/`.
+- Added validated, deterministic discovery for side-by-side compatibility-tool
+  versions while preserving unrelated user directories in the same root.
+- Updated the UI patcher, launcher, installer, and rollback fixtures to use the
+  standard Steam directory.
+- Verified 19 Python catalog/patcher tests and all focused Steam UI patch,
+  rollback, launcher, and injection installer shell contracts.
+- Persisted the exact compatibility-tool ID through Steam UI, the authenticated
+  native config service, and the per-AppID runtime configuration.
+- Runtime package selection now follows each tool's immutable
+  `runtime_package` metadata instead of collapsing all DXMT/GPTK versions to
+  one renderer-wide `current` symlink.
+- Added capability-aware control gating. DXMT 0.80 now enables its official
+  NVEXT DLSS-SR-to-MetalFX path with `DXMT_ENABLE_NVEXT=1`; unsupported tools
+  cannot save those controls.
+- Verified 61 focused Node tests, 49 focused Python tests, and the native
+  registry server, runtime installer, Steam injection installer, and launcher
+  contracts after the tool-identity change.
+- New prefixes now run `winecfg -v win10` immediately after `wineboot --init`.
+- Connected Finder-backed executable selection and eight container operations
+  to the authenticated background-job channel.
+- Container removal is recoverable: the PFX is stopped and moved under the
+  AppID state recovery directory rather than deleted.
+- Added a managed MetalFX DLL ledger so GPTK and DXMT can replace each other's
+  known files safely and remove them when the feature is disabled.
+- Full checkpoint regression: 67 Node tests, 52 Python tests, and 25 shell
+  contracts pass.

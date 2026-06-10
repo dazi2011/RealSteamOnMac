@@ -9,7 +9,7 @@ requiring CrossOver.
 
 ## Current Phase
 
-Phase 5: per-game compatibility controls and remaining renderer work
+Phase 7: Steam-native compatibility UX and public release engineering
 
 ## Phases
 
@@ -105,6 +105,28 @@ Phase 5: per-game compatibility controls and remaining renderer work
 - [x] Run the complete automated and live verification matrix.
 - [x] Commit and push the final verified state.
 - **Status:** complete
+
+### Phase 7: Steam-Native Compatibility UX And Public Release
+
+- [ ] Remove the weak cross-window control mount that can cover library pages.
+- [ ] Use Steam's standard `compatibilitytools.d` directory as the canonical
+      side-by-side compatibility tool repository.
+- [ ] Scan validated tool metadata without enabling the cloud-breaking native
+      startup discovery path.
+- [ ] Persist the selected tool identity and immutable runtime package per game.
+- [ ] Replace the branded dashboard with compact Steam-style compatibility
+      rows and secondary action dialogs.
+- [ ] Add capability-aware DXMT MetalFX support and version/runtime validation.
+- [ ] Default new PFX containers to Windows 10 and retain real MSync semantics.
+- [ ] Expand reviewed dependency metadata without copying proprietary
+      CrossOver payloads.
+- [ ] Build transactional install, uninstall, and update PKG workflows.
+- [ ] Rewrite bilingual product documentation and move project history out of
+      the README.
+- [ ] Complete clean install, live Steam, uninstall, rollback, and release
+      verification before publication.
+- [ ] Publish a verified GitHub release and make the repository public.
+- **Status:** in progress
 
 ## Architecture Decision
 

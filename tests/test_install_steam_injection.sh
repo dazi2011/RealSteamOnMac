@@ -13,9 +13,12 @@ STEAM_APP="$TMP_ROOT/Steam.app"
 RUNTIME_APP="$TMP_ROOT/SteamRuntime.app"
 BACKUP="$TMP_ROOT/backup"
 SUPPORT="$TMP_ROOT/support"
+COMPAT_TOOLS="$TMP_ROOT/compatibilitytools.d"
 mkdir -p \
     "$STEAM_APP/Contents/MacOS" \
-    "$RUNTIME_APP/Contents/MacOS/steamui"
+    "$RUNTIME_APP/Contents/MacOS/steamui" \
+    "$COMPAT_TOOLS/user-custom-tool"
+printf 'preserve\n' >"$COMPAT_TOOLS/user-custom-tool/marker"
 
 write_info_plist() {
     destination=$1
@@ -55,21 +58,26 @@ ditto "$RUNTIME_APP" "$BACKUP/SteamRuntime.app"
     --clean-backup "$BACKUP" \
     --steam-app "$STEAM_APP" \
     --runtime-app "$RUNTIME_APP" \
-    --support-root "$SUPPORT"
+    --support-root "$SUPPORT" \
+    --compat-tools-root "$COMPAT_TOOLS"
 
 "$ROOT/script/install_steam_injection.sh" \
     --clean-backup "$BACKUP" \
     --steam-app "$STEAM_APP" \
     --runtime-app "$RUNTIME_APP" \
-    --support-root "$SUPPORT" >/dev/null
+    --support-root "$SUPPORT" \
+    --compat-tools-root "$COMPAT_TOOLS" >/dev/null
 
 test -f "$SUPPORT/libRealSteamCompatGate.dylib"
 test -f "$SUPPORT/libRealSteamNativeEngine.dylib"
 grep -q 'REALSTEAMONMAC_DELAYED_ENGINE_PATH' \
     "$STEAM_APP/Contents/MacOS/realsteamonmac_launcher"
 for tool in gptk dxmt dxvk wined3d; do
-    test -x "$SUPPORT/compat-tool/realsteamonmac-$tool/run"
+    test -x "$COMPAT_TOOLS/realsteamonmac-$tool/run"
+    test -f "$COMPAT_TOOLS/realsteamonmac-$tool/realsteamonmac.json"
 done
+test -f "$COMPAT_TOOLS/user-custom-tool/marker"
+test -f "$SUPPORT/compat_tool_catalog.py"
 test -f "$SUPPORT/allowlist.txt"
 test -f "$SUPPORT/registry-token"
 test "$(stat -f '%Lp' "$SUPPORT/registry-token")" = "600"
@@ -91,6 +99,8 @@ grep -q '/realsteamonmac/ui.js' \
 grep -q '"appids":\[1118200\]' \
     "$RUNTIME_APP/Contents/MacOS/steamui/realsteamonmac/config.js"
 grep -q '"id":"vcrun2022"' \
+    "$RUNTIME_APP/Contents/MacOS/steamui/realsteamonmac/config.js"
+grep -q '"strDisplayName":"DXMT 0.80"' \
     "$RUNTIME_APP/Contents/MacOS/steamui/realsteamonmac/config.js"
 test "$(grep -o '__REALSTEAMONMAC_IS_MANAGED_APP__' \
     "$RUNTIME_APP/Contents/MacOS/steamui/chunk~2dcc5aaf7.js" |

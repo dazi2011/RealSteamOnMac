@@ -25,17 +25,21 @@ printf '%s\n' 0123456789abcdef0123456789abcdef \
 mkdir -p "$TMP_ROOT/dependencies"
 cp "$ROOT/config/dependencies.json" \
     "$TMP_ROOT/dependencies/catalog.json"
+mkdir -p "$TMP_ROOT/compatibilitytools.d"
+cp -R "$ROOT/compat-tool/"* "$TMP_ROOT/compatibilitytools.d/"
 
 "$PATCHER" install \
     --steamui-root "$STEAMUI" \
     --ui-source "$UI_SOURCE" \
     --allowlist "$TMP_ROOT/allowlist.txt" \
-    --dependencies "$TMP_ROOT/dependencies/catalog.json"
+    --dependencies "$TMP_ROOT/dependencies/catalog.json" \
+    --compat-tools-root "$TMP_ROOT/compatibilitytools.d"
 "$PATCHER" install \
     --steamui-root "$STEAMUI" \
     --ui-source "$UI_SOURCE" \
     --allowlist "$TMP_ROOT/allowlist.txt" \
-    --dependencies "$TMP_ROOT/dependencies/catalog.json"
+    --dependencies "$TMP_ROOT/dependencies/catalog.json" \
+    --compat-tools-root "$TMP_ROOT/compatibilitytools.d"
 "$PATCHER" verify --steamui-root "$STEAMUI"
 
 test "$(grep -o '/realsteamonmac/config.js' "$STEAMUI/index.html" | wc -l)" -eq 1

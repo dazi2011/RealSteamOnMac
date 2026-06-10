@@ -65,7 +65,8 @@ static bool install_steamui_patch(const char *patcher,
                                   const char *steamui,
                                   const char *ui_source,
                                   const char *allowlist,
-                                  const char *dependencies) {
+                                  const char *dependencies,
+                                  const char *compat_tools) {
   pid_t child = fork();
   if (child < 0) {
     log_line("Steam UI patch failed: fork: %s", strerror(errno));
@@ -84,6 +85,8 @@ static bool install_steamui_patch(const char *patcher,
         (char *)allowlist,
         "--dependencies",
         (char *)dependencies,
+        "--compat-tools-root",
+        (char *)compat_tools,
         NULL,
     };
     execv(arguments[0], arguments);
@@ -176,6 +179,8 @@ int main(int argc, char **argv) {
   const char *runtime_override =
       getenv("REALSTEAMONMAC_RUNTIME_EXECUTABLE");
   const char *support_override = getenv("REALSTEAMONMAC_SUPPORT_ROOT");
+  const char *compat_tools_override =
+      getenv("REALSTEAMONMAC_COMPAT_TOOLS_ROOT");
   const char *runtime =
       runtime_override != NULL && *runtime_override != '\0'
           ? runtime_override
@@ -191,6 +196,7 @@ int main(int argc, char **argv) {
   char ui_source[PATH_MAX];
   char allowlist[PATH_MAX];
   char dependencies[PATH_MAX];
+  char compat_tools[PATH_MAX];
   char registry_token[PATH_MAX];
   char runtime_directory[PATH_MAX];
   char steamui[PATH_MAX];
@@ -212,6 +218,23 @@ int main(int argc, char **argv) {
       !build_path(steamui, sizeof(steamui), runtime_directory, "steamui")) {
     return exec_original_bootstrap(argc, argv, "support path is too long");
   }
+  if (compat_tools_override != NULL && *compat_tools_override != '\0') {
+    if (strlen(compat_tools_override) >= sizeof(compat_tools)) {
+      return exec_original_bootstrap(argc, argv,
+                                     "compatibility tool path is too long");
+    }
+    strcpy(compat_tools, compat_tools_override);
+  } else {
+    const char *home = getenv("HOME");
+    if (home == NULL ||
+        snprintf(compat_tools, sizeof(compat_tools),
+                 "%s/Library/Application Support/Steam/"
+                 "compatibilitytools.d",
+                 home) >= (int)sizeof(compat_tools)) {
+      return exec_original_bootstrap(argc, argv,
+                                     "compatibility tool path is unavailable");
+    }
+  }
 
   if (access(runtime, X_OK) != 0) {
     return exec_original_bootstrap(argc, argv,
@@ -223,12 +246,14 @@ int main(int argc, char **argv) {
       access(ui_source, R_OK) != 0 ||
       access(allowlist, R_OK) != 0 ||
       access(dependencies, R_OK) != 0 ||
+      access(compat_tools, R_OK) != 0 ||
       access(registry_token, R_OK) != 0) {
     return exec_original_bootstrap(argc, argv,
                                    "RealSteamOnMac support files are missing");
   }
   if (!install_steamui_patch(
-          patcher, steamui, ui_source, allowlist, dependencies)) {
+          patcher, steamui, ui_source, allowlist, dependencies,
+          compat_tools)) {
     return exec_original_bootstrap(argc, argv,
                                    "Steam UI resource patch failed");
   }

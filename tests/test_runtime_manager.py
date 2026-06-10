@@ -28,6 +28,9 @@ class RuntimeManagerTests(unittest.TestCase):
                 ),
                 "REALSTEAMONMAC_STEAM_ROOT": str(self.root),
                 "REALSTEAMONMAC_JOB_ROOT": str(self.root / "jobs"),
+                "REALSTEAMONMAC_COMPAT_TOOLS_ROOT": str(
+                    self.root / "compatibilitytools.d"
+                ),
                 "REALSTEAMONMAC_DEPENDENCY_CATALOG": str(
                     self.root / "dependencies.json"
                 ),
@@ -102,6 +105,30 @@ class RuntimeManagerTests(unittest.TestCase):
         dxmt_shim.parent.mkdir(parents=True, exist_ok=True)
         dxmt_driver.write_bytes(b"Mach-O winemac fixture")
         dxmt_shim.write_bytes(b"Mach-O shim fixture")
+        dxmt_windows = (
+            package
+            / "wine"
+            / "dxmt"
+            / "lib"
+            / "wine"
+            / "x86_64-windows"
+        )
+        dxmt_windows.mkdir(parents=True, exist_ok=True)
+        (dxmt_windows / "nvapi64.dll").write_bytes(b"MZdxmt-nvapi")
+        (dxmt_windows / "nvngx.dll").write_bytes(b"MZdxmt-nvngx")
+        gptk_windows = (
+            package
+            / "wine"
+            / "gptk"
+            / "lib"
+            / "wine"
+            / "x86_64-windows"
+        )
+        gptk_windows.mkdir(parents=True, exist_ok=True)
+        (gptk_windows / "nvapi64.dll").write_bytes(b"MZgptk-nvapi")
+        (gptk_windows / "nvngx-on-metalfx.dll").write_bytes(
+            b"MZgptk-nvngx"
+        )
         (package / "manifest.json").write_text(
             json.dumps(
                 {
@@ -126,6 +153,13 @@ class RuntimeManagerTests(unittest.TestCase):
         self.runtime_root.mkdir(exist_ok=True)
         (self.runtime_root / "current").symlink_to("packages/fixture")
         self.package = package
+        self.compat_tools = self.root / "compatibilitytools.d"
+        self.write_compat_tool(
+            "fixture-dxmt",
+            renderer="dxmt",
+            runtime_package="fixture",
+            metalfx=True,
+        )
 
     def tearDown(self):
         self.environment.stop()
@@ -133,6 +167,61 @@ class RuntimeManagerTests(unittest.TestCase):
 
     def context(self):
         return runtime.resolve_context(self.executable, "1118200")
+
+    def write_compat_tool(
+        self,
+        tool,
+        *,
+        renderer,
+        runtime_package,
+        metalfx=False,
+    ):
+        directory = self.compat_tools / tool
+        directory.mkdir(parents=True, exist_ok=True)
+        run = directory / "run"
+        run.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        run.chmod(0o755)
+        (directory / "toolmanifest.vdf").write_text(
+            '"manifest"\n{\n'
+            '  "version" "2"\n'
+            '  "commandline" "/run %verb%"\n'
+            "}\n",
+            encoding="utf-8",
+        )
+        display_name = f"{renderer.upper()} Fixture"
+        (directory / "compatibilitytool.vdf").write_text(
+            '"compatibilitytools"\n{\n'
+            '  "compat_tools"\n  {\n'
+            f'    "{tool}"\n    {{\n'
+            '      "install_path" "."\n'
+            f'      "display_name" "{display_name}"\n'
+            '      "from_oslist" "windows"\n'
+            '      "to_oslist" "macos"\n'
+            "    }\n  }\n}\n",
+            encoding="utf-8",
+        )
+        (directory / "realsteamonmac.json").write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "tool": tool,
+                    "display_name": display_name,
+                    "renderer": renderer,
+                    "version": "fixture",
+                    "runtime_package": runtime_package,
+                    "capabilities": {
+                        "msync": True,
+                        "retina": True,
+                        "metal_hud": True,
+                        "metalfx": metalfx,
+                        "dxr": False,
+                        "avx": True,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        return directory
 
     def test_resolves_exact_proton_prefix(self):
         context = self.context()
@@ -152,6 +241,38 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(
             context["compat_data"],
             self.steamapps.resolve() / "compatdata" / "1118200",
+        )
+
+    def test_new_prefix_defaults_to_windows_10(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        )
+
+        def record_setup(_context, command, _environment, _description):
+            if command[1:3] == ["wineboot", "--init"]:
+                (context["prefix"] / "dosdevices").mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+
+        with mock.patch.object(
+            runtime,
+            "run_logged",
+            side_effect=record_setup,
+        ) as run:
+            runtime.initialize_prefix(
+                context,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+            )
+
+        self.assertEqual(
+            [call.args[1] for call in run.call_args_list],
+            [
+                [wine64, "wineboot", "--init"],
+                [wine64, "winecfg", "-v", "win10"],
+            ],
         )
 
     def test_resolved_app_context_keeps_the_full_install_root(self):
@@ -184,12 +305,87 @@ class RuntimeManagerTests(unittest.TestCase):
                 "environment": "DXVK_HUD=1",
             },
         )
+        self.assertEqual(
+            runtime.parse_action_payload(
+                "action=container&operation=open-c-drive"
+            ),
+            {
+                "action": "container",
+                "operation": "open-c-drive",
+            },
+        )
+        self.assertEqual(
+            runtime.parse_action_payload("action=choose-file"),
+            {"action": "choose-file"},
+        )
         with self.assertRaisesRegex(
             runtime.RuntimeErrorWithContext, "duplicate"
         ):
             runtime.parse_action_payload(
                 "action=install-dependency&dependency=one&dependency=two"
             )
+
+    def test_container_actions_use_fixed_argv_and_recoverable_delete(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        wine_root = wine64.parent.parent
+        context["prefix"].mkdir(parents=True)
+        with mock.patch.object(
+            runtime,
+            "prepare",
+            return_value=(
+                self.package,
+                {"package_id": "fixture"},
+                wine_root,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+            ),
+        ), mock.patch.object(
+            runtime,
+            "run_job_process",
+            return_value=mock.Mock(returncode=0),
+        ) as run:
+            exit_code, result = runtime.execute_container_action(
+                context,
+                self.runtime_root,
+                {"operation": "task-manager"},
+                self.root / "container.log",
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            run.call_args.args[1],
+            [wine64, "taskmgr"],
+        )
+        self.assertEqual(result["operation"], "task-manager")
+
+        with mock.patch.object(
+            runtime,
+            "prepare",
+            return_value=(
+                self.package,
+                {"package_id": "fixture"},
+                wine_root,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+            ),
+        ), mock.patch.object(
+            runtime,
+            "run_job_process",
+            return_value=mock.Mock(returncode=0),
+        ):
+            exit_code, result = runtime.execute_container_action(
+                context,
+                self.runtime_root,
+                {"operation": "delete-container"},
+                self.root / "delete.log",
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertFalse(context["prefix"].exists())
+        self.assertTrue(Path(result["recovery_path"]).is_dir())
 
     def test_run_command_target_cannot_escape_game_or_prefix(self):
         context = self.context()
@@ -460,9 +656,9 @@ class RuntimeManagerTests(unittest.TestCase):
             "wined3d",
         )
 
-    def test_metalfx_is_gptk_only(self):
+    def test_metalfx_requires_a_capability_aware_tool_selection(self):
         with self.assertRaisesRegex(
-            runtime.RuntimeErrorWithContext, "only with the GPTK"
+            runtime.RuntimeErrorWithContext, "capability-aware"
         ):
             runtime.normalize_config(
                 {
@@ -472,6 +668,21 @@ class RuntimeManagerTests(unittest.TestCase):
                 }
             )
 
+        config = runtime.normalize_config(
+            {
+                **runtime.DEFAULT_CONFIG,
+                "compat_tool": "fixture-dxmt",
+                "renderer": "dxmt",
+                "metalfx": True,
+            }
+        )
+        package, manifest, _, _, tool = runtime.load_selected_package(
+            self.runtime_root, config
+        )
+        self.assertEqual(package, self.package.resolve())
+        self.assertEqual(manifest["package_id"], "fixture")
+        self.assertEqual(tool["strToolName"], "fixture-dxmt")
+
     def test_environment_maps_controls(self):
         context = self.context()
         package, _, wine_root, _ = runtime.load_package(
@@ -480,6 +691,7 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertTrue(package.is_dir())
         config = {
             **runtime.DEFAULT_CONFIG,
+            "renderer": "gptk",
             "msync": True,
             "metal_hud": True,
             "metalfx": True,
@@ -521,6 +733,97 @@ class RuntimeManagerTests(unittest.TestCase):
             "winemenubuilder.exe=d",
         )
         self.assertNotIn("DYLD_INSERT_LIBRARIES", environment)
+
+    def test_dxmt_metalfx_uses_nvext_and_dxmt_vendor_dlls(self):
+        context = self.context()
+        _, _, wine_root, _ = runtime.load_package(
+            self.runtime_root, "dxmt"
+        )
+        config = {
+            **runtime.DEFAULT_CONFIG,
+            "compat_tool": "fixture-dxmt",
+            "renderer": "dxmt",
+            "metalfx": True,
+        }
+
+        environment = runtime.build_environment(
+            context, config, wine_root
+        )
+        runtime.install_metalfx_files(
+            context,
+            self.package,
+            wine_root,
+            "dxmt",
+            True,
+        )
+
+        self.assertEqual(environment["DXMT_ENABLE_NVEXT"], "1")
+        self.assertNotIn("D3DM_ENABLE_METALFX", environment)
+        system32 = (
+            context["prefix"]
+            / "drive_c"
+            / "windows"
+            / "system32"
+        )
+        self.assertEqual(
+            (system32 / "nvapi64.dll").read_bytes(),
+            b"MZdxmt-nvapi",
+        )
+        self.assertEqual(
+            (system32 / "nvngx.dll").read_bytes(),
+            b"MZdxmt-nvngx",
+        )
+
+    def test_metalfx_files_switch_between_managed_tools_and_cleanly_disable(
+        self,
+    ):
+        context = self.context()
+        _, _, gptk_root, _ = runtime.load_package(
+            self.runtime_root, "gptk"
+        )
+        _, _, dxmt_root, _ = runtime.load_package(
+            self.runtime_root, "dxmt"
+        )
+        system32 = (
+            context["prefix"]
+            / "drive_c"
+            / "windows"
+            / "system32"
+        )
+
+        runtime.install_metalfx_files(
+            context,
+            self.package,
+            gptk_root,
+            "gptk",
+            True,
+        )
+        self.assertEqual(
+            (system32 / "nvngx.dll").read_bytes(),
+            b"MZgptk-nvngx",
+        )
+
+        runtime.install_metalfx_files(
+            context,
+            self.package,
+            dxmt_root,
+            "dxmt",
+            True,
+        )
+        self.assertEqual(
+            (system32 / "nvngx.dll").read_bytes(),
+            b"MZdxmt-nvngx",
+        )
+
+        runtime.install_metalfx_files(
+            context,
+            self.package,
+            dxmt_root,
+            "dxmt",
+            False,
+        )
+        self.assertFalse((system32 / "nvngx.dll").exists())
+        self.assertFalse((system32 / "nvapi64.dll").exists())
 
     def test_dxmt_injects_only_managed_visibility_shim(self):
         context = self.context()

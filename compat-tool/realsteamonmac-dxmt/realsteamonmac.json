@@ -1,0 +1,16 @@
+{
+  "capabilities": {
+    "avx": true,
+    "dxr": false,
+    "metal_hud": true,
+    "metalfx": true,
+    "msync": true,
+    "retina": true
+  },
+  "display_name": "DXMT 0.80",
+  "renderer": "dxmt",
+  "runtime_package": "gptk3.0-3-wine11.10-dxmt0.80-dxmtmac1-dxvkmacos1.10.3-lsteamclient-proton11b5-macos2",
+  "schema": 1,
+  "tool": "realsteamonmac-dxmt",
+  "version": "0.80"
+}

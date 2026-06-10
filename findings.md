@@ -426,6 +426,50 @@
 | Keep the native control API data-only | Fixed renderer/boolean fields can be validated and persisted safely; arbitrary command execution belongs to a later separately bounded workflow. |
 | Make global AppID config canonical and retain PFX config as fallback | Settings can exist before install and survive prefix replacement while old deployments remain readable. |
 | Reconcile shared-PFX Steamworks files per renderer | The Proton bridge is Wine-ABI-specific. GPTK must not inherit the Wine 11 bridge, while supported renderers must restore exactly the ledger-matched files. |
+
+## 2026-06-10 UI And Release Findings
+
+- The large persistent panel is a mount-guard bug, not a Steam layout limit.
+  `findCompatControlAnchor()` accepts any bounded element whose text contains
+  `RealSteamOnMac`, and `mountControlPanels()` searches every discovered Steam
+  document. A library details document can therefore receive the compatibility
+  controls.
+- The compatibility page briefly renders normally because Steam builds its
+  native page first; the recurring reconciliation pass inserts the project
+  dashboard afterward.
+- The standard Steam tool root already exists at
+  `~/Library/Application Support/Steam/compatibilitytools.d`, but the deployed
+  installation contains only the legacy experimental wrapper. Current four-tool
+  entries come from a hard-coded browser configuration, not directory
+  discovery.
+- Re-enabling `STEAM_EXTRA_COMPAT_TOOLS_PATHS` is not an acceptable fix on the
+  verified Steam build because prior A/B evidence showed that a valid tool
+  removes Cloud settings fields.
+- The repository is private and has no GitHub release as of 2026-06-10. Public
+  release must wait for license/secret scans plus clean install, uninstall, and
+  live rollback evidence.
+- CrossOver Preview exposes Python setup libraries and localized UI resources
+  suitable for behavior research. Its proprietary Wine/runtime components must
+  not be copied into a public release merely because they are locally
+  installed.
+- The standard compatibility-tool root may contain notes, staging directories,
+  or other unrelated user folders. Discovery now ignores folders with no tool
+  manifest files, while a folder that presents any tool file must pass the
+  complete bundle validation.
+- Runtime package IDs are immutable build identifiers and can exceed the
+  64-character tool-ID limit. They now use a separate 160-character bound.
+- DXMT's official vendor-extension documentation requires `nvapi64.dll`,
+  `nvngx.dll`, and `DXMT_ENABLE_NVEXT=1` for DLSS Super Resolution translated
+  to MetalFX. The installed 0.80 runtime package contains both DLLs.
+- Renderer alone is not a sufficient persistent selection because DXMT 0.70 and
+  DXMT 0.80 share a renderer but can have different runtime packages and
+  capabilities. The exact tool ID is now part of the AppID configuration.
+- CrossOver's dependency recipes are stored in
+  `Contents/SharedSupport/CrossOver/share/crossover/data/crossover.tie`, not in
+  the thin Python UI bridge. The database contains download URLs, localized
+  names, dependency graphs, and historical recipes, but many entries use old
+  HTTP links, archives, or CodeWeavers mirrors and cannot be copied blindly
+  into a public checksum-pinned catalog.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

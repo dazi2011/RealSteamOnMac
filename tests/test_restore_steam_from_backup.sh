@@ -17,6 +17,7 @@ mkdir -p \
     "$RUNTIME_APP/Contents/MacOS/steamui" \
     "$SUPPORT/ui" \
     "$SUPPORT/dependencies" \
+    "$TMP_ROOT/compatibilitytools.d" \
     "$BACKUP/Steam.app/Contents/MacOS" \
     "$BACKUP/SteamRuntime.app/Contents/MacOS"
 
@@ -31,7 +32,10 @@ printf 'support\n' >"$SUPPORT/marker"
 printf '%s' "$ORIGINAL_INDEX" >"$STEAMUI/index.html"
 printf '%s' "$ORIGINAL_COMPAT" >"$STEAMUI/chunk~2dcc5aaf7.js"
 cp "$ROOT/script/patch_steamui.py" "$SUPPORT/patch_steamui.py"
+cp "$ROOT/runtime/compat_tool_catalog.py" \
+    "$SUPPORT/compat_tool_catalog.py"
 cp "$ROOT/ui/realsteamonmac_ui.js" "$SUPPORT/ui/realsteamonmac_ui.js"
+cp -R "$ROOT/compat-tool/"* "$TMP_ROOT/compatibilitytools.d/"
 printf '1118200\n' >"$SUPPORT/allowlist.txt"
 printf '0123456789abcdef0123456789abcdef\n' \
     >"$SUPPORT/registry-token"
@@ -52,7 +56,8 @@ export REALSTEAMONMAC_ALLOW_TEST_FIXTURES=1
     --steamui-root "$STEAMUI" \
     --ui-source "$SUPPORT/ui/realsteamonmac_ui.js" \
     --allowlist "$SUPPORT/allowlist.txt" \
-    --dependencies "$SUPPORT/dependencies/catalog.json" >/dev/null
+    --dependencies "$SUPPORT/dependencies/catalog.json" \
+    --compat-tools-root "$TMP_ROOT/compatibilitytools.d" >/dev/null
 grep -q '/realsteamonmac/ui.js' "$STEAMUI/index.html"
 test -e "$STEAMUI/index.html.realsteamonmac.original"
 test -e "$STEAMUI/chunk~2dcc5aaf7.js.realsteamonmac.original"

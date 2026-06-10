@@ -9,14 +9,16 @@ ENGINE_SOURCE="$ROOT/artifacts/compat-gate-hook/libRealSteamNativeEngine.dylib"
 LAUNCHER_SOURCE="$ROOT/artifacts/steam-launcher/realsteamonmac_launcher"
 ENTITLEMENTS="$ROOT/config/steam-runtime-entitlements.plist"
 COMPAT_SOURCE="$ROOT/compat-tool"
+COMPAT_CATALOG_SOURCE="$ROOT/runtime/compat_tool_catalog.py"
 PATCHER_SOURCE="$ROOT/script/patch_steamui.py"
 UI_SOURCE="$ROOT/ui/realsteamonmac_ui.js"
 DEPENDENCY_SOURCE="$ROOT/config/dependencies.json"
 SUPPORT_ROOT="$HOME/Library/Application Support/RealSteamOnMac"
+COMPAT_TOOLS_ROOT="$HOME/Library/Application Support/Steam/compatibilitytools.d"
 CLEAN_BACKUP=""
 
 usage() {
-    echo "usage: $0 --clean-backup DIRECTORY [--steam-app PATH] [--runtime-app PATH] [--support-root PATH]" >&2
+    echo "usage: $0 --clean-backup DIRECTORY [--steam-app PATH] [--runtime-app PATH] [--support-root PATH] [--compat-tools-root PATH]" >&2
     exit 2
 }
 
@@ -40,6 +42,11 @@ while [ "$#" -gt 0 ]; do
         --support-root)
             [ "$#" -ge 2 ] || usage
             SUPPORT_ROOT=$2
+            shift 2
+            ;;
+        --compat-tools-root)
+            [ "$#" -ge 2 ] || usage
+            COMPAT_TOOLS_ROOT=$2
             shift 2
             ;;
         *)
@@ -83,6 +90,10 @@ done
 }
 [ -d "$COMPAT_SOURCE/realsteamonmac-dxmt" ] || {
     echo "compatibility tool source is missing: $COMPAT_SOURCE" >&2
+    exit 1
+}
+[ -f "$COMPAT_CATALOG_SOURCE" ] || {
+    echo "compatibility tool catalog scanner is missing: $COMPAT_CATALOG_SOURCE" >&2
     exit 1
 }
 [ -x "$PATCHER_SOURCE" ] || {
@@ -207,20 +218,26 @@ fi
 mkdir -p "$SUPPORT_ROOT"
 HOOK_TARGET="$SUPPORT_ROOT/libRealSteamCompatGate.dylib"
 ENGINE_TARGET="$SUPPORT_ROOT/libRealSteamNativeEngine.dylib"
-COMPAT_TARGET="$SUPPORT_ROOT/compat-tool"
 PATCHER_TARGET="$SUPPORT_ROOT/patch_steamui.py"
+COMPAT_CATALOG_TARGET="$SUPPORT_ROOT/compat_tool_catalog.py"
 UI_TARGET="$SUPPORT_ROOT/ui/realsteamonmac_ui.js"
 DEPENDENCY_TARGET="$SUPPORT_ROOT/dependencies/catalog.json"
 
 cp "$HOOK_SOURCE" "$HOOK_TARGET"
 cp "$ENGINE_SOURCE" "$ENGINE_TARGET"
-rm -rf "$COMPAT_TARGET"
-cp -R "$COMPAT_SOURCE" "$COMPAT_TARGET"
-chmod +x "$COMPAT_TARGET"/*/run
+mkdir -p "$COMPAT_TOOLS_ROOT"
+for tool in "$COMPAT_SOURCE"/*; do
+    [ -f "$tool/run" ] || continue
+    name=$(basename "$tool")
+    rm -rf "$COMPAT_TOOLS_ROOT/$name"
+    cp -R "$tool" "$COMPAT_TOOLS_ROOT/$name"
+    chmod +x "$COMPAT_TOOLS_ROOT/$name/run"
+done
 codesign --force --sign - "$HOOK_TARGET"
 codesign --force --sign - "$ENGINE_TARGET"
 mkdir -p "$SUPPORT_ROOT/ui"
 cp "$PATCHER_SOURCE" "$PATCHER_TARGET"
+cp "$COMPAT_CATALOG_SOURCE" "$COMPAT_CATALOG_TARGET"
 cp "$UI_SOURCE" "$UI_TARGET"
 chmod 0755 "$PATCHER_TARGET"
 mkdir -p "$SUPPORT_ROOT/dependencies"
@@ -250,7 +267,8 @@ fi
     --steamui-root "$STEAMUI_ROOT" \
     --ui-source "$UI_TARGET" \
     --allowlist "$SUPPORT_ROOT/allowlist.txt" \
-    --dependencies "$DEPENDENCY_TARGET"
+    --dependencies "$DEPENDENCY_TARGET" \
+    --compat-tools-root "$COMPAT_TOOLS_ROOT"
 
 # Preserve the clean Valve bootstrap as a standalone fallback executable.
 SIGNED_BOOTSTRAP="$TMP_ROOT/steam_osx.original"
@@ -322,7 +340,7 @@ printf 'runtime_app=%s\n' "$RUNTIME_APP"
 printf 'launcher=%s\n' "$LAUNCHER_TARGET"
 printf 'hook=%s\n' "$HOOK_TARGET"
 printf 'native_engine=%s\n' "$ENGINE_TARGET"
-printf 'compat_tools=%s\n' "$COMPAT_TARGET"
+printf 'compat_tools=%s\n' "$COMPAT_TOOLS_ROOT"
 printf 'allowlist=%s\n' "$SUPPORT_ROOT/allowlist.txt"
 printf 'registry_token=%s\n' "$REGISTRY_TOKEN"
 printf 'dependencies=%s\n' "$DEPENDENCY_TARGET"
