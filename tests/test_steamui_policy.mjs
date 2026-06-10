@@ -335,6 +335,8 @@ test("builds compact Steam-style controls without the branded dashboard or inlin
     },
     rendererLabel: "DXMT 0.80",
     tool: projectTools[1],
+    compatTools: projectTools,
+    selectedCompatTool: "realsteamonmac-dxmt",
     actionState: {
       state: "idle",
       label: "",
@@ -344,6 +346,14 @@ test("builds compact Steam-style controls without the branded dashboard or inlin
   });
 
   assert.match(markup, /realsteamonmac-settings/);
+  assert.match(markup, /data-control-force-compat/);
+  assert.match(markup, /data-control-compat-tool/);
+  assert.match(
+    markup,
+    /强制使用特定 Steam Play 兼容性工具/,
+  );
+  assert.match(markup, />\s*DXMT 0\.80\s*</);
+  assert.match(markup, />\s*GPTK 3\s*</);
   assert.match(markup, /role="switch"/);
   assert.match(markup, /data-open-dialog="run-command"/);
   assert.match(markup, /data-open-dialog="dependencies"/);

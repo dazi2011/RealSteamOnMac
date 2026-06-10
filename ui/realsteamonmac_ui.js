@@ -1983,6 +1983,46 @@
         color: #dcdedf;
         font-family: "Motiva Sans", "Noto Sans SC", sans-serif;
       }
+      .realsteamonmac-force-tool {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 14px;
+        background: #25282e;
+        border-radius: 3px;
+      }
+      .realsteamonmac-force-tool__check {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #f0f1f1;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .realsteamonmac-force-tool__check input {
+        width: 18px;
+        height: 18px;
+        margin: 0;
+        accent-color: #1a9fff;
+      }
+      .realsteamonmac-force-tool select {
+        width: 100%;
+        min-height: 38px;
+        padding: 0 38px 0 12px;
+        color: #f0f1f1;
+        background: #3d4450;
+        border: 0;
+        border-radius: 2px;
+        outline: none;
+        font: 13px "Motiva Sans", "Noto Sans SC", sans-serif;
+      }
+      .realsteamonmac-force-tool select:hover:not(:disabled) {
+        background: #4e5968;
+      }
+      .realsteamonmac-force-tool select:disabled {
+        color: #8b929a;
+        opacity: .55;
+      }
       .realsteamonmac-settings__heading {
         display: flex;
         align-items: center;
@@ -2299,15 +2339,47 @@
     value,
     rendererLabel,
     tool,
+    compatTools = [],
+    selectedCompatTool = "",
     actionState,
   }) {
     const normalized = applyToolCapabilities(value, tool);
     const definitions = controlDefinitions(tool);
     const running = actionState?.state === "running";
+    const compatEnabled = Boolean(selectedCompatTool);
+    const effectiveTool =
+      selectedCompatTool || normalized.compat_tool || tool?.strToolName || "";
     return `
-      <div class="realsteamonmac-settings">
+      <div class="realsteamonmac-settings"
+           data-compat-enabled="${compatEnabled ? "true" : "false"}">
+        <div class="realsteamonmac-force-tool">
+          <label class="realsteamonmac-force-tool__check">
+            <input type="checkbox"
+                   data-control-force-compat
+                   ${compatEnabled ? "checked" : ""}>
+            <span>强制使用特定 Steam Play 兼容性工具</span>
+          </label>
+          <select data-control-compat-tool
+                  ${compatEnabled ? "" : "disabled"}>
+            ${compatTools
+              .map(
+                (candidate) => `
+                  <option value="${escapeHtml(candidate.strToolName)}"
+                          ${candidate.strToolName === effectiveTool ? "selected" : ""}>
+                    ${escapeHtml(
+                      candidate.strDisplayName.replace(
+                        /^RealSteamOnMac\s*-\s*/i,
+                        "",
+                      ),
+                    )}
+                  </option>
+                `,
+              )
+              .join("")}
+          </select>
+        </div>
         <div class="realsteamonmac-settings__heading">
-          <span>兼容性设置</span>
+          <span>兼容性选项</span>
           <span class="realsteamonmac-settings__renderer">${escapeHtml(rendererLabel)}</span>
         </div>
         <div class="realsteamonmac-settings__rows">
@@ -2325,7 +2397,7 @@
                            role="switch"
                            data-control="${definition.key}"
                            ${normalized[definition.key] ? "checked" : ""}
-                           ${definition.enabled ? "" : "disabled"}>
+                           ${definition.enabled && compatEnabled ? "" : "disabled"}>
                     <span class="realsteamonmac-switch__track"></span>
                   </span>
                 </label>
@@ -2337,15 +2409,15 @@
           <button type="button"
                   class="realsteamonmac-native-button"
                   data-open-dialog="run-command"
-                  ${running ? "disabled" : ""}>运行命令</button>
+                  ${running || !compatEnabled ? "disabled" : ""}>运行命令</button>
           <button type="button"
                   class="realsteamonmac-native-button"
                   data-open-dialog="dependencies"
-                  ${running ? "disabled" : ""}>安装 Windows 组件</button>
+                  ${running || !compatEnabled ? "disabled" : ""}>安装 Windows 组件</button>
           <button type="button"
                   class="realsteamonmac-native-button"
                   data-open-dialog="container"
-                  ${running ? "disabled" : ""}>容器操作</button>
+                  ${running || !compatEnabled ? "disabled" : ""}>容器操作</button>
         </div>
         <div class="realsteamonmac-settings__status"
              data-state="${escapeHtml(actionState?.state ?? "idle")}">
@@ -2575,6 +2647,7 @@
   function renderControlPanel(panel, appid) {
     const value = ensureControlConfig(appid);
     const actionState = actionStateFor(appid);
+    const selectedCompatTool = compatSelections.get(appid) ?? "";
     const selectedTool =
       compatToolRecord(value.compat_tool, projectCompatTools) ??
       projectCompatTools.find(
@@ -2586,7 +2659,11 @@
         /^RealSteamOnMac\s*-\s*/i,
         "",
       ) ?? value.renderer.toUpperCase();
-    const signature = JSON.stringify({ value, actionState });
+    const signature = JSON.stringify({
+      value,
+      actionState,
+      selectedCompatTool,
+    });
     if (panel.dataset.signature === signature) {
       return;
     }
@@ -2597,12 +2674,50 @@
       value,
       rendererLabel,
       tool: selectedTool,
+      compatTools: projectCompatTools,
+      selectedCompatTool,
       actionState,
     });
 
     const statusElement = panel.querySelector(
       ".realsteamonmac-settings__status-text",
     );
+    const forceCompatInput = panel.querySelector(
+      "[data-control-force-compat]",
+    );
+    const compatToolSelect = panel.querySelector(
+      "[data-control-compat-tool]",
+    );
+    const selectCompatTool = async (toolName) => {
+      statusElement.textContent = "保存中";
+      statusElement.dataset.state = "saving";
+      try {
+        await globalObject.SteamClient.Apps.SpecifyCompatTool(
+          appid,
+          toolName,
+        );
+        panel.dataset.signature = "";
+        renderControlPanel(panel, appid);
+      } catch (error) {
+        status.controlLastError = String(error);
+        panel.dataset.signature = "";
+        renderControlPanel(panel, appid);
+      }
+    };
+    forceCompatInput?.addEventListener("change", () => {
+      const fallbackTool =
+        compatToolSelect?.value ||
+        value.compat_tool ||
+        config.defaultCompatTool ||
+        projectCompatTools[0]?.strToolName ||
+        "";
+      void selectCompatTool(
+        forceCompatInput.checked ? fallbackTool : "",
+      );
+    });
+    compatToolSelect?.addEventListener("change", () => {
+      void selectCompatTool(compatToolSelect.value);
+    });
     for (const input of panel.querySelectorAll("input[data-control]")) {
       input.addEventListener("change", async () => {
         const key = input.dataset.control;

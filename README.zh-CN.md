@@ -26,6 +26,22 @@
 - 新容器默认为 Windows 10，并使用真正的 `WINEMSYNC=1`。
 - 提供可回滚的安装/卸载 PKG 和 Ed25519 签名更新清单。
 
+## 界面预览
+
+直接在 Steam 原有属性页面中选择独立安装的兼容性工具：
+
+![兼容性工具下拉菜单](docs/images/compatibility-tools.png)
+
+运行命令和安装 Windows 组件使用独立的 Steam 风格二级窗口：
+
+| 运行命令 | 安装 Windows 组件 |
+|---|---|
+| ![运行命令窗口](docs/images/run-command.png) | ![Windows 组件窗口](docs/images/windows-components.png) |
+
+容器管理操作集中在单独的紧凑窗口中：
+
+![容器操作窗口](docs/images/container-operations.png)
+
 ## 系统要求
 
 - Apple Silicon Mac。

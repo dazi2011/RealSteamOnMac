@@ -37,7 +37,7 @@ no game content was downloaded.
   `~/Library/Application Support/RealSteamOnMac`
 - Allowlist: only `1118200`
 - Clean backup:
-  `/Users/wudazi/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z`
+  `$HOME/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z`
 
 `Steam.app` currently passes `codesign --verify --deep --strict`.
 

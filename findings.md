@@ -22,7 +22,7 @@
 
 ## Repository Findings
 
-- Active repository: `/Users/wudazi/Documents/RealSteamOnMac`.
+- Active repository: `<repository-root>`.
 - Active branch: `codex/people-playground-experiment`.
 - Local head before takeover: `a7e508f`.
 - Remote head: `be55b6a`, one fast-forward commit ahead.
@@ -513,4 +513,4 @@
 - Existing implementation plan:
   `docs/superpowers/plans/2026-06-08-people-playground-native-download.md`
 - Steam backup recorded by the handoff:
-  `/Users/wudazi/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z`
+  `$HOME/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z`

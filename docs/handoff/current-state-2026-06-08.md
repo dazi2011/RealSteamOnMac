@@ -154,7 +154,7 @@ No custom install button or replacement click handler is used.
 - Runtime:
   `~/Library/Application Support/Steam/Steam.AppBundle/Steam`
 - Clean backup:
-  `/Users/wudazi/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z`
+  `$HOME/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z`
 - Guarded clean `steamui/index.html` SHA-256:
   `55ced284314dbc65bff38fb1333d4f4bd617635895e2c0e2197b05028c243282`
 - Guarded clean `steamui/chunk~2dcc5aaf7.js` SHA-256:
@@ -222,7 +222,7 @@ Quit Steam, then run:
 ```sh
 sh script/restore_steam_from_backup.sh \
   --clean-backup \
-  /Users/wudazi/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z
+  $HOME/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z
 ```
 
 Unknown Steam builds remain fail-closed. A Steam update requires revalidating

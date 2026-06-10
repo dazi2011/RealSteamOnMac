@@ -23,7 +23,7 @@ upgrade.
 User-supplied disk image:
 
 ```text
-/Users/wudazi/Downloads/Game_Porting_Toolkit_3.0.dmg
+$HOME/Downloads/Game_Porting_Toolkit_3.0.dmg
 ```
 
 The evaluation image contains Apple's D3DMetal redistributable libraries, not

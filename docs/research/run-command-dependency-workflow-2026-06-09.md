@@ -200,7 +200,7 @@ dependency catalog. The existing clean Steam backup remains the authoritative
 full rollback source:
 
 ```text
-/Users/wudazi/RealSteamOnMac-Backups/
+$HOME/RealSteamOnMac-Backups/
   steam-1780705203-20260607T083704Z
 ```
 
@@ -210,7 +210,7 @@ deleting or manually editing registry state without evidence.
 The complete pre-action live snapshot is:
 
 ```text
-/Users/wudazi/RealSteamOnMac-Backups/
+$HOME/RealSteamOnMac-Backups/
   pre-phase5b-actions-20260609T092230Z
 ```
 

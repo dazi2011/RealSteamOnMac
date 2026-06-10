@@ -129,6 +129,9 @@ class RuntimeManagerTests(unittest.TestCase):
         (gptk_windows / "nvngx-on-metalfx.dll").write_bytes(
             b"MZgptk-nvngx"
         )
+        (gptk_windows / "nvngx.dll").write_bytes(
+            b"MZgptk-legacy-nvngx"
+        )
         (package / "manifest.json").write_text(
             json.dumps(
                 {
@@ -824,6 +827,103 @@ class RuntimeManagerTests(unittest.TestCase):
         )
         self.assertFalse((system32 / "nvngx.dll").exists())
         self.assertFalse((system32 / "nvapi64.dll").exists())
+
+    def test_metalfx_adopts_known_legacy_files_without_a_ledger(self):
+        context = self.context()
+        _, _, dxmt_root, _ = runtime.load_package(
+            self.runtime_root, "dxmt"
+        )
+        system32 = (
+            context["prefix"]
+            / "drive_c"
+            / "windows"
+            / "system32"
+        )
+        system32.mkdir(parents=True)
+        (system32 / "nvngx.dll").write_bytes(
+            b"MZgptk-legacy-nvngx"
+        )
+        (system32 / "nvapi64.dll").write_bytes(b"MZgptk-nvapi")
+
+        runtime.install_metalfx_files(
+            context,
+            self.package,
+            dxmt_root,
+            "dxmt",
+            True,
+        )
+
+        self.assertEqual(
+            (system32 / "nvngx.dll").read_bytes(),
+            b"MZdxmt-nvngx",
+        )
+        self.assertEqual(
+            (system32 / "nvapi64.dll").read_bytes(),
+            b"MZdxmt-nvapi",
+        )
+        ledger = json.loads(
+            (context["state"] / "metalfx-files.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(ledger["renderer"], "dxmt")
+
+    def test_metalfx_removes_known_legacy_files_without_a_ledger(self):
+        context = self.context()
+        _, _, gptk_root, _ = runtime.load_package(
+            self.runtime_root, "gptk"
+        )
+        system32 = (
+            context["prefix"]
+            / "drive_c"
+            / "windows"
+            / "system32"
+        )
+        system32.mkdir(parents=True)
+        (system32 / "nvngx.dll").write_bytes(
+            b"MZgptk-legacy-nvngx"
+        )
+        (system32 / "nvapi64.dll").write_bytes(b"MZgptk-nvapi")
+
+        runtime.install_metalfx_files(
+            context,
+            self.package,
+            gptk_root,
+            "gptk",
+            False,
+        )
+
+        self.assertFalse((system32 / "nvngx.dll").exists())
+        self.assertFalse((system32 / "nvapi64.dll").exists())
+
+    def test_metalfx_still_refuses_unknown_files_without_a_ledger(self):
+        context = self.context()
+        _, _, dxmt_root, _ = runtime.load_package(
+            self.runtime_root, "dxmt"
+        )
+        system32 = (
+            context["prefix"]
+            / "drive_c"
+            / "windows"
+            / "system32"
+        )
+        system32.mkdir(parents=True)
+        destination = system32 / "nvngx.dll"
+        destination.write_bytes(b"MZunmanaged")
+
+        with self.assertRaisesRegex(
+            runtime.RuntimeErrorWithContext,
+            "refusing to replace an unmanaged MetalFX file",
+        ):
+            runtime.install_metalfx_files(
+                context,
+                self.package,
+                dxmt_root,
+                "dxmt",
+                True,
+            )
+
+        self.assertEqual(destination.read_bytes(), b"MZunmanaged")
 
     def test_dxmt_injects_only_managed_visibility_shim(self):
         context = self.context()

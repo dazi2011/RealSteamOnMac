@@ -93,7 +93,7 @@
     added a regression that forbids reintroducing it.
   - Ran the complete Node, Python, and shell suite; all tests passed.
   - Backed up the prior deployed support and executables to
-    `/Users/wudazi/RealSteamOnMac-Backups/cloud-fix-20260609T103853`.
+    `$HOME/RealSteamOnMac-Backups/cloud-fix-20260609T103853`.
   - Deployed the guarded startup to `/Applications/Steam.app` and verified deep
     code signing plus installed file hashes.
   - Verified the installed global Cloud page renders two setting groups.
@@ -262,7 +262,7 @@
 - Actions taken:
   - Backed up and byte-count verified the complete People Playground PFX and
     active runtime state at
-    `/Users/wudazi/RealSteamOnMac-Backups/pre-steamworks-bridge-20260609T051952Z`.
+    `$HOME/RealSteamOnMac-Backups/pre-steamworks-bridge-20260609T051952Z`.
   - Pinned Proton commit
     `25880e88befb52c5aa7ff162c5b00b6b8825e494` and Valve Wine commit
     `2f70bfd4d0f4e67a8a599c4a09760579bc2a4fa4`.
@@ -360,7 +360,7 @@
   - Ran the complete post-DXMT matrix: 51 Node tests, 25 Python tests, and all
     22 shell contracts passed.
   - Backed up the previous live runtime manager and active-package target at
-    `/Users/wudazi/RealSteamOnMac-Backups/pre-dxmtmac1-live-20260609T075422Z`.
+    `$HOME/RealSteamOnMac-Backups/pre-dxmtmac1-live-20260609T075422Z`.
   - Atomically activated
     `gptk3.0-3-wine11.10-dxmt0.80-dxmtmac1-dxvkmacos1.10.3-`
     `lsteamclient-proton11b5-macos2` in the user's existing Steam environment.
@@ -658,3 +658,64 @@
 - Updated the dependency catalog with current checksum-pinned Microsoft Visual
   C++ x64 and x86 installers. DirectX and font recipes remain excluded until
   their multi-stage installation and licensing can be represented safely.
+- Replaced the remaining compact compatibility header with a visible
+  Steam-style "Force the use of a specific Steam Play compatibility tool"
+  checkbox and selector. Live acceptance showed DXMT 0.80, DXVK macOS 1.10.3,
+  GPTK 3.0, and WineD3D 11.10 in one native dropdown.
+- Added hash-restricted adoption for MetalFX DLLs written by older project
+  versions before the managed ledger existed. Unknown DLLs are still rejected.
+- Reinstalled against the preserved clean Steam build 1780705203 backup and
+  confirmed the People Playground library page no longer mounts a persistent
+  right-side panel.
+- Live compatibility-page acceptance passed:
+  - DXMT -> GPTK -> DXMT switching persisted the exact compatibility-tool ID.
+  - Run Command opens a Steam-style command/arguments/environment/log dialog.
+  - Install Windows Components opens a searchable dependency dialog.
+  - Container Operations exposes Finder-backed, Wine, controller, restart,
+    task-manager, stop, and recoverable removal actions.
+- Live DXMT 0.80 MetalFX acceptance passed. Enabling installed the package
+  `nvngx.dll` and `nvapi64.dll` with a SHA-256 ledger; disabling removed only
+  those ledger-matched files and the ledger itself.
+- The full direct uninstall/reinstall cycle passed on the live machine:
+  - Steam was restored to its original `steam_osx` bootstrap.
+  - All four managed compatibility tools moved into the recoverable uninstall
+    directory.
+  - The People Playground executable and PFX `user.reg` retained identical
+    pre/post-uninstall SHA-256 hashes.
+  - The validated 3.0 GB immutable runtime cache was APFS-cloned from the
+    uninstall recovery directory and the one-click installer completed again.
+- Final Phase 7 source regression passed:
+  - 67 Node tests.
+  - 60 Python tests.
+  - 27 shell contract files, including packaging, install, uninstall,
+    injection, runtime, launcher, backup, and restore paths.
+- Cropped the live Steam acceptance captures into `docs/images/` and added
+  tool-selection, command-runner, and dependency-installation previews to both
+  product READMEs. The public crops exclude the Codex window and desktop.
+- Built the final `v0.1.0` release into an isolated directory before replacing
+  `dist/`. Verification passed:
+  - Both PKG payload SHA-256 values match `SHA256SUMS`.
+  - The Ed25519 release-manifest signature verifies with the committed public
+    key.
+  - The manifest targets repository `dazi2011/RealSteamOnMac`, tag `v0.1.0`,
+    macOS 14+, arm64, and Steam build `1780705203`.
+  - Package expansion contains the current UI, runtime manager, compatibility
+    tool metadata, license notices, installer scripts, and prebuilt Steamworks
+    bridge.
+  - `pkgutil --check-signature` reports no Apple installer signature because no
+    Developer ID Installer identity is available; this is disclosed in both
+    READMEs and will be repeated in the release notes.
+- Public-repository audit found that release packaging previously depended on
+  an ignored local DXMT macdrv artifact. `build_release_pkgs.sh` now accepts an
+  explicit validated package, rebuilds the pinned package when its default is
+  absent, verifies its checksums and source-commit metadata, and enforces
+  Mach-O/signature checks outside test-fixture mode.
+- Removed personal absolute paths from tracked tests and engineering documents.
+  The untracked user-owned RTF remains untouched and will not be staged.
+- Final post-audit regression passed again: 67 Node tests, 60 Python tests, and
+  all 27 shell contract files.
+- Rebuilt `dist/` after the packaging fix. Final release hashes:
+  - `RealSteamOnMac-Install.pkg`:
+    `56602a98e37498eea8daf5cd9dc2f9ca6634e4a006f7bbff0b02ff2683a14d46`
+  - `RealSteamOnMac-Uninstall.pkg`:
+    `e153808464657b710ed80016dc41c9543338d4a8745eb564ce8a7017b77150b7`

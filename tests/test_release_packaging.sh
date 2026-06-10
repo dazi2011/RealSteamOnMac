@@ -85,11 +85,34 @@ FAKE_BRIDGE="$TMP_ROOT/bridge"
 mkdir -p "$FAKE_BRIDGE/x86_64-windows" "$FAKE_BRIDGE/x86_64-unix"
 printf 'fixture\n' >"$FAKE_BRIDGE/x86_64-windows/lsteamclient.dll"
 printf 'fixture\n' >"$FAKE_BRIDGE/x86_64-unix/lsteamclient.so"
+FAKE_DXMT_COMPAT="$TMP_ROOT/dxmt-winemac-compat"
+mkdir -p "$FAKE_DXMT_COMPAT"
+printf 'fixture winemac\n' >"$FAKE_DXMT_COMPAT/winemac.so"
+printf 'fixture shim\n' \
+    >"$FAKE_DXMT_COMPAT/librealsteamonmac_dxmt_macdrv_shim.dylib"
+cat >"$FAKE_DXMT_COMPAT/build-info.json" <<'EOF'
+{
+  "dxmt_version": "0.80",
+  "minimum_macos": "10.15",
+  "name": "RealSteamOnMac DXMT Wine macdrv compatibility",
+  "schema": 1,
+  "wine_commit": "2cac6ccf33c0807f374dc96f5a20e35a2da86157",
+  "wine_staging_commit": "f45e84d7a01a52d379e4003f03800c13875c69e9"
+}
+EOF
+(
+    cd "$FAKE_DXMT_COMPAT"
+    shasum -a 256 \
+        winemac.so \
+        librealsteamonmac_dxmt_macdrv_shim.dylib \
+        >SHA256SUMS
+)
 DIST="$TMP_ROOT/dist"
 env REALSTEAMONMAC_ALLOW_TEST_FIXTURES=1 \
     "$ROOT/script/build_release_pkgs.sh" \
         --output "$DIST" \
-        --steamworks-bridge "$FAKE_BRIDGE" >/dev/null
+        --steamworks-bridge "$FAKE_BRIDGE" \
+        --dxmt-winemac-compat "$FAKE_DXMT_COMPAT" >/dev/null
 
 for package in \
     RealSteamOnMac-Install.pkg \

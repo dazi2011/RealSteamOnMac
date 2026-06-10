@@ -246,7 +246,7 @@ AutoCloud plus upload at 15:58:29 Asia/Shanghai.
 The pre-switch rollback record is:
 
 ```text
-/Users/wudazi/RealSteamOnMac-Backups/
+$HOME/RealSteamOnMac-Backups/
   pre-dxmtmac1-live-20260609T075422Z
 ```
 
@@ -339,7 +339,7 @@ It proves the action UI was rendered only; it is not command or dependency
 acceptance evidence. The full live rollback snapshot is:
 
 ```text
-/Users/wudazi/RealSteamOnMac-Backups/
+$HOME/RealSteamOnMac-Backups/
   pre-phase5b-actions-20260609T092230Z
 ```
 
@@ -438,7 +438,7 @@ complete repository suite passes with the fix.
 Cloud-fix deployment snapshot:
 
 ```text
-/Users/wudazi/RealSteamOnMac-Backups/cloud-fix-20260609T103853
+$HOME/RealSteamOnMac-Backups/cloud-fix-20260609T103853
 ```
 
 Its `SHA256SUMS` covers the prior support directory, launcher, Info.plist,
@@ -636,7 +636,7 @@ docs/evidence/people-playground-wined3d-live-2026-06-09.png
 
 The temporary GPTK bridge-isolation files were moved out of the live PFX and
 preserved at
-`/Users/wudazi/RealSteamOnMac-Backups/gptk-bridge-isolation-20260609T100600Z`.
+`$HOME/RealSteamOnMac-Backups/gptk-bridge-isolation-20260609T100600Z`.
 
 Operational note: a single diagnostic Wine registry query omitted
 `WINEPREFIX` and updated the pre-existing-or-unknown default `~/.wine` at
@@ -654,7 +654,7 @@ git show fe6d20d
 Current clean Steam backup:
 
 ```text
-/Users/wudazi/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z
+$HOME/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z
 ```
 
 The rollback is now automated-test verified, but still requires Steam to be

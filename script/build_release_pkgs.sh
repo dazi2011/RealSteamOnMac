@@ -5,6 +5,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 VERSION=$(tr -d '[:space:]' <"$ROOT/VERSION")
 OUTPUT="$ROOT/dist"
 BRIDGE=""
+DXMT_WINEMAC_COMPAT=""
 SIGNING_IDENTITY=${REALSTEAMONMAC_INSTALLER_IDENTITY:-}
 RELEASE_PRIVATE_KEY=${REALSTEAMONMAC_RELEASE_PRIVATE_KEY:-"$HOME/.config/RealSteamOnMac/release-ed25519-private.pem"}
 REPOSITORY=${REALSTEAMONMAC_REPOSITORY:-"dazi2011/RealSteamOnMac"}
@@ -12,7 +13,7 @@ STEAM_BUILD=${REALSTEAMONMAC_STEAM_BUILD:-"1780705203"}
 
 usage() {
     cat >&2 <<EOF
-usage: $0 [--output DIRECTORY] [--steamworks-bridge DIRECTORY] [--signing-identity NAME] [--release-private-key PATH]
+usage: $0 [--output DIRECTORY] [--steamworks-bridge DIRECTORY] [--dxmt-winemac-compat DIRECTORY] [--signing-identity NAME] [--release-private-key PATH]
 EOF
     exit 2
 }
@@ -27,6 +28,11 @@ while [ "$#" -gt 0 ]; do
         --steamworks-bridge)
             [ "$#" -ge 2 ] || usage
             BRIDGE=$2
+            shift 2
+            ;;
+        --dxmt-winemac-compat)
+            [ "$#" -ge 2 ] || usage
+            DXMT_WINEMAC_COMPAT=$2
             shift 2
             ;;
         --signing-identity)
@@ -60,11 +66,53 @@ fi
     echo "Steamworks bridge is missing: $BRIDGE" >&2
     exit 1
 }
+if [ -z "$DXMT_WINEMAC_COMPAT" ]; then
+    DXMT_WINEMAC_COMPAT="$ROOT/artifacts/dxmt-winemac-compat"
+fi
+if [ ! -f "$DXMT_WINEMAC_COMPAT/winemac.so" ] ||
+    [ ! -f "$DXMT_WINEMAC_COMPAT/librealsteamonmac_dxmt_macdrv_shim.dylib" ] ||
+    [ ! -f "$DXMT_WINEMAC_COMPAT/build-info.json" ] ||
+    [ ! -f "$DXMT_WINEMAC_COMPAT/SHA256SUMS" ]; then
+    [ "$DXMT_WINEMAC_COMPAT" = "$ROOT/artifacts/dxmt-winemac-compat" ] || {
+        echo "DXMT Wine compatibility package is incomplete: $DXMT_WINEMAC_COMPAT" >&2
+        exit 1
+    }
+    "$ROOT/script/build_dxmt_winemac_compat.sh" \
+        --output "$DXMT_WINEMAC_COMPAT"
+fi
+(
+    cd "$DXMT_WINEMAC_COMPAT"
+    shasum -a 256 -c SHA256SUMS
+)
+/usr/bin/python3 - "$DXMT_WINEMAC_COMPAT/build-info.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    value = json.load(stream)
+expected = {
+    "schema": 1,
+    "name": "RealSteamOnMac DXMT Wine macdrv compatibility",
+    "wine_commit": "2cac6ccf33c0807f374dc96f5a20e35a2da86157",
+    "wine_staging_commit": "f45e84d7a01a52d379e4003f03800c13875c69e9",
+    "minimum_macos": "10.15",
+    "dxmt_version": "0.80",
+}
+if value != expected:
+    raise SystemExit("DXMT Wine compatibility build metadata mismatch")
+PY
 if [ "${REALSTEAMONMAC_ALLOW_TEST_FIXTURES:-0}" != 1 ]; then
     file "$BRIDGE/x86_64-windows/lsteamclient.dll" |
         grep -q 'PE32+.*x86-64'
     file "$BRIDGE/x86_64-unix/lsteamclient.so" |
         grep -q 'Mach-O 64-bit.*x86_64'
+    file "$DXMT_WINEMAC_COMPAT/winemac.so" |
+        grep -q 'Mach-O 64-bit.*x86_64'
+    file "$DXMT_WINEMAC_COMPAT/librealsteamonmac_dxmt_macdrv_shim.dylib" |
+        grep -q 'Mach-O 64-bit.*x86_64'
+    codesign --verify "$DXMT_WINEMAC_COMPAT/winemac.so"
+    codesign --verify \
+        "$DXMT_WINEMAC_COMPAT/librealsteamonmac_dxmt_macdrv_shim.dylib"
 fi
 [ -f "$RELEASE_PRIVATE_KEY" ] || {
     echo "release signing key is missing: $RELEASE_PRIVATE_KEY" >&2
@@ -92,7 +140,7 @@ mkdir -p \
     "$PAYLOAD/artifacts/steam-launcher"
 ditto "$ROOT/artifacts/compat-gate-hook" \
     "$PAYLOAD/artifacts/compat-gate-hook"
-ditto "$ROOT/artifacts/dxmt-winemac-compat" \
+ditto "$DXMT_WINEMAC_COMPAT" \
     "$PAYLOAD/artifacts/dxmt-winemac-compat"
 ditto "$ROOT/artifacts/steam-launcher" \
     "$PAYLOAD/artifacts/steam-launcher"

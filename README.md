@@ -28,6 +28,23 @@ per-game GPTK, DXMT, DXVK macOS, or WineD3D selection.
 - Ships reversible install/uninstall PKGs and an Ed25519-signed update
   manifest.
 
+## Screenshots
+
+Select independently installed compatibility tools from the normal Steam
+Properties page:
+
+![Compatibility tool selector](docs/images/compatibility-tools.png)
+
+Use focused Steam-style dialogs for commands and Windows dependencies:
+
+| Run a command | Install Windows components |
+|---|---|
+| ![Run command dialog](docs/images/run-command.png) | ![Windows component dialog](docs/images/windows-components.png) |
+
+Container actions remain in a separate compact dialog:
+
+![Container operations dialog](docs/images/container-operations.png)
+
 ## Requirements
 
 - Apple Silicon Mac.

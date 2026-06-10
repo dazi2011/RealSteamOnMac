@@ -876,12 +876,30 @@ def apply_retina_mode(context, wine64, environment, enabled):
     os.chmod(marker_path, 0o600)
 
 
+def known_metalfx_digests(package, name):
+    windows_roots = (
+        package / "wine" / "gptk" / "lib" / "wine" / "x86_64-windows",
+        package / "wine" / "dxmt" / "lib" / "wine" / "x86_64-windows",
+    )
+    candidates = [root / name for root in windows_roots]
+    if name == "nvngx.dll":
+        candidates.append(windows_roots[0] / "nvngx-on-metalfx.dll")
+    return {
+        file_sha256(candidate)
+        for candidate in candidates
+        if candidate.is_file()
+    }
+
+
 def install_metalfx_files(
     context, package, wine_root, renderer, enabled
 ):
     marker_path = context["state"] / "metalfx-files.json"
     system32 = context["prefix"] / "drive_c" / "windows" / "system32"
     names = ("nvngx.dll", "nvapi64.dll")
+    known_digests = {
+        name: known_metalfx_digests(package, name) for name in names
+    }
     previous = {}
     if marker_path.is_file():
         try:
@@ -914,7 +932,10 @@ def install_metalfx_files(
             if not destination.exists():
                 continue
             current = file_sha256(destination)
-            if previous.get(name) != current:
+            if (
+                previous.get(name) != current
+                and current not in known_digests[name]
+            ):
                 raise RuntimeErrorWithContext(
                     "refusing to remove an unmanaged MetalFX file: "
                     f"{destination}"
@@ -953,7 +974,10 @@ def install_metalfx_files(
         if destination.exists():
             current = hashlib.sha256(destination.read_bytes()).hexdigest()
             if current != digest:
-                if previous.get(name) != current:
+                if (
+                    previous.get(name) != current
+                    and current not in known_digests[name]
+                ):
                     raise RuntimeErrorWithContext(
                         "refusing to replace an unmanaged MetalFX file: "
                         f"{destination}"

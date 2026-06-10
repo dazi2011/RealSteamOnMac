@@ -172,7 +172,7 @@ The old CrossOver `People Playground.app/Menu Helper` did not appear.
 Full pre-bridge PFX/runtime snapshot:
 
 ```text
-/Users/wudazi/RealSteamOnMac-Backups/pre-steamworks-bridge-20260609T051952Z
+$HOME/RealSteamOnMac-Backups/pre-steamworks-bridge-20260609T051952Z
 ```
 
 Installed runtime-manager rollback copies:

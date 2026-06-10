@@ -111,6 +111,6 @@ The two bridge DLLs temporarily moved during GPTK diagnosis were preserved
 outside the PFX at:
 
 ```text
-/Users/wudazi/RealSteamOnMac-Backups/
+$HOME/RealSteamOnMac-Backups/
   gptk-bridge-isolation-20260609T100600Z
 ```

@@ -844,7 +844,7 @@ LLDB 方案被否决，因为暂停主进程会让 `ipcserver` 断开；SteamCli
 - allowlist 仅有 AppID `1118200`。
 - `CompatToolMapping` 没有 AppID `0` 全局项。
 - 干净完整备份位于
-  `/Users/wudazi/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z`。
+  `$HOME/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z`。
 - `script/restore_steam_from_backup.sh` 会保留被替换文件，再恢复
   `Steam.app`、runtime 主程序和原版 `steamclient.dylib`。
 - Steam 更新后 UUID、偏移和签名全部视为未知，必须重新验证。
