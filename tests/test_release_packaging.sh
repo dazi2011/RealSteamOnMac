@@ -1,0 +1,125 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+TMP_ROOT=$(mktemp -d)
+trap 'rm -rf "$TMP_ROOT"' EXIT
+
+USER_NAME=$(id -un)
+HOME_ROOT="$TMP_ROOT/home"
+PAYLOAD="$TMP_ROOT/payload"
+CALLS="$TMP_ROOT/calls.log"
+mkdir -p \
+    "$HOME_ROOT" \
+    "$PAYLOAD/script" \
+    "$PAYLOAD/config" \
+    "$PAYLOAD/prebuilt/lsteamclient-proton11b5-macos2/x86_64-windows" \
+    "$PAYLOAD/prebuilt/lsteamclient-proton11b5-macos2/x86_64-unix"
+
+cp "$ROOT/script/check_for_updates.py" "$PAYLOAD/script/check_for_updates.py"
+cp "$ROOT/config/release-public-key.hex" \
+    "$PAYLOAD/config/release-public-key.hex"
+cp "$ROOT/VERSION" "$PAYLOAD/VERSION"
+printf 'bridge\n' \
+    >"$PAYLOAD/prebuilt/lsteamclient-proton11b5-macos2/x86_64-windows/lsteamclient.dll"
+printf 'bridge\n' \
+    >"$PAYLOAD/prebuilt/lsteamclient-proton11b5-macos2/x86_64-unix/lsteamclient.so"
+cp /usr/bin/true \
+    "$PAYLOAD/prebuilt/realsteamonmac-verify-signature"
+
+cat >"$PAYLOAD/script/install_realsteamonmac.sh" <<EOF
+#!/bin/sh
+printf '%s\\n' "\$*" >"$CALLS"
+while [ "\$#" -gt 0 ]; do
+    if [ "\$1" = --support-root ]; then
+        mkdir -p "\$2"
+        break
+    fi
+    shift
+done
+EOF
+chmod +x "$PAYLOAD/script/install_realsteamonmac.sh"
+
+cat >"$TMP_ROOT/runner" <<'EOF'
+#!/bin/sh
+exec "$@"
+EOF
+chmod +x "$TMP_ROOT/runner"
+
+env \
+    REALSTEAMONMAC_PACKAGE_PAYLOAD_ROOT="$PAYLOAD" \
+    REALSTEAMONMAC_PACKAGE_USER="$USER_NAME" \
+    REALSTEAMONMAC_PACKAGE_HOME="$HOME_ROOT" \
+    REALSTEAMONMAC_PACKAGE_RUNNER="$TMP_ROOT/runner" \
+    "$ROOT/packaging/install/scripts/postinstall"
+
+grep -q -- '--quit-steam' "$CALLS"
+grep -q -- '--without-gptk' "$CALLS"
+grep -q -- "--steamworks-bridge $PAYLOAD/prebuilt/lsteamclient-proton11b5-macos2" \
+    "$CALLS"
+SUPPORT="$HOME_ROOT/Library/Application Support/RealSteamOnMac"
+test -x "$SUPPORT/bin/check-for-updates"
+test -x "$SUPPORT/bin/verify-release-signature"
+test -f "$SUPPORT/release-public-key.hex"
+
+rm -rf "$PAYLOAD"
+mkdir -p "$PAYLOAD/script"
+cat >"$PAYLOAD/script/uninstall_realsteamonmac.sh" <<EOF
+#!/bin/sh
+printf '%s\\n' "\$*" >"$CALLS"
+EOF
+chmod +x "$PAYLOAD/script/uninstall_realsteamonmac.sh"
+
+env \
+    REALSTEAMONMAC_PACKAGE_PAYLOAD_ROOT="$PAYLOAD" \
+    REALSTEAMONMAC_PACKAGE_USER="$USER_NAME" \
+    REALSTEAMONMAC_PACKAGE_HOME="$HOME_ROOT" \
+    REALSTEAMONMAC_PACKAGE_RUNNER="$TMP_ROOT/runner" \
+    "$ROOT/packaging/uninstall/scripts/postinstall"
+
+grep -q -- '--quit-steam' "$CALLS"
+grep -q -- "--support-root $SUPPORT" "$CALLS"
+test ! -e "$PAYLOAD"
+
+FAKE_BRIDGE="$TMP_ROOT/bridge"
+mkdir -p "$FAKE_BRIDGE/x86_64-windows" "$FAKE_BRIDGE/x86_64-unix"
+printf 'fixture\n' >"$FAKE_BRIDGE/x86_64-windows/lsteamclient.dll"
+printf 'fixture\n' >"$FAKE_BRIDGE/x86_64-unix/lsteamclient.so"
+DIST="$TMP_ROOT/dist"
+env REALSTEAMONMAC_ALLOW_TEST_FIXTURES=1 \
+    "$ROOT/script/build_release_pkgs.sh" \
+        --output "$DIST" \
+        --steamworks-bridge "$FAKE_BRIDGE" >/dev/null
+
+for package in \
+    RealSteamOnMac-Install.pkg \
+    RealSteamOnMac-Uninstall.pkg; do
+    test -f "$DIST/$package"
+    pkgutil --payload-files "$DIST/$package" >/dev/null
+done
+(cd "$DIST" && shasum -a 256 -c SHA256SUMS)
+/usr/bin/python3 - "$ROOT" "$DIST/release-manifest.json" <<'PY'
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location(
+    "updates", root / "script/check_for_updates.py"
+)
+updates = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(updates)
+with open(sys.argv[2], encoding="utf-8") as stream:
+    value = json.load(stream)
+updates.validate_manifest(value, "dazi2011/RealSteamOnMac")
+PY
+/opt/homebrew/bin/openssl pkeyutl \
+    -verify \
+    -rawin \
+    -pubin \
+    -inkey "$HOME/.config/RealSteamOnMac/release-ed25519-public.pem" \
+    -in "$DIST/release-manifest.json" \
+    -sigfile "$DIST/release-manifest.json.sig"
+
+echo "release packaging contract: PASS"

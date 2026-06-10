@@ -1,0 +1,52 @@
+#!/bin/sh
+set -eu
+
+PAYLOAD_ROOT=${REALSTEAMONMAC_PACKAGE_PAYLOAD_ROOT:-"/Library/Application Support/RealSteamOnMac/Installer"}
+PACKAGE_USER=${REALSTEAMONMAC_PACKAGE_USER:-}
+PACKAGE_HOME=${REALSTEAMONMAC_PACKAGE_HOME:-}
+PACKAGE_RUNNER=${REALSTEAMONMAC_PACKAGE_RUNNER:-}
+
+if [ -z "$PACKAGE_USER" ]; then
+    PACKAGE_USER=$(/usr/bin/stat -f '%Su' /dev/console)
+fi
+case "$PACKAGE_USER" in
+    ""|root|loginwindow)
+        echo "no interactive macOS user is available" >&2
+        exit 1
+        ;;
+esac
+if [ -z "$PACKAGE_HOME" ]; then
+    PACKAGE_HOME=$(
+        /usr/bin/dscl . -read "/Users/$PACKAGE_USER" NFSHomeDirectory |
+            awk '{print $2}'
+    )
+fi
+
+SUPPORT_ROOT="$PACKAGE_HOME/Library/Application Support/RealSteamOnMac"
+UNINSTALLER="$PAYLOAD_ROOT/script/uninstall_realsteamonmac.sh"
+[ -x "$UNINSTALLER" ] || {
+    echo "packaged uninstaller is missing" >&2
+    exit 1
+}
+
+set -- \
+    "$UNINSTALLER" \
+    --quit-steam \
+    --support-root "$SUPPORT_ROOT" \
+    --hold-root "$PACKAGE_HOME/RealSteamOnMac-Rollback"
+
+if [ -n "$PACKAGE_RUNNER" ]; then
+    "$PACKAGE_RUNNER" "$@"
+else
+    uid=$(/usr/bin/id -u "$PACKAGE_USER")
+    /bin/launchctl asuser "$uid" \
+        /usr/bin/sudo -u "$PACKAGE_USER" \
+        /usr/bin/env \
+            HOME="$PACKAGE_HOME" \
+            USER="$PACKAGE_USER" \
+            LOGNAME="$PACKAGE_USER" \
+            "$@"
+fi
+
+rm -rf "$PAYLOAD_ROOT"
+exit 0

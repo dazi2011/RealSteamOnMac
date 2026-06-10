@@ -1,0 +1,108 @@
+#!/bin/sh
+set -eu
+
+PAYLOAD_ROOT=${REALSTEAMONMAC_PACKAGE_PAYLOAD_ROOT:-"/Library/Application Support/RealSteamOnMac/Installer"}
+PACKAGE_USER=${REALSTEAMONMAC_PACKAGE_USER:-}
+PACKAGE_HOME=${REALSTEAMONMAC_PACKAGE_HOME:-}
+PACKAGE_RUNNER=${REALSTEAMONMAC_PACKAGE_RUNNER:-}
+
+if [ -z "$PACKAGE_USER" ]; then
+    PACKAGE_USER=$(/usr/bin/stat -f '%Su' /dev/console)
+fi
+case "$PACKAGE_USER" in
+    ""|root|loginwindow)
+        echo "no interactive macOS user is available" >&2
+        exit 1
+        ;;
+esac
+if [ -z "$PACKAGE_HOME" ]; then
+    PACKAGE_HOME=$(
+        /usr/bin/dscl . -read "/Users/$PACKAGE_USER" NFSHomeDirectory |
+            awk '{print $2}'
+    )
+fi
+[ -d "$PACKAGE_HOME" ] || {
+    echo "interactive user home is unavailable: $PACKAGE_HOME" >&2
+    exit 1
+}
+
+INSTALLER="$PAYLOAD_ROOT/script/install_realsteamonmac.sh"
+BRIDGE="$PAYLOAD_ROOT/prebuilt/lsteamclient-proton11b5-macos2"
+VERIFIER="$PAYLOAD_ROOT/prebuilt/realsteamonmac-verify-signature"
+[ -x "$INSTALLER" ] || {
+    echo "packaged installer is missing" >&2
+    exit 1
+}
+[ -f "$BRIDGE/x86_64-windows/lsteamclient.dll" ] || {
+    echo "packaged Steamworks bridge is incomplete" >&2
+    exit 1
+}
+[ -x "$VERIFIER" ] || {
+    echo "packaged release verifier is missing" >&2
+    exit 1
+}
+
+STEAM_APP="/Applications/Steam.app"
+RUNTIME_APP="$PACKAGE_HOME/Library/Application Support/Steam/Steam.AppBundle/Steam"
+SUPPORT_ROOT="$PACKAGE_HOME/Library/Application Support/RealSteamOnMac"
+COMPAT_TOOLS="$PACKAGE_HOME/Library/Application Support/Steam/compatibilitytools.d"
+CACHE_DIR="$PACKAGE_HOME/Library/Caches/RealSteamOnMac/downloads"
+BACKUP_ROOT="$PACKAGE_HOME/RealSteamOnMac-Backups"
+GPTK_DMG="$PACKAGE_HOME/Downloads/Game_Porting_Toolkit_3.0.dmg"
+LOG_ROOT="$PACKAGE_HOME/Library/Logs/RealSteamOnMac"
+LOG_FILE="$LOG_ROOT/package-install.log"
+mkdir -p "$LOG_ROOT"
+chown "$PACKAGE_USER" "$LOG_ROOT"
+
+set -- \
+    "$INSTALLER" \
+    --quit-steam \
+    --steam-app "$STEAM_APP" \
+    --runtime-app "$RUNTIME_APP" \
+    --support-root "$SUPPORT_ROOT" \
+    --compat-tools-root "$COMPAT_TOOLS" \
+    --cache-dir "$CACHE_DIR" \
+    --backup-root "$BACKUP_ROOT" \
+    --steamworks-bridge "$BRIDGE"
+if [ -f "$GPTK_DMG" ]; then
+    set -- "$@" --gptk-dmg "$GPTK_DMG"
+else
+    set -- "$@" --without-gptk
+fi
+
+run_as_user() {
+    if [ -n "$PACKAGE_RUNNER" ]; then
+        "$PACKAGE_RUNNER" "$@"
+        return
+    fi
+    uid=$(/usr/bin/id -u "$PACKAGE_USER")
+    /bin/launchctl asuser "$uid" \
+        /usr/bin/sudo -u "$PACKAGE_USER" \
+        /usr/bin/env \
+            HOME="$PACKAGE_HOME" \
+            USER="$PACKAGE_USER" \
+            LOGNAME="$PACKAGE_USER" \
+            REALSTEAMONMAC_HOOK_BUILDER=/usr/bin/true \
+            REALSTEAMONMAC_LAUNCHER_BUILDER=/usr/bin/true \
+            "$@"
+}
+
+run_as_user "$@" >>"$LOG_FILE" 2>&1
+
+BIN_ROOT="$SUPPORT_ROOT/bin"
+mkdir -p "$BIN_ROOT"
+cp "$PAYLOAD_ROOT/script/check_for_updates.py" \
+    "$BIN_ROOT/check-for-updates"
+cp "$VERIFIER" "$BIN_ROOT/verify-release-signature"
+cp "$PAYLOAD_ROOT/config/release-public-key.hex" \
+    "$SUPPORT_ROOT/release-public-key.hex"
+cp "$PAYLOAD_ROOT/VERSION" "$SUPPORT_ROOT/VERSION"
+chmod 0755 \
+    "$BIN_ROOT/check-for-updates" \
+    "$BIN_ROOT/verify-release-signature"
+chmod 0644 \
+    "$SUPPORT_ROOT/release-public-key.hex" \
+    "$SUPPORT_ROOT/VERSION"
+chown -R "$PACKAGE_USER" "$SUPPORT_ROOT"
+
+exit 0

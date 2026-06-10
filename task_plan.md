@@ -108,20 +108,20 @@ Phase 7: Steam-native compatibility UX and public release engineering
 
 ### Phase 7: Steam-Native Compatibility UX And Public Release
 
-- [ ] Remove the weak cross-window control mount that can cover library pages.
-- [ ] Use Steam's standard `compatibilitytools.d` directory as the canonical
+- [x] Remove the weak cross-window control mount that can cover library pages.
+- [x] Use Steam's standard `compatibilitytools.d` directory as the canonical
       side-by-side compatibility tool repository.
-- [ ] Scan validated tool metadata without enabling the cloud-breaking native
+- [x] Scan validated tool metadata without enabling the cloud-breaking native
       startup discovery path.
-- [ ] Persist the selected tool identity and immutable runtime package per game.
-- [ ] Replace the branded dashboard with compact Steam-style compatibility
+- [x] Persist the selected tool identity and immutable runtime package per game.
+- [x] Replace the branded dashboard with compact Steam-style compatibility
       rows and secondary action dialogs.
-- [ ] Add capability-aware DXMT MetalFX support and version/runtime validation.
-- [ ] Default new PFX containers to Windows 10 and retain real MSync semantics.
-- [ ] Expand reviewed dependency metadata without copying proprietary
+- [x] Add capability-aware DXMT MetalFX support and version/runtime validation.
+- [x] Default new PFX containers to Windows 10 and retain real MSync semantics.
+- [x] Expand reviewed dependency metadata without copying proprietary
       CrossOver payloads.
-- [ ] Build transactional install, uninstall, and update PKG workflows.
-- [ ] Rewrite bilingual product documentation and move project history out of
+- [x] Build transactional install, uninstall, and update PKG workflows.
+- [x] Rewrite bilingual product documentation and move project history out of
       the README.
 - [ ] Complete clean install, live Steam, uninstall, rollback, and release
       verification before publication.

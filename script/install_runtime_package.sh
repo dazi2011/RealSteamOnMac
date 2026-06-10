@@ -11,10 +11,13 @@ CACHE_DIR="${REALSTEAMONMAC_CACHE_DIR:-$HOME/Library/Caches/RealSteamOnMac/downl
 SUPPORT_ROOT="${REALSTEAMONMAC_SUPPORT_ROOT:-}"
 GPTK_DMG=""
 GPTK_REDIST=""
+WITHOUT_GPTK=false
 STEAMWORKS_BRIDGE=""
 DXMT_WINEMAC_COMPAT="$ROOT/artifacts/dxmt-winemac-compat"
 
-PACKAGE_ID="gptk3.0-3-wine11.10-dxmt0.80-dxmtmac1-dxvkmacos1.10.3"
+FULL_PACKAGE_ID="gptk3.0-3-wine11.10-dxmt0.80-dxmtmac1-dxvkmacos1.10.3"
+OPEN_PACKAGE_ID="wine11.10-dxmt0.80-dxmtmac1-dxvkmacos1.10.3"
+PACKAGE_ID="$FULL_PACKAGE_ID"
 STEAMWORKS_PACKAGE_SUFFIX="-lsteamclient-proton11b5-macos2"
 STEAMWORKS_PROTON_COMMIT="25880e88befb52c5aa7ff162c5b00b6b8825e494"
 DXMT_WINE_COMMIT="2cac6ccf33c0807f374dc96f5a20e35a2da86157"
@@ -40,6 +43,7 @@ usage() {
     cat >&2 <<EOF
 usage: $0 --gptk-dmg PATH [--dxmt-winemac-compat DIRECTORY] [--steamworks-bridge DIRECTORY] [--runtime-root DIRECTORY] [--support-root DIRECTORY] [--cache-dir DIRECTORY]
        $0 --gptk-redist DIRECTORY [--dxmt-winemac-compat DIRECTORY] [--steamworks-bridge DIRECTORY] [--runtime-root DIRECTORY] [--support-root DIRECTORY] [--cache-dir DIRECTORY]
+       $0 --without-gptk [--dxmt-winemac-compat DIRECTORY] [--steamworks-bridge DIRECTORY] [--runtime-root DIRECTORY] [--support-root DIRECTORY] [--cache-dir DIRECTORY]
 EOF
     exit 2
 }
@@ -55,6 +59,10 @@ while [ "$#" -gt 0 ]; do
             [ "$#" -ge 2 ] || usage
             GPTK_REDIST=$2
             shift 2
+            ;;
+        --without-gptk)
+            WITHOUT_GPTK=true
+            shift
             ;;
         --steamworks-bridge)
             [ "$#" -ge 2 ] || usage
@@ -90,8 +98,16 @@ done
 if [ -n "$GPTK_DMG" ] && [ -n "$GPTK_REDIST" ]; then
     usage
 fi
-if [ -z "$GPTK_DMG" ] && [ -z "$GPTK_REDIST" ]; then
+if [ "$WITHOUT_GPTK" = true ] &&
+    { [ -n "$GPTK_DMG" ] || [ -n "$GPTK_REDIST" ]; }; then
     usage
+fi
+if [ "$WITHOUT_GPTK" = false ] &&
+    [ -z "$GPTK_DMG" ] && [ -z "$GPTK_REDIST" ]; then
+    usage
+fi
+if [ "$WITHOUT_GPTK" = true ]; then
+    PACKAGE_ID="$OPEN_PACKAGE_ID"
 fi
 test -f "$RUNTIME_SOURCE"
 test -f "$DEPENDENCY_CATALOG_SOURCE"
@@ -107,6 +123,10 @@ fi
 if [ -n "$STEAMWORKS_BRIDGE" ]; then
     test -f "$STEAMWORKS_BRIDGE/x86_64-windows/lsteamclient.dll"
     test -f "$STEAMWORKS_BRIDGE/x86_64-unix/lsteamclient.so"
+    file "$STEAMWORKS_BRIDGE/x86_64-windows/lsteamclient.dll" |
+        grep -q 'PE32+.*x86-64'
+    file "$STEAMWORKS_BRIDGE/x86_64-unix/lsteamclient.so" |
+        grep -q 'Mach-O 64-bit.*x86_64'
     PACKAGE_ID="${PACKAGE_ID}${STEAMWORKS_PACKAGE_SUFFIX}"
 fi
 if [ ! -f "$DXMT_WINEMAC_COMPAT/winemac.so" ] ||
@@ -216,12 +236,15 @@ first_directory() {
     printf '%s\n' "$result"
 }
 
-GPTK_SOURCE=$(fetch_and_verify "$GPTK_ARCHIVE" "$GPTK_URL" "$GPTK_SHA256")
+GPTK_SOURCE=""
+if [ "$WITHOUT_GPTK" = false ]; then
+    GPTK_SOURCE=$(fetch_and_verify "$GPTK_ARCHIVE" "$GPTK_URL" "$GPTK_SHA256")
+fi
 WINE_SOURCE=$(fetch_and_verify "$WINE_ARCHIVE" "$WINE_URL" "$WINE_SHA256")
 DXMT_SOURCE=$(fetch_and_verify "$DXMT_ARCHIVE" "$DXMT_URL" "$DXMT_SHA256")
 DXVK_SOURCE=$(fetch_and_verify "$DXVK_ARCHIVE" "$DXVK_URL" "$DXVK_SHA256")
 
-if [ -z "$GPTK_REDIST" ]; then
+if [ "$WITHOUT_GPTK" = false ] && [ -z "$GPTK_REDIST" ]; then
     OUTER_MOUNT=$(mktemp -d "/tmp/realsteamonmac-gptk-outer.XXXXXX")
     INNER_MOUNT=$(mktemp -d "/tmp/realsteamonmac-gptk-inner.XXXXXX")
     hdiutil attach "$GPTK_DMG" -readonly -nobrowse -mountpoint "$OUTER_MOUNT" -quiet
@@ -234,21 +257,28 @@ if [ -z "$GPTK_REDIST" ]; then
     GPTK_REDIST="$INNER_MOUNT/redist"
 fi
 
-test -d "$GPTK_REDIST/lib/external/D3DMetal.framework"
-test -f "$GPTK_REDIST/lib/wine/x86_64-windows/d3d11.dll"
-test -f "$GPTK_REDIST/lib/wine/x86_64-windows/nvngx-on-metalfx.dll"
+if [ "$WITHOUT_GPTK" = false ]; then
+    test -d "$GPTK_REDIST/lib/external/D3DMetal.framework"
+    test -f "$GPTK_REDIST/lib/wine/x86_64-windows/d3d11.dll"
+    test -f "$GPTK_REDIST/lib/wine/x86_64-windows/nvngx-on-metalfx.dll"
+fi
 
 PACKAGE="$STAGING/package"
 mkdir -p "$PACKAGE/wine" "$PACKAGE/renderers" "$PACKAGE/licenses"
 
-mkdir -p "$STAGING/gptk-source" "$STAGING/wine-source"
-tar -xJf "$GPTK_SOURCE" -C "$STAGING/gptk-source"
+mkdir -p "$STAGING/wine-source"
+if [ "$WITHOUT_GPTK" = false ]; then
+    mkdir -p "$STAGING/gptk-source"
+    tar -xJf "$GPTK_SOURCE" -C "$STAGING/gptk-source"
+fi
 tar -xJf "$WINE_SOURCE" -C "$STAGING/wine-source"
-GPTK_WINE=$(first_directory "$STAGING/gptk-source" '*/Game Porting Toolkit.app/Contents/Resources/wine')
 STAGING_WINE=$(first_directory "$STAGING/wine-source" '*/Wine Staging.app/Contents/Resources/wine')
 
-clone_tree "$GPTK_WINE" "$PACKAGE/wine/gptk"
-ditto "$GPTK_REDIST/lib" "$PACKAGE/wine/gptk/lib"
+if [ "$WITHOUT_GPTK" = false ]; then
+    GPTK_WINE=$(first_directory "$STAGING/gptk-source" '*/Game Porting Toolkit.app/Contents/Resources/wine')
+    clone_tree "$GPTK_WINE" "$PACKAGE/wine/gptk"
+    ditto "$GPTK_REDIST/lib" "$PACKAGE/wine/gptk/lib"
+fi
 clone_tree "$STAGING_WINE" "$PACKAGE/wine/wined3d"
 if [ ! -e "$PACKAGE/wine/wined3d/bin/wine64" ]; then
     test -x "$PACKAGE/wine/wined3d/bin/wine"
@@ -306,15 +336,23 @@ for file in "$DXVK_ROOT/i386-windows/"*.dll; do
     cp "$file" "$PACKAGE/wine/dxvk/lib/wine/i386-windows/"
 done
 
-ditto "$GPTK_REDIST/License.rtf" "$PACKAGE/licenses/Apple-GPTK-License.rtf" 2>/dev/null || \
-    ditto "$(dirname "$GPTK_REDIST")/License.rtf" "$PACKAGE/licenses/Apple-GPTK-License.rtf"
-ditto "$(dirname "$GPTK_REDIST")/Acknowledgements.rtf" "$PACKAGE/licenses/Apple-GPTK-Acknowledgements.rtf"
+if [ "$WITHOUT_GPTK" = false ]; then
+    ditto "$GPTK_REDIST/License.rtf" "$PACKAGE/licenses/Apple-GPTK-License.rtf" 2>/dev/null || \
+        ditto "$(dirname "$GPTK_REDIST")/License.rtf" "$PACKAGE/licenses/Apple-GPTK-License.rtf"
+    ditto "$(dirname "$GPTK_REDIST")/Acknowledgements.rtf" "$PACKAGE/licenses/Apple-GPTK-Acknowledgements.rtf"
+fi
 
-for renderer in gptk dxmt dxvk wined3d; do
+RENDERERS="dxmt dxvk wined3d"
+if [ "$WITHOUT_GPTK" = false ]; then
+    RENDERERS="gptk $RENDERERS"
+fi
+for renderer in $RENDERERS; do
     test -x "$PACKAGE/wine/$renderer/bin/wine64"
     test -x "$PACKAGE/wine/$renderer/bin/wineserver"
 done
-test -f "$PACKAGE/wine/gptk/lib/external/D3DMetal.framework/Versions/A/D3DMetal"
+if [ "$WITHOUT_GPTK" = false ]; then
+    test -f "$PACKAGE/wine/gptk/lib/external/D3DMetal.framework/Versions/A/D3DMetal"
+fi
 test -f "$PACKAGE/wine/dxmt/lib/wine/x86_64-unix/winemetal.so"
 test -f "$PACKAGE/wine/dxmt/lib/wine/x86_64-unix/winemac.so"
 test -f "$PACKAGE/wine/dxmt/lib/librealsteamonmac_dxmt_macdrv_shim.dylib"
@@ -332,6 +370,7 @@ fi
     "$PACKAGE_ID" \
     "$STEAMWORKS_BRIDGE" \
     "$STEAMWORKS_PROTON_COMMIT" \
+    "$WITHOUT_GPTK" \
     "$PACKAGE/dxmt-winemac-compat/build-info.json" <<'PY'
 import json
 import sys
@@ -341,6 +380,7 @@ import sys
     package_id,
     steamworks_bridge,
     proton_commit,
+    without_gptk,
     dxmt_build_info_path,
 ) = sys.argv[1:]
 with open(dxmt_build_info_path, encoding="utf-8") as stream:
@@ -349,10 +389,6 @@ manifest = {
     "schema": 1,
     "package_id": package_id,
     "renderers": {
-        "gptk": {
-            "wine": "game-porting-toolkit-3.0-3",
-            "graphics": "Apple Game Porting Toolkit 3.0",
-        },
         "dxmt": {
             "wine": "wine-staging-11.10",
             "graphics": "DXMT v0.80 builtin",
@@ -382,6 +418,11 @@ manifest = {
         ),
     },
 }
+if without_gptk != "true":
+    manifest["renderers"]["gptk"] = {
+        "wine": "game-porting-toolkit-3.0-3",
+        "graphics": "Apple Game Porting Toolkit 3.0",
+    }
 if steamworks_bridge:
     manifest["steamworks_bridge"] = {
         "name": (
@@ -400,10 +441,8 @@ PY
 
 (
     cd "$PACKAGE"
-    shasum -a 256 \
+    CHECKSUM_FILES="\
         manifest.json \
-        wine/gptk/bin/wine64 \
-        wine/gptk/lib/external/D3DMetal.framework/Versions/A/D3DMetal \
         wine/dxmt/bin/wine64 \
         wine/dxmt/lib/wine/x86_64-unix/winemac.so \
         wine/dxmt/lib/wine/x86_64-unix/winemetal.so \
@@ -412,8 +451,14 @@ PY
         wine/dxvk/bin/wine64 \
         wine/dxvk/lib/wine/x86_64-windows/d3d11.dll \
         wine/wined3d/bin/wine64 \
-        wine/wined3d/lib/wine/x86_64-windows/wined3d.dll \
-        >SHA256SUMS
+        wine/wined3d/lib/wine/x86_64-windows/wined3d.dll"
+    if [ "$WITHOUT_GPTK" = false ]; then
+        CHECKSUM_FILES="$CHECKSUM_FILES \
+            wine/gptk/bin/wine64 \
+            wine/gptk/lib/external/D3DMetal.framework/Versions/A/D3DMetal"
+    fi
+    # shellcheck disable=SC2086
+    shasum -a 256 $CHECKSUM_FILES >SHA256SUMS
     if [ -n "$STEAMWORKS_BRIDGE" ]; then
         shasum -a 256 \
             steamworks/x86_64-windows/lsteamclient.dll \

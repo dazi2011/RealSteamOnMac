@@ -126,4 +126,30 @@ codesign -d --entitlements :- \
     "$RUNTIME_APP/Contents/MacOS/steam_osx" 2>/dev/null |
     grep -q 'com.apple.security.cs.disable-library-validation'
 
+OPEN_PACKAGE="open-runtime-test"
+mkdir -p "$SUPPORT/runtimes/packages/$OPEN_PACKAGE"
+printf '%s\n' \
+    '{"schema":1,"package_id":"open-runtime-test","renderers":{"dxmt":{},"dxvk":{},"wined3d":{}}}' \
+    >"$SUPPORT/runtimes/packages/$OPEN_PACKAGE/manifest.json"
+ln -sfn "packages/$OPEN_PACKAGE" "$SUPPORT/runtimes/current"
+
+"$ROOT/script/install_steam_injection.sh" \
+    --clean-backup "$BACKUP" \
+    --steam-app "$STEAM_APP" \
+    --runtime-app "$RUNTIME_APP" \
+    --support-root "$SUPPORT" \
+    --compat-tools-root "$COMPAT_TOOLS" >/dev/null
+
+test ! -e "$COMPAT_TOOLS/realsteamonmac-gptk"
+for tool in dxmt dxvk wined3d; do
+    grep -q '"runtime_package": "open-runtime-test"' \
+        "$COMPAT_TOOLS/realsteamonmac-$tool/realsteamonmac.json"
+done
+test -f "$COMPAT_TOOLS/user-custom-tool/marker"
+if grep -q '"strToolName":"realsteamonmac-gptk"' \
+    "$RUNTIME_APP/Contents/MacOS/steamui/realsteamonmac/config.js"; then
+    echo "GPTK must not be exposed by an open-only runtime" >&2
+    exit 1
+fi
+
 echo "Steam injection installer contract: PASS"

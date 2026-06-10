@@ -226,12 +226,72 @@ DEPENDENCY_TARGET="$SUPPORT_ROOT/dependencies/catalog.json"
 cp "$HOOK_SOURCE" "$HOOK_TARGET"
 cp "$ENGINE_SOURCE" "$ENGINE_TARGET"
 mkdir -p "$COMPAT_TOOLS_ROOT"
+ACTIVE_RUNTIME_MANIFEST="$SUPPORT_ROOT/runtimes/current/manifest.json"
 for tool in "$COMPAT_SOURCE"/*; do
     [ -f "$tool/run" ] || continue
     name=$(basename "$tool")
     rm -rf "$COMPAT_TOOLS_ROOT/$name"
-    cp -R "$tool" "$COMPAT_TOOLS_ROOT/$name"
-    chmod +x "$COMPAT_TOOLS_ROOT/$name/run"
+done
+for tool in "$COMPAT_SOURCE"/*; do
+    [ -f "$tool/run" ] || continue
+    name=$(basename "$tool")
+    target="$COMPAT_TOOLS_ROOT/$name"
+    if [ -f "$ACTIVE_RUNTIME_MANIFEST" ]; then
+        supported=$(/usr/bin/python3 - \
+            "$tool/realsteamonmac.json" \
+            "$ACTIVE_RUNTIME_MANIFEST" <<'PY'
+import json
+import sys
+
+metadata_path, manifest_path = sys.argv[1:]
+with open(metadata_path, encoding="utf-8") as stream:
+    metadata = json.load(stream)
+with open(manifest_path, encoding="utf-8") as stream:
+    manifest = json.load(stream)
+renderers = manifest.get("renderers")
+if not isinstance(renderers, dict):
+    raise SystemExit("active runtime manifest has no renderer map")
+print("true" if metadata.get("renderer") in renderers else "false")
+PY
+        )
+        [ "$supported" = true ] || continue
+    fi
+    cp -R "$tool" "$target"
+    if [ -f "$ACTIVE_RUNTIME_MANIFEST" ]; then
+        /usr/bin/python3 - \
+            "$target/realsteamonmac.json" \
+            "$ACTIVE_RUNTIME_MANIFEST" <<'PY'
+import json
+import os
+import sys
+import tempfile
+
+metadata_path, manifest_path = sys.argv[1:]
+with open(metadata_path, encoding="utf-8") as stream:
+    metadata = json.load(stream)
+with open(manifest_path, encoding="utf-8") as stream:
+    manifest = json.load(stream)
+package_id = manifest.get("package_id")
+if not isinstance(package_id, str) or not package_id:
+    raise SystemExit("active runtime package identifier is invalid")
+metadata["runtime_package"] = package_id
+directory = os.path.dirname(metadata_path)
+descriptor, temporary = tempfile.mkstemp(
+    prefix=".realsteamonmac.json.",
+    dir=directory,
+)
+try:
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        json.dump(metadata, stream, indent=2, sort_keys=True)
+        stream.write("\n")
+    os.chmod(temporary, 0o644)
+    os.replace(temporary, metadata_path)
+finally:
+    if os.path.exists(temporary):
+        os.unlink(temporary)
+PY
+    fi
+    chmod +x "$target/run"
 done
 codesign --force --sign - "$HOOK_TARGET"
 codesign --force --sign - "$ENGINE_TARGET"

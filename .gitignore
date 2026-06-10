@@ -4,5 +4,6 @@
 .claude/
 artifacts/
 backups/
+dist/
 __pycache__/
 *.pyc

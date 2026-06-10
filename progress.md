@@ -579,11 +579,11 @@
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | The formal DXMT package and per-game Steam compatibility controls are active and accepted in the user's existing Steam. |
-| Where am I going? | The requested implementation and verification flow is complete. |
+| Where am I? | The Steam-native UI, multi-version tool catalog, reversible installer, updater, and release documentation are implemented and under final acceptance. |
+| Where am I going? | Complete full regression, live PKG install/uninstall/reinstall, screenshots, and public release verification. |
 | What's the goal? | Native macOS Steam downloads and launches Windows-only games through independent selectable compatibility tools. |
 | What have I learned? | A shared PFX needs renderer-aware ABI reconciliation: GPTK Wine 7.7 must not inherit the Wine 11 Proton bridge. |
-| What have I done? | Completed dynamic downloads, controls, actions, dependencies, one-click installation, and live GPTK/WineD3D/DXMT acceptance with Cloud intact. |
+| What have I done? | Completed dynamic downloads, controls, actions, dependencies, transactional packaging, signed update manifests, and prior live GPTK/WineD3D/DXMT acceptance with Cloud intact. |
 
 ## 2026-06-10 Phase 7 Start
 
@@ -636,3 +636,25 @@
   known files safely and remove them when the feature is disabled.
 - Full checkpoint regression: 67 Node tests, 52 Python tests, and 25 shell
   contracts pass.
+- Added an open-runtime installation mode that does not require or redistribute
+  Apple GPTK/D3DMetal. When the user's official
+  `~/Downloads/Game_Porting_Toolkit_3.0.dmg` is present, GPTK is imported
+  locally; otherwise only DXMT, DXVK macOS, and WineD3D are exposed.
+- The top-level installer now stops Steam on explicit request, reuses a prior
+  clean rollback snapshot during updates, creates a new clean backup on first
+  install, and writes a private `install-state.json`.
+- Added a reversible uninstaller that restores Steam before moving only
+  metadata-hash-matched first-party tools. User tools, game depots, and PFX
+  directories remain in place.
+- Added an Ed25519-signed release manifest, a CryptoKit verifier, a strict
+  updater, and install/uninstall PKG build scripts. The release private key is
+  stored outside the repository; only the public key is committed.
+- Isolated packaging contracts passed package expansion, SHA-256 verification,
+  release-manifest validation, signature verification, open-runtime filtering,
+  and recoverable uninstall tests.
+- Replaced the progress-style README with bilingual product documentation and
+  added project history, public interface, third-party notice, and license
+  files.
+- Updated the dependency catalog with current checksum-pinned Microsoft Visual
+  C++ x64 and x86 installers. DirectX and font recipes remain excluded until
+  their multi-stage installation and licensing can be represented safely.

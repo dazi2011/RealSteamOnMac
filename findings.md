@@ -470,6 +470,24 @@
   names, dependency graphs, and historical recipes, but many entries use old
   HTTP links, archives, or CodeWeavers mirrors and cannot be copied blindly
   into a public checksum-pinned catalog.
+- A public one-click package cannot legally bundle Apple D3DMetal. The release
+  installer therefore auto-detects a user-supplied official GPTK 3.0 image and
+  otherwise builds an open runtime containing Wine, DXMT, DXVK macOS, and
+  WineD3D.
+- The machine has no Developer ID Installer identity and no configured
+  `notarytool` profile. Release PKGs can be built and cryptographically hashed,
+  but they must be described as unsigned and unnotarized until those Apple
+  credentials exist.
+- Update metadata uses an independent Ed25519 key rather than conflating
+  package signing with release-integrity signing. The private key is mode 0600
+  under `~/.config/RealSteamOnMac`; only the raw public key is in the repo.
+- The uninstaller treats compatibility-tool metadata hashes as ownership
+  evidence. Modified or user-replaced directories are preserved instead of
+  being deleted.
+- Microsoft updated the current Visual C++ v14 redistributables. The reviewed
+  immutable downloads on 2026-06-10 are 18,731,856 bytes for x64 and 6,941,536
+  bytes for x86, with SHA-256 values recorded in
+  `config/dependencies.json`.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

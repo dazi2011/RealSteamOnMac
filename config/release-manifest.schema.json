@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "architecture": {
+      "const": "arm64"
+    },
+    "installer": {
+      "$ref": "#/$defs/artifact"
+    },
+    "minimum_macos": {
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "type": "string"
+    },
+    "published_utc": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "repository": {
+      "const": "dazi2011/RealSteamOnMac"
+    },
+    "schema": {
+      "const": 1
+    },
+    "supported_steam_builds": {
+      "items": {
+        "pattern": "^[0-9]{8,12}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "tag": {
+      "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "type": "string"
+    },
+    "uninstaller": {
+      "$ref": "#/$defs/artifact"
+    },
+    "version": {
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "version",
+    "tag",
+    "repository",
+    "published_utc",
+    "supported_steam_builds",
+    "minimum_macos",
+    "architecture",
+    "installer",
+    "uninstaller"
+  ],
+  "type": "object",
+  "$defs": {
+    "artifact": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^RealSteamOnMac-(Install|Uninstall)\\.pkg$",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "url": {
+          "format": "uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "sha256",
+        "size",
+        "url"
+      ],
+      "type": "object"
+    }
+  }
+}
