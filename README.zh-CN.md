@@ -7,7 +7,8 @@
 
 > [!WARNING]
 > 这是会修改特定 macOS Steam 构建的实验性软件。请保留安装器自动生成的回滚
-> 备份。当前版本仅验证 Steam Public Beta build `1780705203`。
+> 备份。`0.1.1` 已验证 Steam Public Beta build `1780705203` 和
+> `1780965181`。
 
 ## 主要功能
 
@@ -46,7 +47,7 @@
 
 - Apple Silicon Mac。
 - macOS 14 Sonoma 或更高版本。
-- 原生 macOS Steam，build `1780705203`。
+- 原生 macOS Steam，build `1780705203` 或 `1780965181`。
 - 网络连接和大约 3 GB 可用空间。
 - Apple Command Line Tools，包括 `/usr/bin/python3`。
 
@@ -89,13 +90,16 @@ WineD3D 11.10。公开包不会重新分发 Apple D3DMetal。
 ```bash
 "$HOME/Library/Application Support/RealSteamOnMac/bin/check-for-updates" \
   --current-version "$(<"$HOME/Library/Application Support/RealSteamOnMac/VERSION")" \
-  --steam-build 1780705203 \
+  --steam-build 1780965181 \
   --public-key "$HOME/Library/Application Support/RealSteamOnMac/release-public-key.hex" \
   --verifier "$HOME/Library/Application Support/RealSteamOnMac/bin/verify-release-signature" \
   --install
 ```
 
 未知 Steam build 会直接拒绝更新，直到发布对应兼容版本。
+在两个受支持的 Steam build 之间切换时，需要先卸载 RealSteamOnMac，
+让 Steam 完成更新，再重新安装。这样会为新构建生成匹配的干净回滚快照，
+不会复用旧 Steam build 的备份。
 
 ## 卸载
 
@@ -117,6 +121,8 @@ WineD3D 11.10。公开包不会重新分发 Apple D3DMetal。
 ## 已知问题
 
 - Steam 更新可能改变二进制或 UI 哈希；未知构建会被拒绝。
+- 在受支持的 Steam build 之间升级仍需执行卸载、Steam 更新、重新安装，
+  以保证回滚备份与当前运行时一致。
 - 游戏兼容性和性能取决于具体游戏与渲染器。
 - 首次安装需要下载并展开较大的 Wine 运行时。
 - GPTK 需要用户自行获得 Apple 官方镜像。

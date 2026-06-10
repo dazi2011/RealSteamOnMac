@@ -7,8 +7,8 @@ per-game GPTK, DXMT, DXVK macOS, or WineD3D selection.
 
 > [!WARNING]
 > This is experimental software that patches a specific macOS Steam build.
-> Keep the generated rollback backup. The current release is verified only
-> against Steam Public Beta build `1780705203`.
+> Keep the generated rollback backup. Release `0.1.1` is verified against
+> Steam Public Beta builds `1780705203` and `1780965181`.
 
 ## Highlights
 
@@ -49,7 +49,7 @@ Container actions remain in a separate compact dialog:
 
 - Apple Silicon Mac.
 - macOS 14 Sonoma or later.
-- Native macOS Steam with build `1780705203`.
+- Native macOS Steam with build `1780705203` or `1780965181`.
 - Internet access and approximately 3 GB of free space.
 - Apple Command Line Tools, including `/usr/bin/python3`.
 
@@ -95,13 +95,16 @@ package size, and SHA-256 before opening a newer installer:
 ```bash
 "$HOME/Library/Application Support/RealSteamOnMac/bin/check-for-updates" \
   --current-version "$(<"$HOME/Library/Application Support/RealSteamOnMac/VERSION")" \
-  --steam-build 1780705203 \
+  --steam-build 1780965181 \
   --public-key "$HOME/Library/Application Support/RealSteamOnMac/release-public-key.hex" \
   --verifier "$HOME/Library/Application Support/RealSteamOnMac/bin/verify-release-signature" \
   --install
 ```
 
 Unknown Steam builds fail closed until a compatible release is published.
+When Steam changes between supported builds, uninstall RealSteamOnMac first,
+allow Steam to update, then reinstall. This refreshes the clean rollback
+snapshot instead of reusing a backup from the previous Steam build.
 
 ## Uninstall
 
@@ -123,6 +126,8 @@ recorded clean snapshot, moves unchanged first-party compatibility tools into
 ## Known Issues
 
 - Steam updates can change binary or UI hashes; unsupported builds are rejected.
+- Moving between supported Steam builds requires an uninstall/update/reinstall
+  cycle so rollback data always matches the installed Steam runtime.
 - Compatibility varies by game and renderer.
 - The first installation downloads and expands a large Wine runtime.
 - GPTK support requires the user's separately obtained official Apple image.

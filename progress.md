@@ -719,3 +719,59 @@
     `56602a98e37498eea8daf5cd9dc2f9ca6634e4a006f7bbff0b02ff2683a14d46`
   - `RealSteamOnMac-Uninstall.pkg`:
     `e153808464657b710ed80016dc41c9543338d4a8745eb564ce8a7017b77150b7`
+
+## 2026-06-10 Steam Public Beta 1780965181 Support
+
+- Detected a cached pending Steam Public Beta manifest for build
+  `1780965181` while the live installed runtime remained on `1780705203`.
+- Built the upstream `valvevz` v1.0 decompressor in a temporary directory and
+  verified each cached VZip archive against Valve's manifest before offline
+  extraction. No live Steam files were changed during this analysis.
+- Recorded the new arm64 identities:
+  - `steamclient.dylib` UUID
+    `04B50ECB-07FF-30DF-A03B-1EB9292B856B`, SHA-256
+    `d0945fc67880d048d163cf071ec9cc264cb3618c56cfb73520da36de0188f13e`.
+  - `steamui.dylib` UUID
+    `87B914EC-F267-3559-8063-F21D85D896DE`.
+- Verified the new build-specific patch offsets:
+  - compatibility gate `0x00A00874`;
+  - installation gate `0x00624600`, fall-through `0x00624604`, invalid target
+    `0x00624630`;
+  - SteamUI platform getter `0x005EAC24`;
+  - arm64 `posix_spawn` pointer slot remains `0x018F9500`.
+- Confirmed the install-gate instruction remains `tbnz w8, #4` with the
+  expected decoded branch target, and confirmed the SteamUI getter signature
+  is unique in the arm64 slice.
+- Added strict build profiles for both `1780705203` and `1780965181` to the
+  native hook and offline steamclient patcher. Rosetta profiles remain absent,
+  preserving the native-arm64 fail-closed policy.
+- Added the new compatibility-chunk SHA-256
+  `f77316131cbed91865a800103bbda855a43395eecfb2bc866bc58c33fdea4c69`.
+  The chunk still contains exactly two supported page anchors and patches to
+  `f53e16c4066cecb367c12d9a9f4e93843467d5cbe298929bedda3e3c43581515`.
+- Updated release manifests and installer state to advertise and record both
+  supported builds.
+- Added a rollback safety rule: an installation state from one Steam build
+  cannot reuse its clean backup on another build. Users must uninstall, let
+  Steam update, and reinstall so the new runtime receives a matching clean
+  snapshot.
+- Focused validation passed for both real steamclient binaries, both SteamUI
+  resource profiles, install-state build detection, unsupported-build
+  rejection, and the native dual-architecture hook build.
+- Full evidence is preserved in
+  `docs/research/steam-public-beta-1780965181-validation-2026-06-10.md`.
+- Final `0.1.1` source regression passed:
+  - 67 Node tests.
+  - 61 Python tests.
+  - 27 shell contract files.
+- Built the release PKGs and independently verified:
+  - release-manifest Ed25519 signature: valid;
+  - package metadata and bundled `VERSION`: `0.1.1`;
+  - supported Steam builds: `1780705203`, `1780965181`;
+  - `RealSteamOnMac-Install.pkg` SHA-256:
+    `b06bc5c36b49daf641cdf125ec7f758a08e2e6a3b1e1e83132ed3e76a9ca1ac0`;
+  - `RealSteamOnMac-Uninstall.pkg` SHA-256:
+    `f16b07a337d3eda8425691dc6cd682065c2b0b5d968499db7bc5ac64ab467438`.
+- `pkgutil --check-signature` confirms both PKGs remain unsigned because a
+  Developer ID Installer identity is unavailable. The limitation remains
+  disclosed in the bilingual README and release notes.

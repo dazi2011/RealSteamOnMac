@@ -140,7 +140,52 @@ if [ "$RUNTIME_ROOT_SET" = false ]; then
 fi
 
 RUNTIME_EXECUTABLE="$STEAM_RUNTIME/Contents/MacOS/steam_osx"
+STEAM_MANIFEST="$STEAM_RUNTIME/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.manifest"
 STATE_FILE="$SUPPORT_ROOT/install-state.json"
+
+[ -f "$STEAM_MANIFEST" ] || {
+    echo "installed Steam build manifest is missing: $STEAM_MANIFEST" >&2
+    exit 1
+}
+STEAM_BUILD=$(/usr/bin/python3 - "$STEAM_MANIFEST" <<'PY'
+import re
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    content = stream.read(64 * 1024)
+match = re.search(r'"version"\s+"([0-9]{8,12})"', content)
+if match is None:
+    raise SystemExit("installed Steam build manifest has no valid version")
+print(match.group(1))
+PY
+)
+case "$STEAM_BUILD" in
+    1780705203|1780965181) ;;
+    *)
+        echo "unsupported Steam build: $STEAM_BUILD" >&2
+        exit 1
+        ;;
+esac
+
+if [ -f "$STATE_FILE" ]; then
+    STATE_STEAM_BUILD=$(/usr/bin/python3 - "$STATE_FILE" <<'PY'
+import json
+import re
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    state = json.load(stream)
+value = state.get("steam_build")
+if not isinstance(value, str) or re.fullmatch(r"[0-9]{8,12}", value) is None:
+    raise SystemExit("installation state has no valid Steam build")
+print(value)
+PY
+    )
+    if [ "$STATE_STEAM_BUILD" != "$STEAM_BUILD" ]; then
+        echo "Steam build changed from $STATE_STEAM_BUILD to $STEAM_BUILD; uninstall RealSteamOnMac before reinstalling so a new clean rollback backup can be created" >&2
+        exit 1
+    fi
+fi
 
 if [ -z "$CLEAN_BACKUP" ] && [ -f "$STATE_FILE" ]; then
     CLEAN_BACKUP=$(/usr/bin/python3 - "$STATE_FILE" <<'PY'
@@ -301,7 +346,8 @@ STATE_TEMP="$SUPPORT_ROOT/.install-state.json.$$"
     "$RUNTIME_ROOT" \
     "$COMPAT_TOOLS_ROOT" \
     "$ROOT/compat-tool" \
-    "$ROOT/VERSION" <<'PY'
+    "$ROOT/VERSION" \
+    "$STEAM_BUILD" <<'PY'
 import datetime
 import hashlib
 import json
@@ -318,6 +364,7 @@ import sys
     compat_tools_root,
     source_tools_root,
     version_path,
+    steam_build,
 ) = sys.argv[1:]
 with open(
     os.path.join(runtime_root, "current", "manifest.json"),
@@ -350,7 +397,7 @@ state = {
     "support_root": os.path.abspath(support_root),
     "runtime_root": os.path.abspath(runtime_root),
     "compat_tools_root": os.path.abspath(compat_tools_root),
-    "steam_build": "1780705203",
+    "steam_build": steam_build,
     "runtime_package": manifest["package_id"],
     "managed_compat_tools": managed_tools,
 }

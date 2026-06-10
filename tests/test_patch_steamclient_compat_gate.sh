@@ -18,10 +18,26 @@ test -x "$PATCHER"
 test -f "$SOURCE"
 
 SOURCE_HASH=$(shasum -a 256 "$SOURCE" | awk '{print $1}')
+case "$SOURCE_HASH" in
+    f9c1df763087900a66020635f22559f49533edd3290f0880eb13f46d2dfe2ed5)
+        EXPECTED_BUILD=1780705203
+        ;;
+    d0945fc67880d048d163cf071ec9cc264cb3618c56cfb73520da36de0188f13e)
+        EXPECTED_BUILD=1780965181
+        ;;
+    *)
+        echo "test source is not a supported Steam build" >&2
+        exit 1
+        ;;
+esac
 OUTPUT="$TMP_ROOT/steamclient.dylib"
 
-"$PATCHER" --input "$SOURCE" --output "$OUTPUT"
-"$PATCHER" --verify-patched "$OUTPUT"
+"$PATCHER" --input "$SOURCE" --output "$OUTPUT" |
+    tee "$TMP_ROOT/patch.log"
+"$PATCHER" --verify-patched "$OUTPUT" |
+    tee "$TMP_ROOT/verify.log"
+grep -q "steam_build=$EXPECTED_BUILD" "$TMP_ROOT/patch.log"
+grep -q "steam_build=$EXPECTED_BUILD" "$TMP_ROOT/verify.log"
 
 test "$(shasum -a 256 "$SOURCE" | awk '{print $1}')" = "$SOURCE_HASH"
 test "$(shasum -a 256 "$OUTPUT" | awk '{print $1}')" != "$SOURCE_HASH"

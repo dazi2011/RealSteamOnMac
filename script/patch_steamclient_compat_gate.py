@@ -10,11 +10,24 @@ from pathlib import Path
 
 ARM64_CPU_TYPE = 0x0100000C
 LC_UUID = 0x1B
-EXPECTED_UUID = bytes.fromhex("B2950628803A3EFD99EF3AD6B7B65D1C")
-EXPECTED_SOURCE_SHA256 = (
-    "f9c1df763087900a66020635f22559f49533edd3290f0880eb13f46d2dfe2ed5"
+SUPPORTED_PROFILES = (
+    {
+        "build": "1780705203",
+        "uuid": bytes.fromhex("B2950628803A3EFD99EF3AD6B7B65D1C"),
+        "sha256": (
+            "f9c1df763087900a66020635f22559f49533edd3290f0880eb13f46d2dfe2ed5"
+        ),
+        "offset": 0x00A012D0,
+    },
+    {
+        "build": "1780965181",
+        "uuid": bytes.fromhex("04B50ECB07FF30DFA03B1EB9292B856B"),
+        "sha256": (
+            "d0945fc67880d048d163cf071ec9cc264cb3618c56cfb73520da36de0188f13e"
+        ),
+        "offset": 0x00A00874,
+    },
 )
-COMPAT_GATE_OFFSET = 0x00A012D0
 EXPECTED_BYTES = bytes.fromhex("ffc301d1f44f05a9")
 PATCHED_BYTES = bytes.fromhex("20008052c0035fd6")
 
@@ -78,32 +91,39 @@ def macho_uuid(data: bytes, slice_offset: int, slice_size: int) -> bytes:
     raise PatchError("LC_UUID command not found")
 
 
-def inspect(path: Path) -> tuple[bytearray, int]:
+def inspect(path: Path) -> tuple[bytearray, int, dict]:
     data = bytearray(path.read_bytes())
     slice_offset, slice_size = arm64_slice(data)
     uuid = macho_uuid(data, slice_offset, slice_size)
-    if uuid != EXPECTED_UUID:
+    profile = next(
+        (
+            candidate
+            for candidate in SUPPORTED_PROFILES
+            if candidate["uuid"] == uuid
+        ),
+        None,
+    )
+    if profile is None:
         raise PatchError(
-            f"unexpected ARM64 UUID: {uuid.hex().upper()} "
-            f"(expected {EXPECTED_UUID.hex().upper()})"
+            f"unsupported ARM64 UUID: {uuid.hex().upper()}"
         )
-    patch_offset = slice_offset + COMPAT_GATE_OFFSET
+    patch_offset = slice_offset + profile["offset"]
     if patch_offset + len(EXPECTED_BYTES) > slice_offset + slice_size:
         raise PatchError("compatibility gate offset is outside the ARM64 slice")
-    return data, patch_offset
+    return data, patch_offset, profile
 
 
 def patch(source: Path, output: Path) -> None:
     if output.exists():
         raise PatchError(f"output already exists: {output}")
     source_hash = sha256(source)
-    if source_hash != EXPECTED_SOURCE_SHA256:
+    data, patch_offset, profile = inspect(source)
+    if source_hash != profile["sha256"]:
         raise PatchError(
             f"unexpected source SHA-256: {source_hash} "
-            f"(expected {EXPECTED_SOURCE_SHA256})"
+            f"(expected {profile['sha256']} for build {profile['build']})"
         )
 
-    data, patch_offset = inspect(source)
     current = bytes(data[patch_offset : patch_offset + len(EXPECTED_BYTES)])
     if current != EXPECTED_BYTES:
         raise PatchError(
@@ -119,13 +139,14 @@ def patch(source: Path, output: Path) -> None:
 
     verify_patched(output)
     print(f"source_sha256={source_hash}")
-    print(f"arm64_uuid={EXPECTED_UUID.hex().upper()}")
-    print(f"arm64_gate_offset=0x{COMPAT_GATE_OFFSET:08X}")
+    print(f"steam_build={profile['build']}")
+    print(f"arm64_uuid={profile['uuid'].hex().upper()}")
+    print(f"arm64_gate_offset=0x{profile['offset']:08X}")
     print(f"output={output}")
 
 
 def verify_patched(path: Path) -> None:
-    data, patch_offset = inspect(path)
+    data, patch_offset, profile = inspect(path)
     current = bytes(data[patch_offset : patch_offset + len(PATCHED_BYTES)])
     if current != PATCHED_BYTES:
         raise PatchError(
@@ -133,6 +154,7 @@ def verify_patched(path: Path) -> None:
             f"(expected {PATCHED_BYTES.hex()})"
         )
     print(f"verified_patched={path}")
+    print(f"steam_build={profile['build']}")
 
 
 def main() -> int:

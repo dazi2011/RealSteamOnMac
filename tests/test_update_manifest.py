@@ -22,7 +22,7 @@ def valid_manifest():
         "tag": "v0.1.1",
         "repository": "dazi2011/RealSteamOnMac",
         "published_utc": "2026-06-10T03:00:00Z",
-        "supported_steam_builds": ["1780705203"],
+        "supported_steam_builds": ["1780705203", "1780965181"],
         "minimum_macos": "14.0",
         "architecture": "arm64",
         "installer": {

@@ -106,6 +106,16 @@ class SteamUIPatchTests(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
+    def test_known_hashes_cover_both_supported_steam_builds(self):
+        self.assertIn(
+            "6d28c06fafb32f99c695f4bc4d1b8a8b8fb5bc1efc425f2a78abb8697af81349",
+            self.patcher.KNOWN_COMPAT_CHUNK_SHA256,
+        )
+        self.assertIn(
+            "f77316131cbed91865a800103bbda855a43395eecfb2bc866bc58c33fdea4c69",
+            self.patcher.KNOWN_COMPAT_CHUNK_SHA256,
+        )
+
     def write_compat_tool(
         self,
         directory_name,

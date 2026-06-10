@@ -9,7 +9,7 @@ DXMT_WINEMAC_COMPAT=""
 SIGNING_IDENTITY=${REALSTEAMONMAC_INSTALLER_IDENTITY:-}
 RELEASE_PRIVATE_KEY=${REALSTEAMONMAC_RELEASE_PRIVATE_KEY:-"$HOME/.config/RealSteamOnMac/release-ed25519-private.pem"}
 REPOSITORY=${REALSTEAMONMAC_REPOSITORY:-"dazi2011/RealSteamOnMac"}
-STEAM_BUILD=${REALSTEAMONMAC_STEAM_BUILD:-"1780705203"}
+STEAM_BUILDS=${REALSTEAMONMAC_STEAM_BUILDS:-${REALSTEAMONMAC_STEAM_BUILD:-"1780705203,1780965181"}}
 
 usage() {
     cat >&2 <<EOF
@@ -202,7 +202,7 @@ MANIFEST="$OUTPUT/release-manifest.json"
     "$MANIFEST" \
     "$VERSION" \
     "$REPOSITORY" \
-    "$STEAM_BUILD" \
+    "$STEAM_BUILDS" \
     "$INSTALL_SHA" \
     "$INSTALL_SIZE" \
     "$UNINSTALL_SHA" \
@@ -215,12 +215,22 @@ import sys
     output,
     version,
     repository,
-    steam_build,
+    steam_builds_raw,
     install_sha,
     install_size,
     uninstall_sha,
     uninstall_size,
 ) = sys.argv[1:]
+steam_builds = steam_builds_raw.split(",")
+if (
+    not steam_builds
+    or len(steam_builds) != len(set(steam_builds))
+    or any(
+        not build.isdecimal() or not 8 <= len(build) <= 12
+        for build in steam_builds
+    )
+):
+    raise SystemExit("supported Steam build list is invalid")
 tag = f"v{version}"
 base = f"https://github.com/{repository}/releases/download/{tag}"
 manifest = {
@@ -231,7 +241,7 @@ manifest = {
     "published_utc": datetime.datetime.now(
         datetime.timezone.utc
     ).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-    "supported_steam_builds": [steam_build],
+    "supported_steam_builds": steam_builds,
     "minimum_macos": "14.0",
     "architecture": "arm64",
     "installer": {

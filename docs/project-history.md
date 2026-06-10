@@ -23,6 +23,9 @@ README. Current user installation and feature documentation lives in
    `compatibilitytools.d`.
 8. Added automatic backups, reversible uninstall, signed update manifests, and
    install/uninstall PKG workflows.
+9. Added UUID-, hash-, and instruction-verified profiles for Steam Public Beta
+   builds `1780705203` and `1780965181`, while preserving fail-closed behavior
+   for unknown builds and stale rollback snapshots.
 
 ## Detailed Records
 

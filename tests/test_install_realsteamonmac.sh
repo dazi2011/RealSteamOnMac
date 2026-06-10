@@ -17,10 +17,16 @@ GPTK="$TMP/GPTK.dmg"
 
 mkdir -p \
     "$STEAM_APP" \
-    "$RUNTIME_APP/Contents/MacOS" \
+    "$RUNTIME_APP/Contents/MacOS/package" \
     "$BACKUP" \
     "$TMP/bin"
 : >"$RUNTIME_APP/Contents/MacOS/steam_osx"
+cat >"$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.manifest" <<'EOF'
+"osx"
+{
+    "version" "1780965181"
+}
+EOF
 : >"$GPTK"
 
 make_recorder() {
@@ -123,6 +129,33 @@ injection_call=$(grep '^injection	' "$LOG")
 printf '%s\n' "$injection_call" |
     grep -Fq "	--steam-app	$STEAM_APP"
 test -f "$SUPPORT/install-state.json"
+grep -q '"steam_build": "1780965181"' "$SUPPORT/install-state.json"
+
+: >"$LOG"
+sed -i '' 's/1780965181/1780705203/' \
+    "$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.manifest"
+if env \
+    REALSTEAMONMAC_HOOK_BUILDER="$TMP/bin/hook" \
+    REALSTEAMONMAC_LAUNCHER_BUILDER="$TMP/bin/launcher" \
+    REALSTEAMONMAC_BRIDGE_BUILDER="$TMP/bin/bridge" \
+    REALSTEAMONMAC_RUNTIME_INSTALLER="$TMP/bin/runtime" \
+    REALSTEAMONMAC_INJECTION_INSTALLER="$TMP/bin/injection" \
+    REALSTEAMONMAC_BACKUP_BUILDER="$TMP/bin/backup" \
+    "$ROOT/script/install_realsteamonmac.sh" \
+        --clean-backup "$BACKUP" \
+        --without-gptk \
+        --steam-app "$STEAM_APP" \
+        --runtime-app "$RUNTIME_APP" \
+        --support-root "$SUPPORT" \
+        --compat-tools-root "$COMPAT_TOOLS" \
+        --runtime-root "$RUNTIME_ROOT" \
+        --cache-dir "$CACHE" >/dev/null 2>&1; then
+    echo "installer must reject a stale clean backup after a Steam build change" >&2
+    exit 1
+fi
+test ! -s "$LOG"
+sed -i '' 's/1780705203/1780965181/' \
+    "$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.manifest"
 
 : >"$LOG"
 rm -rf "$SUPPORT" "$RUNTIME_ROOT"
@@ -186,5 +219,29 @@ env \
 test "$(cut -f1 "$LOG" | tr '\n' ' ')" = \
     "hook launcher bridge runtime injection "
 grep -Fq "injection	--clean-backup	$LEGACY_BACKUP_REAL" "$LOG"
+
+: >"$LOG"
+sed -i '' 's/1780965181/1999999999/' \
+    "$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.manifest"
+if env \
+    REALSTEAMONMAC_HOOK_BUILDER="$TMP/bin/hook" \
+    REALSTEAMONMAC_LAUNCHER_BUILDER="$TMP/bin/launcher" \
+    REALSTEAMONMAC_BRIDGE_BUILDER="$TMP/bin/bridge" \
+    REALSTEAMONMAC_RUNTIME_INSTALLER="$TMP/bin/runtime" \
+    REALSTEAMONMAC_INJECTION_INSTALLER="$TMP/bin/injection" \
+    REALSTEAMONMAC_BACKUP_BUILDER="$TMP/bin/backup" \
+    "$ROOT/script/install_realsteamonmac.sh" \
+        --clean-backup "$BACKUP" \
+        --without-gptk \
+        --steam-app "$STEAM_APP" \
+        --runtime-app "$RUNTIME_APP" \
+        --support-root "$SUPPORT" \
+        --compat-tools-root "$COMPAT_TOOLS" \
+        --runtime-root "$RUNTIME_ROOT" \
+        --cache-dir "$CACHE" >/dev/null 2>&1; then
+    echo "installer must reject an unsupported Steam build" >&2
+    exit 1
+fi
+test ! -s "$LOG"
 
 echo "one-click installer contract: PASS"

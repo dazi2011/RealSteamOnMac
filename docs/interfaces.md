@@ -53,6 +53,11 @@ The uninstaller refuses unsafe state paths, restores the clean snapshot first,
 then moves only unchanged managed tool directories into the rollback area.
 Game depots and `steamapps/compatdata` prefixes remain in place.
 
+An installer update may reuse the snapshot only while the recorded Steam build
+matches the currently installed build. A build transition fails closed and
+requires uninstalling before Steam updates, followed by a fresh install. This
+prevents an uninstall from restoring a runtime from a different Steam build.
+
 ## Release Manifest
 
 `release-manifest.json` schema 1 includes the semantic version, repository,
@@ -62,6 +67,9 @@ and HTTPS release URLs. The detached signature is Ed25519 and is verified with
 
 Unknown fields, unknown Steam builds, cross-repository URLs, incorrect sizes,
 and incorrect SHA-256 digests fail closed.
+
+Release `0.1.1` supports Steam Public Beta builds `1780705203` and
+`1780965181`.
 
 ## Recovery
 

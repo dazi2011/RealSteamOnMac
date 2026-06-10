@@ -22,7 +22,8 @@ were natively supported on macOS:
 
 ## Evidence And Constraints
 
-The current Steam Public Beta build is `1780705203`. Existing A/B evidence
+The initial Steam Public Beta validation target was `1780705203`. Release
+`0.1.1` additionally validates build `1780965181`. Existing A/B evidence
 shows that setting `STEAM_EXTRA_COMPAT_TOOLS_PATHS` to a valid tool directory
 removes Cloud fields from Steam's settings bridge. Therefore the standard tool
 directory will be the canonical repository, but startup-time native discovery
@@ -216,4 +217,3 @@ Live verification covers:
 - run-command and dependency dialogs;
 - install PKG, update path, uninstall PKG, and rollback;
 - Cloud settings and AutoCloud after installation.
-

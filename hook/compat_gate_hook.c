@@ -22,16 +22,11 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define STEAMCLIENT_COMPAT_GATE_OFFSET ((uintptr_t)0x00A012D0)
 // GetAppForInstallation platform gate: `tbnz w8, #4, 0x62508c` selects the
 // "Invalid platform" (error 29) branch when the app's platform-flags word has
 // bit 4 set. The fall-through at 0x625060 leads to the real ownership/depot
 // success path. We redirect this single instruction through an allowlist-gated
 // trampoline so only RealSteamOnMac AppIDs skip the bit-4 platform veto.
-#define STEAMCLIENT_INSTALL_GATE_OFFSET ((uintptr_t)0x0062505C)
-#define STEAMCLIENT_INSTALL_GATE_FALLTHROUGH_OFFSET ((uintptr_t)0x00625060)
-#define STEAMCLIENT_INSTALL_GATE_INVALID_OFFSET ((uintptr_t)0x0062508C)
-#define STEAMUI_PLATFORM_FLAGS_GETTER_OFFSET ((uintptr_t)0x005EAC3C)
 #if defined(__x86_64__)
 #define STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET ((uintptr_t)0x01945548)
 #else
@@ -67,14 +62,79 @@ typedef struct {
   bool avx;
 } runtime_config;
 
-static const uint8_t kSteamClientUUID[16] = {
-    0xB2, 0x95, 0x06, 0x28, 0x80, 0x3A, 0x3E, 0xFD,
-    0x99, 0xEF, 0x3A, 0xD6, 0xB7, 0xB6, 0x5D, 0x1C,
+typedef struct {
+  const char *build;
+  uint8_t uuid[16];
+  uintptr_t compat_gate_offset;
+  uintptr_t install_gate_offset;
+  uintptr_t install_gate_fallthrough_offset;
+  uintptr_t install_gate_invalid_offset;
+  uintptr_t posix_spawn_pointer_offset;
+} steamclient_profile;
+
+typedef struct {
+  const char *build;
+  uint8_t uuid[16];
+  uintptr_t platform_flags_getter_offset;
+} steamui_profile;
+
+#if defined(__x86_64__)
+// The native engine is intentionally disabled in a Rosetta Steam process.
+// The release targets native arm64 Steam and must fail closed elsewhere.
+static const steamclient_profile kSteamClientProfiles[1] = {{0}};
+static const steamui_profile kSteamUIProfiles[1] = {{0}};
+static const size_t kSteamClientProfileCount = 0;
+static const size_t kSteamUIProfileCount = 0;
+#else
+static const steamclient_profile kSteamClientProfiles[] = {
+    {
+        "1780705203",
+        {
+            0xB2, 0x95, 0x06, 0x28, 0x80, 0x3A, 0x3E, 0xFD,
+            0x99, 0xEF, 0x3A, 0xD6, 0xB7, 0xB6, 0x5D, 0x1C,
+        },
+        0x00A012D0,
+        0x0062505C,
+        0x00625060,
+        0x0062508C,
+        STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET,
+    },
+    {
+        "1780965181",
+        {
+            0x04, 0xB5, 0x0E, 0xCB, 0x07, 0xFF, 0x30, 0xDF,
+            0xA0, 0x3B, 0x1E, 0xB9, 0x29, 0x2B, 0x85, 0x6B,
+        },
+        0x00A00874,
+        0x00624600,
+        0x00624604,
+        0x00624630,
+        STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET,
+    },
 };
-static const uint8_t kSteamUIUUID[16] = {
-    0xBF, 0x95, 0x20, 0x3F, 0x38, 0x5E, 0x3A, 0xF0,
-    0x82, 0xB6, 0xAC, 0x50, 0x9A, 0xE1, 0x22, 0x4D,
+static const steamui_profile kSteamUIProfiles[] = {
+    {
+        "1780705203",
+        {
+            0xBF, 0x95, 0x20, 0x3F, 0x38, 0x5E, 0x3A, 0xF0,
+            0x82, 0xB6, 0xAC, 0x50, 0x9A, 0xE1, 0x22, 0x4D,
+        },
+        0x005EAC3C,
+    },
+    {
+        "1780965181",
+        {
+            0x87, 0xB9, 0x14, 0xEC, 0xF2, 0x67, 0x35, 0x59,
+            0x80, 0x63, 0xF2, 0x1D, 0x85, 0xD8, 0x96, 0xDE,
+        },
+        0x005EAC24,
+    },
 };
+static const size_t kSteamClientProfileCount =
+    sizeof(kSteamClientProfiles) / sizeof(kSteamClientProfiles[0]);
+static const size_t kSteamUIProfileCount =
+    sizeof(kSteamUIProfiles) / sizeof(kSteamUIProfiles[0]);
+#endif
 static const uint32_t kSteamClientExpected[2] = {
     0xD101C3FF,
     0xA9054FF4,
@@ -202,6 +262,16 @@ static bool image_uuid_matches(const struct mach_header *header,
   return false;
 }
 
+static const steamclient_profile *steamclient_profile_for_header(
+    const struct mach_header *header) {
+  for (size_t index = 0; index < kSteamClientProfileCount; ++index) {
+    if (image_uuid_matches(header, kSteamClientProfiles[index].uuid)) {
+      return &kSteamClientProfiles[index];
+    }
+  }
+  return NULL;
+}
+
 static void log_steamui_image_diagnostic(void) {
   uint32_t count = _dyld_image_count();
   for (uint32_t index = 0; index < count; ++index) {
@@ -266,6 +336,42 @@ static const struct mach_header *find_image_by_uuid(
     if (image_uuid_matches(header, expected)) {
       return header;
     }
+  }
+  return NULL;
+}
+
+static const struct mach_header *find_steamclient_image(
+    const steamclient_profile **profile_out) {
+  for (size_t index = 0; index < kSteamClientProfileCount; ++index) {
+    const struct mach_header *header =
+        find_image_by_uuid(kSteamClientProfiles[index].uuid);
+    if (header != NULL) {
+      if (profile_out != NULL) {
+        *profile_out = &kSteamClientProfiles[index];
+      }
+      return header;
+    }
+  }
+  if (profile_out != NULL) {
+    *profile_out = NULL;
+  }
+  return NULL;
+}
+
+static const struct mach_header *find_steamui_image(
+    const steamui_profile **profile_out) {
+  for (size_t index = 0; index < kSteamUIProfileCount; ++index) {
+    const struct mach_header *header =
+        find_image_by_uuid(kSteamUIProfiles[index].uuid);
+    if (header != NULL) {
+      if (profile_out != NULL) {
+        *profile_out = &kSteamUIProfiles[index];
+      }
+      return header;
+    }
+  }
+  if (profile_out != NULL) {
+    *profile_out = NULL;
   }
   return NULL;
 }
@@ -475,15 +581,14 @@ static int realsteamonmac_posix_spawn(
 
 static void patch_steamclient_spawn_redirect(
     const struct mach_header *header) {
-  if (
-      gSteamClientSpawnPatched ||
-      !image_uuid_matches(header, kSteamClientUUID)
-  ) {
+  const steamclient_profile *profile =
+      steamclient_profile_for_header(header);
+  if (gSteamClientSpawnPatched || profile == NULL) {
     return;
   }
 
   void **slot = (void **)(
-      (uintptr_t)header + STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET);
+      (uintptr_t)header + profile->posix_spawn_pointer_offset);
   void *current = NULL;
   memcpy(&current, slot, sizeof(current));
   void *expected = dlsym(RTLD_DEFAULT, "posix_spawn");
@@ -710,11 +815,12 @@ static void release_allocated_page(void *memory, size_t page_size) {
 //   ... (repeat per AppID) ...
 //   tbnz w8, #4, invalid     ; original veto for everyone else
 // skip:
-//   b    <module + 0x625060> ; fall-through / continue installing
+//   b    <profile fall-through> ; continue installing
 // invalid:
-//   b    <module + 0x62508c> ; original "Invalid platform" branch target
+//   b    <profile invalid target> ; original "Invalid platform" branch
 static void *build_install_gate_trampoline(void *target,
-                                           uintptr_t module_base) {
+                                           uintptr_t module_base,
+                                           const steamclient_profile *profile) {
   uint32_t allowlist[MAX_ALLOWLIST_APPIDS];
   size_t allowlist_count = copy_allowlist(allowlist);
   if (allowlist_count == 0) {
@@ -775,7 +881,8 @@ static void *build_install_gate_trampoline(void *target,
   uint32_t branch = 0;
   if (!encode_branch(
           &instructions[skip_index],
-          (void *)(module_base + STEAMCLIENT_INSTALL_GATE_FALLTHROUGH_OFFSET),
+          (void *)(module_base +
+                   profile->install_gate_fallthrough_offset),
           &branch)) {
     release_allocated_page(memory, page_size);
     return NULL;
@@ -784,7 +891,7 @@ static void *build_install_gate_trampoline(void *target,
 
   if (!encode_branch(
           &instructions[invalid_index],
-          (void *)(module_base + STEAMCLIENT_INSTALL_GATE_INVALID_OFFSET),
+          (void *)(module_base + profile->install_gate_invalid_offset),
           &branch)) {
     release_allocated_page(memory, page_size);
     return NULL;
@@ -819,6 +926,8 @@ static void finish_install_gate_update(
 
 static void patch_steamclient_install_gate(const struct mach_header *header,
                                            intptr_t slide) {
+  const steamclient_profile *profile =
+      steamclient_profile_for_header(header);
   bool refresh_requested =
       atomic_load_explicit(
           &gInstallGateRefreshRequested, memory_order_acquire);
@@ -826,7 +935,7 @@ static void patch_steamclient_install_gate(const struct mach_header *header,
       (atomic_load_explicit(
            &gSteamClientInstallGatePatched, memory_order_acquire) &&
        !refresh_requested) ||
-      !image_uuid_matches(header, kSteamClientUUID)
+      profile == NULL
   ) {
     return;
   }
@@ -839,7 +948,7 @@ static void patch_steamclient_install_gate(const struct mach_header *header,
   size_t allowlist_count = copy_allowlist(allowlist);
 
   uint8_t *target =
-      (uint8_t *)((uintptr_t)header + STEAMCLIENT_INSTALL_GATE_OFFSET);
+      (uint8_t *)((uintptr_t)header + profile->install_gate_offset);
   uint32_t current = 0;
   memcpy(&current, target, sizeof(current));
   if (current != kSteamClientInstallGateExpected) {
@@ -881,7 +990,7 @@ static void patch_steamclient_install_gate(const struct mach_header *header,
   }
 
   void *branch_target =
-      build_install_gate_trampoline(target, (uintptr_t)header);
+      build_install_gate_trampoline(target, (uintptr_t)header, profile);
   if (branch_target == NULL) {
     log_line("steamclient: could not build install gate filter");
     return;
@@ -906,21 +1015,23 @@ static void patch_steamclient_install_gate(const struct mach_header *header,
 
   char message[224];
   snprintf(message, sizeof(message),
-           "steamclient: install gate patched slide=%p target=%p "
+           "steamclient: install gate patched build=%s slide=%p target=%p "
            "trampoline=%p appids=%zu",
+           profile->build,
            (void *)slide, (void *)target, branch_target, allowlist_count);
   log_line(message);
 }
 
 static void patch_steamclient(const struct mach_header *header,
                               intptr_t slide) {
-  if (gSteamClientPatched ||
-      !image_uuid_matches(header, kSteamClientUUID)) {
+  const steamclient_profile *profile =
+      steamclient_profile_for_header(header);
+  if (gSteamClientPatched || profile == NULL) {
     return;
   }
 
   uint8_t *target =
-      (uint8_t *)((uintptr_t)header + STEAMCLIENT_COMPAT_GATE_OFFSET);
+      (uint8_t *)((uintptr_t)header + profile->compat_gate_offset);
   uint32_t current[2];
   memcpy(current, target, sizeof(current));
   if (memcmp(current, kSteamClientForcedTrue, sizeof(current)) == 0) {
@@ -947,8 +1058,8 @@ static void patch_steamclient(const struct mach_header *header,
 
   char message[160];
   snprintf(message, sizeof(message),
-           "steamclient: patched slide=%p target=%p",
-           (void *)slide, (void *)target);
+           "steamclient: patched build=%s slide=%p target=%p",
+           profile->build, (void *)slide, (void *)target);
   log_line(message);
 }
 
@@ -994,14 +1105,15 @@ typedef struct {
 
 static tracked_refresh_result refresh_tracked_objects(void) {
   tracked_refresh_result result = {0, 0};
-  const struct mach_header *steamui = find_image_by_uuid(kSteamUIUUID);
-  if (steamui == NULL) {
+  const steamui_profile *profile = NULL;
+  const struct mach_header *steamui = find_steamui_image(&profile);
+  if (steamui == NULL || profile == NULL) {
     gTrackedObjectCount = 0;
     return result;
   }
 
   uintptr_t getter =
-      (uintptr_t)steamui + STEAMUI_PLATFORM_FLAGS_GETTER_OFFSET;
+      (uintptr_t)steamui + profile->platform_flags_getter_offset;
   size_t index = 0;
   while (index < gTrackedObjectCount) {
     mach_vm_address_t address = gTrackedObjects[index];
@@ -1054,8 +1166,9 @@ size_t realsteamonmac_apply_data_overrides(void) {
   ensure_allowlist_loaded();
   uint32_t allowlist[MAX_ALLOWLIST_APPIDS];
   size_t allowlist_count = copy_allowlist(allowlist);
-  const struct mach_header *steamui = find_image_by_uuid(kSteamUIUUID);
-  if (steamui == NULL) {
+  const steamui_profile *profile = NULL;
+  const struct mach_header *steamui = find_steamui_image(&profile);
+  if (steamui == NULL || profile == NULL) {
     log_line("data override: matching steamui image was not found");
     return 0;
   }
@@ -1066,7 +1179,7 @@ size_t realsteamonmac_apply_data_overrides(void) {
 
   mach_vm_address_t getter =
       (mach_vm_address_t)((uintptr_t)steamui +
-                          STEAMUI_PLATFORM_FLAGS_GETTER_OFFSET);
+                          profile->platform_flags_getter_offset);
   const size_t chunk_capacity = 1024 * 1024;
   uint8_t *chunk = malloc(chunk_capacity);
   if (chunk == NULL) {
@@ -2326,19 +2439,19 @@ static void *data_override_worker(void *context) {
     if (!atomic_load_explicit(
             &gSteamClientInstallGatePatched, memory_order_acquire)) {
       const struct mach_header *steamclient =
-          find_image_by_uuid(kSteamClientUUID);
+          find_steamclient_image(NULL);
       if (steamclient != NULL) {
         patch_steamclient_install_gate(steamclient, 0);
       }
     }
     if (!gSteamClientSpawnPatched) {
       const struct mach_header *steamclient =
-          find_image_by_uuid(kSteamClientUUID);
+          find_steamclient_image(NULL);
       if (steamclient != NULL) {
         patch_steamclient_spawn_redirect(steamclient);
       }
     }
-    const struct mach_header *steamui = find_image_by_uuid(kSteamUIUUID);
+    const struct mach_header *steamui = find_steamui_image(NULL);
     if (steamui != NULL) {
       tracked_refresh_result refresh = refresh_tracked_objects();
       if (refresh.patched > 0) {
