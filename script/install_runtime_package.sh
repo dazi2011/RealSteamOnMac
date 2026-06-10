@@ -236,6 +236,45 @@ first_directory() {
     printf '%s\n' "$result"
 }
 
+activate_package() {
+    destination=$1
+    (
+        cd "$destination"
+        shasum -a 256 -c SHA256SUMS
+    )
+
+    RUNTIME_TEMP="$RUNTIME_ROOT/bin/.realsteamonmac-runtime.$$"
+    cp "$RUNTIME_SOURCE" "$RUNTIME_TEMP"
+    chmod 0755 "$RUNTIME_TEMP"
+    mv "$RUNTIME_TEMP" "$RUNTIME_ROOT/bin/realsteamonmac-runtime"
+    CATALOG_RUNTIME_TEMP="$RUNTIME_ROOT/bin/.compat_tool_catalog.py.$$"
+    cp "$COMPAT_CATALOG_SOURCE" "$CATALOG_RUNTIME_TEMP"
+    chmod 0644 "$CATALOG_RUNTIME_TEMP"
+    mv "$CATALOG_RUNTIME_TEMP" "$RUNTIME_ROOT/bin/compat_tool_catalog.py"
+
+    mkdir -p "$SUPPORT_ROOT/dependencies"
+    chmod 0700 "$SUPPORT_ROOT/dependencies"
+    CATALOG_TEMP="$SUPPORT_ROOT/dependencies/.catalog.json.$$"
+    cp "$DEPENDENCY_CATALOG_SOURCE" "$CATALOG_TEMP"
+    chmod 0600 "$CATALOG_TEMP"
+    mv "$CATALOG_TEMP" "$SUPPORT_ROOT/dependencies/catalog.json"
+
+    CURRENT_TEMP="$RUNTIME_ROOT/.current.$$"
+    ln -s "packages/$PACKAGE_ID" "$CURRENT_TEMP"
+    mv -h "$CURRENT_TEMP" "$RUNTIME_ROOT/current"
+
+    echo "package=$destination"
+    echo "current=$RUNTIME_ROOT/current"
+    echo "runtime=$RUNTIME_ROOT/bin/realsteamonmac-runtime"
+    echo "dependencies=$SUPPORT_ROOT/dependencies/catalog.json"
+}
+
+DESTINATION="$RUNTIME_ROOT/packages/$PACKAGE_ID"
+if [ -e "$DESTINATION" ]; then
+    activate_package "$DESTINATION"
+    exit 0
+fi
+
 GPTK_SOURCE=""
 if [ "$WITHOUT_GPTK" = false ]; then
     GPTK_SOURCE=$(fetch_and_verify "$GPTK_ARCHIVE" "$GPTK_URL" "$GPTK_SHA256")
@@ -474,37 +513,5 @@ PY
     shasum -a 256 -c SHA256SUMS
 )
 
-DESTINATION="$RUNTIME_ROOT/packages/$PACKAGE_ID"
-if [ -e "$DESTINATION" ]; then
-    (
-        cd "$DESTINATION"
-        shasum -a 256 -c SHA256SUMS
-    )
-else
-    mv "$PACKAGE" "$DESTINATION"
-fi
-
-RUNTIME_TEMP="$RUNTIME_ROOT/bin/.realsteamonmac-runtime.$$"
-cp "$RUNTIME_SOURCE" "$RUNTIME_TEMP"
-chmod 0755 "$RUNTIME_TEMP"
-mv "$RUNTIME_TEMP" "$RUNTIME_ROOT/bin/realsteamonmac-runtime"
-CATALOG_RUNTIME_TEMP="$RUNTIME_ROOT/bin/.compat_tool_catalog.py.$$"
-cp "$COMPAT_CATALOG_SOURCE" "$CATALOG_RUNTIME_TEMP"
-chmod 0644 "$CATALOG_RUNTIME_TEMP"
-mv "$CATALOG_RUNTIME_TEMP" "$RUNTIME_ROOT/bin/compat_tool_catalog.py"
-
-mkdir -p "$SUPPORT_ROOT/dependencies"
-chmod 0700 "$SUPPORT_ROOT/dependencies"
-CATALOG_TEMP="$SUPPORT_ROOT/dependencies/.catalog.json.$$"
-cp "$DEPENDENCY_CATALOG_SOURCE" "$CATALOG_TEMP"
-chmod 0600 "$CATALOG_TEMP"
-mv "$CATALOG_TEMP" "$SUPPORT_ROOT/dependencies/catalog.json"
-
-CURRENT_TEMP="$RUNTIME_ROOT/.current.$$"
-ln -s "packages/$PACKAGE_ID" "$CURRENT_TEMP"
-mv -h "$CURRENT_TEMP" "$RUNTIME_ROOT/current"
-
-echo "package=$DESTINATION"
-echo "current=$RUNTIME_ROOT/current"
-echo "runtime=$RUNTIME_ROOT/bin/realsteamonmac-runtime"
-echo "dependencies=$SUPPORT_ROOT/dependencies/catalog.json"
+mv "$PACKAGE" "$DESTINATION"
+activate_package "$DESTINATION"
