@@ -17,8 +17,20 @@ COMPAT_TOOLS="$TMP_ROOT/compatibilitytools.d"
 mkdir -p \
     "$STEAM_APP/Contents/MacOS" \
     "$RUNTIME_APP/Contents/MacOS/steamui" \
-    "$COMPAT_TOOLS/user-custom-tool"
+    "$COMPAT_TOOLS/user-custom-tool" \
+    "$COMPAT_TOOLS/realsteamonmac-experimental"
 printf 'preserve\n' >"$COMPAT_TOOLS/user-custom-tool/marker"
+printf '%s\n' \
+    '"compatibilitytools"' \
+    '{' \
+    '  "compat_tools"' \
+    '  {' \
+    '    "realsteamonmac-experimental"' \
+    '    {' \
+    '      "install_path" "."' \
+    '    }' \
+    '  }' \
+    '}' >"$COMPAT_TOOLS/realsteamonmac-experimental/compatibilitytool.vdf"
 
 write_info_plist() {
     destination=$1
@@ -77,6 +89,9 @@ for tool in gptk dxmt dxvk wined3d; do
     test -f "$COMPAT_TOOLS/realsteamonmac-$tool/realsteamonmac.json"
 done
 test -f "$COMPAT_TOOLS/user-custom-tool/marker"
+test ! -e "$COMPAT_TOOLS/realsteamonmac-experimental"
+test -f \
+    "$SUPPORT/migrations/legacy-compat-tools/realsteamonmac-experimental/compatibilitytool.vdf"
 test -f "$SUPPORT/compat_tool_catalog.py"
 test -f "$SUPPORT/allowlist.txt"
 test -f "$SUPPORT/registry-token"

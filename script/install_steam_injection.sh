@@ -226,6 +226,26 @@ DEPENDENCY_TARGET="$SUPPORT_ROOT/dependencies/catalog.json"
 cp "$HOOK_SOURCE" "$HOOK_TARGET"
 cp "$ENGINE_SOURCE" "$ENGINE_TARGET"
 mkdir -p "$COMPAT_TOOLS_ROOT"
+LEGACY_COMPAT_TOOL="$COMPAT_TOOLS_ROOT/realsteamonmac-experimental"
+if [ -e "$LEGACY_COMPAT_TOOL" ]; then
+    [ ! -L "$LEGACY_COMPAT_TOOL" ] || {
+        echo "legacy compatibility tool is an unsafe symlink" >&2
+        exit 1
+    }
+    [ -f "$LEGACY_COMPAT_TOOL/compatibilitytool.vdf" ] &&
+        grep -Fq '"realsteamonmac-experimental"' \
+            "$LEGACY_COMPAT_TOOL/compatibilitytool.vdf" || {
+        echo "legacy compatibility tool directory is not project-owned" >&2
+        exit 1
+    }
+    LEGACY_HOLD="$SUPPORT_ROOT/migrations/legacy-compat-tools"
+    mkdir -p "$LEGACY_HOLD"
+    LEGACY_DESTINATION="$LEGACY_HOLD/realsteamonmac-experimental"
+    if [ -e "$LEGACY_DESTINATION" ]; then
+        LEGACY_DESTINATION="$LEGACY_DESTINATION.$(date -u '+%Y%m%dT%H%M%SZ')"
+    fi
+    mv "$LEGACY_COMPAT_TOOL" "$LEGACY_DESTINATION"
+fi
 ACTIVE_RUNTIME_MANIFEST="$SUPPORT_ROOT/runtimes/current/manifest.json"
 for tool in "$COMPAT_SOURCE"/*; do
     [ -f "$tool/run" ] || continue
