@@ -769,9 +769,9 @@
   - package metadata and bundled `VERSION`: `0.1.1`;
   - supported Steam builds: `1780705203`, `1780965181`;
   - `RealSteamOnMac-Install.pkg` SHA-256:
-    `b06bc5c36b49daf641cdf125ec7f758a08e2e6a3b1e1e83132ed3e76a9ca1ac0`;
+    `68a3e79e20a10dee8e9e0b627b97dd2330a6a9304bfd0aadafc6b3df16ef6eaf`;
   - `RealSteamOnMac-Uninstall.pkg` SHA-256:
-    `f16b07a337d3eda8425691dc6cd682065c2b0b5d968499db7bc5ac64ab467438`.
+    `175ec95099fcdc70a3c4531a2723ab9310843634bbacd9c31101f7711a441b6f`.
 - `pkgutil --check-signature` confirms both PKGs remain unsigned because a
   Developer ID Installer identity is unavailable. The limitation remains
   disclosed in the bilingual README and release notes.
@@ -814,3 +814,27 @@
   - 27 shell contract files.
   - `git diff --check`, shell syntax checks, Python bytecode compilation, and
     JavaScript syntax checks.
+- Rebuilt the final `0.1.1` release after the compatibility-page fix:
+  - install PKG SHA-256:
+    `68a3e79e20a10dee8e9e0b627b97dd2330a6a9304bfd0aadafc6b3df16ef6eaf`;
+  - uninstall PKG SHA-256:
+    `175ec95099fcdc70a3c4531a2723ab9310843634bbacd9c31101f7711a441b6f`;
+  - release manifest SHA-256:
+    `1f836796b117cdaa8b402313129bb15c87f8cebcb33db9a14886e2f86be6d334`;
+  - manifest signature SHA-256:
+    `c0cdd74340b1b0e6262dc52427e2511a9bb0f48fb6cccf69e5d848cf17f2775d`;
+  - publication timestamp:
+    `2026-06-10T06:28:32Z`.
+- Expanded the final PKGs independently and confirmed:
+  - both `PackageInfo` versions and the bundled `VERSION` are `0.1.1`;
+  - the bundled UI SHA-256 matches the committed source;
+  - both Steam build profiles and exact arm64 UUIDs are present;
+  - the packaged postinstall script matches the repository source;
+  - the Ed25519 release-manifest signature and every declared size/hash verify.
+- Executed the final install PKG's packaged postinstall payload on the live
+  `1780965181` installation. The installed source, packaged source, support
+  copy, and active SteamUI copy all have SHA-256
+  `6621eb7e36dc456aae84b305fce1d0a9c19c40b79c95fa84dde4b80cc90607fe`.
+- Final packaged cold-start acceptance preserved the People Playground
+  executable and PFX hashes, rebuilt the 34-AppID native registry, and rendered
+  the corrected single-selector compatibility page.
