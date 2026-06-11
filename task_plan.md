@@ -176,8 +176,9 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   area is catalog breadth and installer acceptance, not replacement UI.
 - **Component-recipe checkpoint:** the runtime now accepts only three bounded
   installer strategies (`exe`, `msi`, and the fixed DirectX redistributable
-  flow), validates prerequisite graphs and prefix-relative postconditions,
-  and writes receipts only after every required file check passes. The
+  flow), validates prerequisite graphs, prefix-relative files, and restricted
+  Wine registry-key postconditions, and writes receipts only after every
+  required check passes. The
   existing three-entry catalog remains compatible; expanding it with pinned
   official packages and completing live prefix acceptance are still pending.
 - **Current checkpoint:** verified Steam launch descriptors, managed

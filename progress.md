@@ -1576,9 +1576,13 @@
 - Added prerequisite existence and cycle validation, safe prefix-relative
   file postconditions, ordered prerequisite installation, per-component
   receipts, and fail-closed DirectX `DXSETUP.exe` extraction checks.
+- A live prefix inventory showed that Wine's builtins already satisfy many
+  DLL-name checks. Added a restricted registry-key postcondition that invokes
+  Wine `reg query`; catalog keys are bounded to `HKLM` or `HKCU` and control
+  characters are rejected.
 - Added NVIDIA's official download host to the allowlist in preparation for
   checksum-pinned PhysX entries; no NVIDIA payload is in the catalog yet.
-- Eight focused recipe/download/action tests and all 62 runtime-manager tests
+- Ten focused recipe/download/action tests and all 64 runtime-manager tests
   passed. The current three-entry production catalog still loads unchanged.
 - CrossOver Preview's wineserver, Windows Steam wrapper, and app process, plus
   native Steam, remained alive throughout this batch. Real catalog expansion

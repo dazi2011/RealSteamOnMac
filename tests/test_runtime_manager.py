@@ -877,6 +877,13 @@ class RuntimeManagerTests(unittest.TestCase):
                                 {
                                     "type": "file",
                                     "path": "drive_c/windows/system32/base.dll",
+                                },
+                                {
+                                    "type": "registry-key",
+                                    "key": (
+                                        "HKLM\\Software\\Fixture\\"
+                                        "Installed"
+                                    ),
                                 }
                             ],
                         },
@@ -935,6 +942,10 @@ class RuntimeManagerTests(unittest.TestCase):
             catalog["fixture-directx"]["postconditions"][0]["type"],
             "file-any",
         )
+        self.assertEqual(
+            catalog["fixture-base"]["postconditions"][1]["type"],
+            "registry-key",
+        )
 
     def test_dependency_catalog_rejects_cycles_and_unsafe_postconditions(self):
         for dependencies, message in (
@@ -959,6 +970,23 @@ class RuntimeManagerTests(unittest.TestCase):
                             {
                                 "type": "file",
                                 "path": "../outside-prefix",
+                            }
+                        ],
+                    )
+                ],
+                "postcondition",
+            ),
+            (
+                [
+                    self.dependency_entry(
+                        "fixture-one",
+                        postconditions=[
+                            {
+                                "type": "registry-key",
+                                "key": (
+                                    "HKLM\\Software\\Fixture\n"
+                                    "Injected"
+                                ),
                             }
                         ],
                     )
@@ -1474,6 +1502,81 @@ class RuntimeManagerTests(unittest.TestCase):
                     {"dependency": "fixture-redist"},
                     self.root / "dependency-postcondition.log",
                 )
+
+    def test_dependency_registry_postcondition_uses_wine_reg_query(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        dependency = self.dependency_entry(
+            "fixture-registry",
+            postconditions=[
+                {
+                    "type": "registry-key",
+                    "key": "HKLM\\Software\\Fixture\\Installed",
+                }
+            ],
+        )
+        commands = []
+
+        def run_process(
+            action_context,
+            command,
+            environment,
+            log_path,
+            description,
+        ):
+            commands.append((description, command))
+            return mock.Mock(returncode=0)
+
+        runtime.verify_dependency_postconditions(
+            context,
+            dependency,
+            wine64,
+            {"WINEPREFIX": str(context["prefix"])},
+            self.root / "registry-postcondition.log",
+            run_process=run_process,
+        )
+
+        self.assertEqual(
+            commands,
+            [
+                (
+                    "verify dependency fixture-registry registry key",
+                    [
+                        wine64,
+                        "reg",
+                        "query",
+                        "HKLM\\Software\\Fixture\\Installed",
+                    ],
+                )
+            ],
+        )
+
+    def test_dependency_registry_postcondition_rejects_missing_key(self):
+        context = self.context()
+        dependency = self.dependency_entry(
+            "fixture-registry",
+            postconditions=[
+                {
+                    "type": "registry-key",
+                    "key": "HKLM\\Software\\Fixture\\Missing",
+                }
+            ],
+        )
+        with self.assertRaisesRegex(
+            runtime.RuntimeErrorWithContext, "postcondition"
+        ):
+            runtime.verify_dependency_postconditions(
+                context,
+                dependency,
+                Path("/fixture/wine64"),
+                {"WINEPREFIX": str(context["prefix"])},
+                self.root / "registry-postcondition.log",
+                run_process=lambda *args, **kwargs: mock.Mock(
+                    returncode=1
+                ),
+            )
 
     def test_rejects_non_pe_target(self):
         target = self.game / "not-pe"

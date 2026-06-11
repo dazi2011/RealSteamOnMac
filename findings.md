@@ -1139,7 +1139,13 @@
   accepting arbitrary scripts: direct EXE installers, MSI through Wine
   `msiexec`, and the Microsoft DirectX redistributable's fixed
   extract-then-`DXSETUP.exe` flow. Catalog prerequisites are cycle-checked and
-  postconditions are restricted to files beneath the selected prefix.
+  postconditions are restricted to files beneath the selected prefix or
+  bounded `HKLM`/`HKCU` keys queried through Wine's `reg` command.
+- Wine ships builtin files named `msvcp90.dll`, `msvcp100.dll`,
+  `msvcp110.dll`, `msvcp120.dll`, and `xinput1_3.dll` in a new prefix. File
+  existence alone therefore cannot prove that a Microsoft redistributable was
+  installed. Product-specific registry keys are the required acceptance
+  signal for VC++, XNA, PhysX, and .NET catalog entries.
 - Microsoft documents that the current Visual C++ v14 redistributable covers
   Visual Studio 2015 and later, while Visual C++ 2013 and older runtimes remain
   side-by-side. Microsoft also describes the June 2010 DirectX package as

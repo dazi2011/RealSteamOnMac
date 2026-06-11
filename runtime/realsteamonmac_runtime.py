@@ -124,7 +124,9 @@ DEPENDENCY_DOWNLOAD_HOSTS = frozenset(
     )
 )
 DEPENDENCY_INSTALLERS = frozenset(("exe", "msi", "directx-redist"))
-DEPENDENCY_POSTCONDITIONS = frozenset(("file", "file-any"))
+DEPENDENCY_POSTCONDITIONS = frozenset(
+    ("file", "file-any", "registry-key")
+)
 DEFAULT_CONFIG = {
     "compat_tool": "",
     "renderer": "dxmt",
@@ -2227,6 +2229,17 @@ def validate_dependency_postcondition(postcondition):
             set(postcondition) == {"type", "path"}
             and validate_dependency_prefix_path(postcondition.get("path"))
         )
+    if condition_type == "registry-key":
+        key = postcondition.get("key")
+        return (
+            set(postcondition) == {"type", "key"}
+            and isinstance(key, str)
+            and len(key) <= 512
+            and re.fullmatch(
+                r"HK(?:LM|CU)\\[A-Za-z0-9 _().{}+\\/-]+", key
+            )
+            is not None
+        )
     paths = postcondition.get("paths")
     return (
         set(postcondition) == {"type", "paths"}
@@ -2508,9 +2521,39 @@ def dependency_postcondition_met(context, postcondition):
     return any(exists(path) for path in postcondition["paths"])
 
 
-def verify_dependency_postconditions(context, dependency):
+def verify_dependency_postconditions(
+    context,
+    dependency,
+    wine64=None,
+    environment=None,
+    log_path=None,
+    run_process=run_job_process,
+):
     for postcondition in dependency["postconditions"]:
-        if not dependency_postcondition_met(context, postcondition):
+        if postcondition["type"] == "registry-key":
+            if wine64 is None or environment is None or log_path is None:
+                raise RuntimeErrorWithContext(
+                    "registry postcondition requires Wine context"
+                )
+            result = run_process(
+                context,
+                [
+                    wine64,
+                    "reg",
+                    "query",
+                    postcondition["key"],
+                ],
+                environment,
+                log_path,
+                "verify dependency "
+                f"{dependency['id']} registry key",
+            )
+            met = result.returncode == 0
+        else:
+            met = dependency_postcondition_met(
+                context, postcondition
+            )
+        if not met:
             raise RuntimeErrorWithContext(
                 "dependency postcondition failed: "
                 f"{dependency['id']} ({postcondition['type']})"
@@ -2624,7 +2667,13 @@ def execute_dependency_action(context, runtime_root, fields, log_path):
             if temporary is not None:
                 temporary.cleanup()
 
-        verify_dependency_postconditions(context, current)
+        verify_dependency_postconditions(
+            context,
+            current,
+            wine64,
+            environment,
+            log_path,
+        )
         exit_code = result.returncode
         receipt = (
             context["state"]
