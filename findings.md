@@ -868,6 +868,15 @@
   without a replacement readiness proof would reintroduce a known global
   settings regression, so registry retention and activation readiness are
   separate fixes.
+- The flat string-pair ACF reader discarded section membership, so it could not
+  distinguish `InstalledDepots` from `StagedDepots`. A structured read-only
+  parser now requires a complete installed state before runtime actions.
+- Live manifest classification on 2026-06-11:
+  - RDR2: ready, state `4`, seven installed depots;
+  - Aimlabs: ready, state `4`, one installed depot;
+  - Hogwarts Legacy: repair required, state `36`, content present;
+  - Black Myth: Wukong: download incomplete, state `1026`, zero installed
+    depots and one staged depot.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

@@ -252,14 +252,20 @@ def _parse_vdf_object(tokens, path, position=0, depth=0, nested=False):
     return result, position
 
 
-def _load_vdf_tool(path):
-    text = _read_bounded_text(
-        path, MAX_VDF_BYTES, "compatibilitytool.vdf"
-    )
+def parse_vdf_document(path, max_bytes=MAX_VDF_BYTES, label="VDF"):
+    path = Path(path)
+    text = _read_bounded_text(path, max_bytes, label)
     tokens = _tokenize_vdf(text, path)
     parsed, position = _parse_vdf_object(tokens, path)
     if position != len(tokens):
         raise CatalogError(f"VDF contains trailing content: {path}")
+    return parsed
+
+
+def _load_vdf_tool(path):
+    parsed = parse_vdf_document(
+        path, MAX_VDF_BYTES, "compatibilitytool.vdf"
+    )
     compatibility_tools = parsed.get("compatibilitytools")
     if not isinstance(compatibility_tools, dict):
         raise CatalogError(

@@ -165,20 +165,20 @@ Run:
 
 Expected: import or assertion failure because the parser does not exist.
 
-- [ ] **Step 4: Implement the structured parser**
+- [x] **Step 4: Implement the structured parser**
 
 Use the existing VDF pair parser, but preserve nested section membership for
 `InstalledDepots` and `StagedDepots`. Return an immutable dictionary containing
 flags, sizes, depot counts, build/update state, directory evidence, and
 `launchable`.
 
-- [ ] **Step 5: Integrate without editing manifests**
+- [x] **Step 5: Integrate without editing manifests**
 
 Make `find_app_installation` reject staged-only and empty-shell states for
 launch/action context. Return a typed diagnostic instructing callers to use
 Steam's install/repair action.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run:
 

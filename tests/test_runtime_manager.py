@@ -48,7 +48,18 @@ class RuntimeManagerTests(unittest.TestCase):
         (self.steamapps / "appmanifest_1118200.acf").write_text(
             '"AppState"\n{\n'
             '\t"appid"\t\t"1118200"\n'
+            '\t"StateFlags"\t\t"4"\n'
             '\t"installdir"\t\t"Fixture Game"\n'
+            '\t"SizeOnDisk"\t\t"9"\n'
+            '\t"UpdateResult"\t\t"0"\n'
+            '\t"InstalledDepots"\n'
+            "\t{\n"
+            '\t\t"1118201"\n'
+            "\t\t{\n"
+            '\t\t\t"manifest"\t\t"12345"\n'
+            '\t\t\t"size"\t\t"9"\n'
+            "\t\t}\n"
+            "\t}\n"
             "}\n",
             encoding="utf-8",
         )
@@ -245,6 +256,36 @@ class RuntimeManagerTests(unittest.TestCase):
             context["compat_data"],
             self.steamapps.resolve() / "compatdata" / "1118200",
         )
+
+    def test_rejects_staged_only_installation_context(self):
+        self.executable.unlink()
+        (self.steamapps / "appmanifest_1118200.acf").write_text(
+            '"AppState"\n{\n'
+            '\t"appid"\t\t"1118200"\n'
+            '\t"StateFlags"\t\t"1026"\n'
+            '\t"installdir"\t\t"Fixture Game"\n'
+            '\t"SizeOnDisk"\t\t"0"\n'
+            '\t"UpdateResult"\t\t"6"\n'
+            '\t"InstalledDepots"\n'
+            "\t{\n"
+            "\t}\n"
+            '\t"StagedDepots"\n'
+            "\t{\n"
+            '\t\t"1118201"\n'
+            "\t\t{\n"
+            '\t\t\t"manifest"\t\t"12345"\n'
+            '\t\t\t"size"\t\t"149800000000"\n'
+            "\t\t}\n"
+            "\t}\n"
+            "}\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(
+            runtime.RuntimeErrorWithContext,
+            "download-incomplete.*install or repair",
+        ):
+            runtime.resolve_app_context("1118200")
 
     def test_new_prefix_defaults_to_windows_10(self):
         context = self.context()

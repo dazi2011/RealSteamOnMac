@@ -1010,3 +1010,17 @@
   staged-only, empty-directory, and missing-`InstalledDepots` states.
 - The focused installation-state suite failed RED with `FileNotFoundError` for
   the intentionally absent `runtime/steam_app_state.py`.
+- Added a bounded structured VDF document API and a read-only Steam app-state
+  inspector. Launch context now requires `FullyInstalled`, nonzero manifest and
+  depot sizes, at least one valid installed depot, nonempty local content, and
+  no blocking Steam state.
+- Staged-only, files-missing/corrupt, empty-directory, missing-depot, and
+  unknown-state cases fail closed with a diagnostic directing callers back to
+  Steam install or repair actions. No ACF file is rewritten.
+- Verification passed:
+  - 5 installation-state tests;
+  - 39 runtime-manager tests;
+  - 8 compatibility-tool catalog tests;
+  - Python bytecode compilation and `git diff --check`.
+- Read-only live classification matched the reported field state for RDR2,
+  Hogwarts Legacy, Black Myth: Wukong, and Aimlabs.

@@ -20,6 +20,11 @@ if str(RUNTIME_MODULE_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(RUNTIME_MODULE_DIRECTORY))
 
 from compat_tool_catalog import CatalogError, scan_compat_tools
+from steam_app_state import (
+    SteamAppStateError,
+    inspect_app_manifest,
+    manifest_install_directory,
+)
 
 
 RENDERERS = ("gptk", "dxmt", "dxvk", "wined3d")
@@ -332,26 +337,12 @@ def steam_library_roots(steam_root=None):
 
 
 def parse_app_manifest(path, expected_appid):
-    values = dict(parse_vdf_string_pairs(path))
     try:
-        appid = int(values.get("appid", ""), 10)
-    except ValueError as error:
+        return manifest_install_directory(path, expected_appid)
+    except SteamAppStateError as error:
         raise RuntimeErrorWithContext(
-            f"Steam app manifest has an invalid AppID: {path}"
+            str(error)
         ) from error
-    installdir = values.get("installdir")
-    if appid != expected_appid or not installdir:
-        raise RuntimeErrorWithContext(
-            f"Steam app manifest is inconsistent: {path}"
-        )
-    if (
-        Path(installdir).name != installdir
-        or installdir in (".", "..")
-    ):
-        raise RuntimeErrorWithContext(
-            f"Steam install directory is unsafe: {installdir}"
-        )
-    return installdir
 
 
 def find_app_installation(appid, steam_root=None):
@@ -367,11 +358,24 @@ def find_app_installation(appid, steam_root=None):
             raise RuntimeErrorWithContext(
                 f"Steam game install directory is missing: {install_path}"
             )
+        try:
+            install_state = inspect_app_manifest(
+                manifest, appid, install_path
+            )
+        except SteamAppStateError as error:
+            raise RuntimeErrorWithContext(str(error)) from error
+        if not install_state["launchable"]:
+            raise RuntimeErrorWithContext(
+                "Steam app installation is incomplete "
+                f"({install_state['diagnostic']}): AppID {appid}; "
+                "use Steam's install or repair action"
+            )
         return {
             "appid": appid,
             "steamapps": steamapps.resolve(),
             "manifest": manifest.resolve(),
             "install_path": install_path,
+            "install_state": install_state,
             "compat_data": (
                 steamapps / "compatdata" / str(appid)
             ).resolve(),
