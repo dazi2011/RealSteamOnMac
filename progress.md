@@ -1283,3 +1283,13 @@
   and the resulting CLI completed `--help`. Verification also passed 69
   related Python tests, the one-click installer contract, and a fresh pair of
   temporary release PKGs with signed-manifest validation.
+- Re-activated the live dual-bridge package idempotently and verified the
+  installed runtime import closure. `prepare-prefix` atomically replaced both
+  managed Steam DLLs in AppID 1174180 with the formal GPTK bridge hash
+  `264b3fcb0624f6e9fb04642cd0433033a3c8479878f27e5798f84c9228309228`;
+  the ledger records the new package and bridge as active.
+- A bounded RDR2 launch reached the current Rockstar Launcher with the correct
+  `-steamAppId=1174180` and game path, but the log again ended at
+  `Creating Steam min mode launch`; no `RDR2.exe` process appeared after
+  88 seconds. The AppID-specific GPTK wineserver was stopped cleanly, and the
+  running CrossOver Steam control PIDs were unchanged.

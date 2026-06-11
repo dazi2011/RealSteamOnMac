@@ -169,8 +169,9 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   pinned cold-build script, renderer-specific runtime schema, immutable
   package installer, top-level installer, and release-PKG propagation now
   pass. The new live package was built and activated, and its activation
-  exposed a missing Python-module deployment fault that is being corrected
-  before game launch acceptance resumes.
+  exposed and then corrected a missing Python-module deployment fault. Live
+  GPTK bridge installation passes, but RDR2 still stops at Rockstar's Steam
+  min-mode handoff; the remaining Windows-Steam ownership path is unresolved.
 
 ## Architecture Decision
 

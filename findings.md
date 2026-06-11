@@ -1009,6 +1009,11 @@
   switching `current`. Deploying only `realsteamonmac_runtime.py` and
   `compat_tool_catalog.py` leaves the CLI unusable once launcher recovery and
   Steam launch descriptors are imported.
+- The GPTK-specific bridge removes the Wine 11 assertion and loads into the
+  live RDR2 prefix, but it is not sufficient for Rockstar's ownership handoff.
+  `PlayRDR2.exe` starts the current Launcher, which logs the correct AppID and
+  install path, then stops at `Creating Steam min mode launch` without ever
+  starting `RDR2.exe`. The remaining gap is above bridge ABI compatibility.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
