@@ -86,6 +86,32 @@
   heading matching only Chinese `兼容性` or English `Compatibility` and the
   force-tool label in one of those two languages. This is a wider failure than
   the hidden-row selector alone.
+- The remainder of `ui/realsteamonmac_ui.js` confirms every visible project
+  control is handcrafted HTML/CSS: the force-tool checkbox and `<select>`,
+  capability switches, action buttons, run-command dialog, dependency dialog,
+  and container-operation dialog. Steam styling is imitated, but Steam-owned
+  React controls are not used.
+- All project control labels, status messages, dialog copy, and most error
+  fallback text are hard-coded Chinese. The feature cannot follow Steam's
+  active locale and cannot be considered language-independent.
+- The Run Command dialog exposes a `创建日志文件` checkbox but
+  `buildRunCommandPayload` sends only target, arguments, and environment. The
+  checkbox has no behavioral effect.
+- The file-picker action is implemented as an asynchronous native job that
+  triggers panel re-renders before writing the selected path back into the
+  modal input. The backend response contract and modal lifetime must be tested;
+  the current code alone does not prove a selected EXE can survive that cycle.
+- Dependency installation and Install Application To Container are separate
+  actions and separate dialogs. This directly contradicts the required single
+  install entry point.
+- A full-screen `realsteamonmac-modal-layer` with `z-index: 100000` is used for
+  every secondary action. It is an overlay and conflicts with the explicit
+  no-overlay/native-control requirement.
+- Reconciliation runs every second across every managed AppID and repeatedly
+  walks Steam documents/React fibers. Registry discovery runs every five
+  seconds across all owned visible games. This polling design is a plausible
+  contributor to slow post-restart action readiness and requires profiling or
+  event-driven replacement.
 
 ## Requirements
 

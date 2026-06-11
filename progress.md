@@ -36,6 +36,13 @@
     unnecessary.
   - Found one-time startup tool loading, indefinite per-AppID tool caching, and
     locale-dependent compatibility-page detection.
+  - Read lines 1601-3027 of `ui/realsteamonmac_ui.js` in full, completing the
+    UI source audit.
+  - Confirmed all compatibility options and action dialogs are custom
+    HTML/CSS overlays rather than Steam-owned controls.
+  - Found an inert Create Log checkbox, split component/application install
+    workflows, hard-coded Chinese copy, and aggressive one-second DOM/React
+    polling.
 - Files modified:
   - `task_plan.md`
   - `findings.md`
