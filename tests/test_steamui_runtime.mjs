@@ -226,7 +226,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     typeof context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__,
     "function",
   );
-  assert.equal(context.__REALSTEAMONMAC_UI_STATUS__.version, 11);
+  assert.equal(context.__REALSTEAMONMAC_UI_STATUS__.version, 12);
   assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(1118200), true);
   assert.equal(
     context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__(1118200),
@@ -339,10 +339,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     990080,
     "realsteamonmac-dxvk",
   );
-  assert.deepEqual(nativeSpecifyCalls, [
-    [1118200, "realsteamonmac-dxmt"],
-    [990080, "realsteamonmac-dxvk"],
-  ]);
+  assert.deepEqual(nativeSpecifyCalls, []);
   assert.equal(
     context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__(990080),
     "realsteamonmac-dxvk",

@@ -856,7 +856,7 @@
     config.dependencies,
   );
   const status = {
-    version: 11,
+    version: 12,
     mode: "dynamic-owned-windows-only-registry",
     enabled: true,
     appids: [...managedAppids],
@@ -1455,7 +1455,12 @@
         }
       }
 
-      const result = await originalSpecifyCompatTool(appid, tool);
+      let result;
+      if (!tool || projectCompatToolNames.has(tool)) {
+        result = undefined;
+      } else {
+        result = await originalSpecifyCompatTool(appid, tool);
+      }
       if (projectCompatToolNames.has(tool)) {
         const renderer = rendererForCompatTool(
           tool,
@@ -1489,7 +1494,9 @@
             `for AppID ${appid}`,
         );
       }
-      await originalSpecifyCompatTool(appid, selectedTool);
+      if (!projectCompatToolNames.has(selectedTool)) {
+        await originalSpecifyCompatTool(appid, selectedTool);
+      }
       status.compatNativeSyncs += 1;
     }
   }

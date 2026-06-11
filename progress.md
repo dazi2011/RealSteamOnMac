@@ -1377,9 +1377,14 @@
   component. The guarded chunk patch now uses it only when native detail
   fields are empty, both for the native checkbox and the native dropdown's
   selected option.
-- Restored Steam's original `SpecifyCompatTool` call for project tools and
-  startup synchronization, so native per-AppID mappings are authoritative
-  instead of remaining on a removed legacy tool.
+- A first live attempt restored Steam's original `SpecifyCompatTool` call for
+  project tools. It returned without persisting the unknown tool, left the
+  legacy mapping unchanged, and raced Steam startup before the global
+  navigator context existed. The main window then failed to initialize.
+- Removed that unsafe project-tool native call while retaining the stable
+  checkbox/dropdown data fallback. Native persistence remains blocked on a
+  genuine macOS backend registration mechanism that does not reactivate
+  `STEAM_EXTRA_COMPAT_TOOLS_PATHS` and its proven Cloud regression.
 - Added migration from the currently installed native-control patch. Unknown
   hashes and unexpected checkbox/dropdown anchor counts still fail closed.
 - Pre-deployment verification passed 15 patcher tests, 77 JavaScript

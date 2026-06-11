@@ -1051,10 +1051,12 @@
   selection remained unchanged.
 - `config.vdf` still mapped AppID `1118200` to the removed
   `realsteamonmac-experimental` tool because the project-tool wrapper
-  intentionally skipped Steam's original `SpecifyCompatTool`. Project
-  selections must be written through the original API, while the native React
-  checkbox and dropdown use the stable per-AppID selection only as a fallback
-  when macOS app details are temporarily empty.
+  intentionally skipped Steam's original `SpecifyCompatTool`. A live attempt
+  to restore that call proved the macOS backend does not persist unregistered
+  project tools and can run before the global navigator context exists,
+  breaking the main Steam window. The native React checkbox and dropdown must
+  therefore use stable project selection data until backend registration is
+  implemented without the Cloud regression.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

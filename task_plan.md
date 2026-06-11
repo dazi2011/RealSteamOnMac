@@ -243,7 +243,7 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Disable `winemenubuilder.exe` in the independent runtime | Migrated CrossOver prefixes otherwise recreate or launch old CrossOver menu applications. |
 | Scope forced Wine cleanup to People Playground | Its .NET helper confuses Wine PID 312 with persistent macOS PID 312; a global cleanup policy could break launcher-style games. |
 | Treat raw GPTK/DXMT/DXVK/Wine directories as validated catalog inputs | Users can install standard vendor layouts directly; the runtime manager will compose them with an immutable base package instead of requiring project-private wrapper files or mutating the source tree. |
-| Keep native compatibility selection stable through macOS detail refreshes | Steam remains the control owner; the project persists through the original API and supplies a data-only fallback for checkbox and dropdown state when macOS reports empty compatibility fields. |
+| Keep native compatibility selection stable through macOS detail refreshes | Steam remains the control owner; a data-only fallback stabilizes checkbox/dropdown state. Do not call native persistence for project tools until the macOS backend actually registers them, because the current API ignores them and can break startup. |
 
 ## Errors Encountered
 
