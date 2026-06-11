@@ -64,6 +64,11 @@ postcondition passes. The catalog rejects unknown installer strategies,
 untrusted download hosts, cyclic prerequisites, unsafe prefix paths, malformed
 registry keys, and unpinned file hashes.
 
+Live VC++ 2013 acceptance showed that its 32-bit Burn bootstrapper records both
+x86 and x64 bundle uninstall keys below Wine's `Wow6432Node` view. The 2012
+and 2013 x64 recipes therefore query that actual Wine registry location rather
+than assuming the native Windows x64 uninstall view.
+
 Chinese fonts were also not imported from CrossOver. A public release needs a
 legally reviewed source and explicit font licensing before offering automated
 installation.

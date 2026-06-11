@@ -1607,3 +1607,18 @@
   suite, 79 JavaScript tests, five installer/patch/launcher shell contracts,
   syntax checks, and whitespace checks passed. Live installation into the
   preserved People Playground prefix is the next acceptance step.
+
+## 2026-06-11 VC++ 2013 Live Recipe Correction
+
+- Backed up the People Playground prefix registries and existing dependency
+  receipts before the first representative live installation.
+- VC++ 2013 x86 installed successfully, passed its registry postcondition, and
+  wrote a receipt. VC++ 2013 x64 installed its native DLLs, but the action
+  correctly failed before writing a receipt because the catalog queried the
+  native x64 uninstall view.
+- Direct inspection and Wine `reg query` proved that the 32-bit Burn
+  bootstrapper writes the x64 bundle key below `Wow6432Node`. Corrected the
+  matching VC++ 2012 and 2013 x64 postconditions and added production-catalog
+  regression assertions.
+- Rollback snapshot:
+  `~/Library/Application Support/RealSteamOnMac/backups/people-playground-dependencies-20260611T160058Z`.

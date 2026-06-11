@@ -1162,6 +1162,11 @@
   semantics: current v14 does not replace Visual C++ 2013 or older, x64
   recipes include their x86 counterpart, and XNA declares .NET 4.8 as an
   explicit prerequisite.
+- Visual C++ 2012 and 2013 use a 32-bit Burn bootstrapper even for their x64
+  payload. Under Wine, both bundle uninstall records are exposed below
+  `HKLM\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall`.
+  Querying the native x64 uninstall view produces a false failure after the
+  DLLs have already installed.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

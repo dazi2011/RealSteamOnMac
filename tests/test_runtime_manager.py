@@ -1671,6 +1671,22 @@ class RuntimeManagerTests(unittest.TestCase):
             "directx-redist",
         )
         self.assertEqual(
+            catalog["vcrun2013"]["postconditions"][0]["key"],
+            (
+                "HKLM\\Software\\Wow6432Node\\Microsoft\\Windows\\"
+                "CurrentVersion\\Uninstall\\"
+                "{5d0723d3-cff7-4e07-8d0b-ada737deb5e6}"
+            ),
+        )
+        self.assertEqual(
+            catalog["vcrun2012"]["postconditions"][0]["key"],
+            (
+                "HKLM\\Software\\Wow6432Node\\Microsoft\\Windows\\"
+                "CurrentVersion\\Uninstall\\"
+                "{ca67548a-5ebe-413a-b50c-4b9ceb6d66c6}"
+            ),
+        )
+        self.assertEqual(
             {
                 condition["type"]
                 for dependency in catalog.values()
