@@ -96,6 +96,24 @@
   - Confirmed RDR2 is fully present and reaches `PlayRDR2.exe` through the DXMT
     runtime; the remaining failure lies in Rockstar/prefix/runtime bootstrap
     handling after dispatch.
+  - Read the explicit app manifests for RDR2, Hogwarts Legacy, Black Myth:
+    Wukong, Aimlabs, and People Playground and separated installed depots from
+    staged-only state.
+  - Confirmed Black Myth: Wukong has no installed depots and zero recorded
+    size, while a 149.8 GB depot remains staged; current normalization must not
+    promote that state to installed.
+  - Confirmed RDR2 has no per-AppID configuration and therefore inherits the
+    runtime's DXMT default despite being a newer DX12 title.
+  - Read the two failed Open C Drive job records and found that
+    `/usr/bin/open` inherited the x86_64 DXMT visibility shim, causing an
+    arm64e dyld abort. The job writer also incorrectly labeled exit `-6` as
+    completed.
+  - Read the full Python runtime/catalog/update tests and the full Node
+    policy/runtime/CDP tests.
+  - Confirmed the tests currently assert the handcrafted compatibility panel,
+    explicitly hide Steam's native row, accept app discovery from only a
+    manifest plus directory, and do not test environment scrubbing for native
+    helper processes.
   - Stopped an overly broad `/Volumes` filesystem scan and replaced it with
     explicit game, manifest, configuration, and log paths.
   - Discarded a malformed whitespace-splitting manifest loop and queued an

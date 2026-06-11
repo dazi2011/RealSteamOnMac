@@ -308,6 +308,28 @@
   empty shell. This is materially different from the Hogwarts and Aim Lab
   failures and supports the report that Steam accepted stale installed state
   after a one-second pseudo-download.
+- The corresponding app manifests make the distinction explicit:
+  - RDR2 and Aimlabs have `StateFlags=4`, nonzero `SizeOnDisk`, and populated
+    `InstalledDepots`.
+  - Hogwarts has `StateFlags=36`, a 74 GB installed depot, and
+    `FullValidateAfterNextUpdate=1`; validation cannot repair a launch target
+    that is absent from the depot manifest.
+  - Black Myth: Wukong has `StateFlags=1026`, `SizeOnDisk=0`, no
+    `InstalledDepots`, and a 149.8 GB entry only under `StagedDepots`. The
+    bridge must not normalize this state into ready-to-launch or treat the
+    empty install directory as a completed installation.
+- RDR2 has no per-AppID configuration file, so it inherits
+  `DEFAULT_CONFIG.renderer = "dxmt"`. Newer DX12 games do not currently receive
+  a GPTK default or recommendation based on launch/depot characteristics.
+- Hogwarts, Black Myth: Wukong, and Aimlabs are already explicitly configured
+  for GPTK, so their current failures occur before or independently of renderer
+  selection.
+- Two Open C Drive jobs captured the exact failure. `/usr/bin/open` inherited
+  DXMT's `DYLD_INSERT_LIBRARIES`, then the arm64e process aborted while trying
+  to load the x86_64 visibility shim. Both jobs returned `exit_code=-6` but
+  were persisted as `state="completed"`. Native macOS helper processes must run
+  from a scrubbed environment, and nonzero exits must not be reported as
+  completed.
 - The deployed compatibility directory contains only the four generated
   RealSteamOnMac wrapper folders; no raw vendor-format tool is currently
   installed there for acceptance testing.
