@@ -27,6 +27,14 @@ SUPPORTED_PROFILES = (
         ),
         "offset": 0x00A00874,
     },
+    {
+        "build": "1780965181",
+        "uuid": bytes.fromhex("4678FB72BAE93D1B8313D9A5667EA814"),
+        "sha256": (
+            "15c231465c4df4f557ece6aba070e7601e00b2b17b3772d2248655d41dbbeae2"
+        ),
+        "offset": 0x00A03DA4,
+    },
 )
 EXPECTED_BYTES = bytes.fromhex("ffc301d1f44f05a9")
 PATCHED_BYTES = bytes.fromhex("20008052c0035fd6")

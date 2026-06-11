@@ -22,15 +22,16 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-// GetAppForInstallation platform gate: `tbnz w8, #4, 0x62508c` selects the
-// "Invalid platform" (error 29) branch when the app's platform-flags word has
-// bit 4 set. The fall-through at 0x625060 leads to the real ownership/depot
-// success path. We redirect this single instruction through an allowlist-gated
-// trampoline so only RealSteamOnMac AppIDs skip the bit-4 platform veto.
+// GetAppForInstallation uses `tbnz w8, #4` to select the "Invalid platform"
+// (error 29) branch when the app's platform-flags word has bit 4 set. Each
+// UUID-gated profile records that instruction and its two branch destinations.
+// We redirect only that instruction through an allowlist-gated trampoline.
 #if defined(__x86_64__)
 #define STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET ((uintptr_t)0x01945548)
+#define STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET_REFRESH ((uintptr_t)0x01945548)
 #else
 #define STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET ((uintptr_t)0x018F9500)
+#define STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET_REFRESH ((uintptr_t)0x018FD500)
 #endif
 #define PLATFORM_INVALID_BIT ((uint32_t)0x10)
 #define MAX_ALLOWLIST_APPIDS ((size_t)256)
@@ -111,6 +112,18 @@ static const steamclient_profile kSteamClientProfiles[] = {
         0x00624630,
         STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET,
     },
+    {
+        "1780965181",
+        {
+            0x46, 0x78, 0xFB, 0x72, 0xBA, 0xE9, 0x3D, 0x1B,
+            0x83, 0x13, 0xD9, 0xA5, 0x66, 0x7E, 0xA8, 0x14,
+        },
+        0x00A03DA4,
+        0x00627884,
+        0x00627888,
+        0x006278B4,
+        STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET_REFRESH,
+    },
 };
 static const steamui_profile kSteamUIProfiles[] = {
     {
@@ -128,6 +141,14 @@ static const steamui_profile kSteamUIProfiles[] = {
             0x80, 0x63, 0xF2, 0x1D, 0x85, 0xD8, 0x96, 0xDE,
         },
         0x005EAC24,
+    },
+    {
+        "1780965181",
+        {
+            0x60, 0x9E, 0xA3, 0xD9, 0xE3, 0x44, 0x34, 0x0E,
+            0xAE, 0xBC, 0xFD, 0x6F, 0x38, 0x6F, 0x9A, 0x28,
+        },
+        0x005EDF44,
     },
 };
 static const size_t kSteamClientProfileCount =

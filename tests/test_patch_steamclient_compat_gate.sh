@@ -5,7 +5,11 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 PATCHER="$ROOT/script/patch_steamclient_compat_gate.py"
 DEFAULT_BACKUP="$HOME/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z/SteamRuntime.app/Contents/MacOS/steamclient.dylib"
 DEFAULT_RUNTIME="$HOME/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/steamclient.dylib"
-if [ -f "$DEFAULT_BACKUP" ]; then
+CURRENT_REFRESH_HASH=15c231465c4df4f557ece6aba070e7601e00b2b17b3772d2248655d41dbbeae2
+if [ -f "$DEFAULT_RUNTIME" ] &&
+    [ "$(shasum -a 256 "$DEFAULT_RUNTIME" | awk '{print $1}')" = "$CURRENT_REFRESH_HASH" ]; then
+    DEFAULT_SOURCE="$DEFAULT_RUNTIME"
+elif [ -f "$DEFAULT_BACKUP" ]; then
     DEFAULT_SOURCE="$DEFAULT_BACKUP"
 else
     DEFAULT_SOURCE="$DEFAULT_RUNTIME"
@@ -23,6 +27,9 @@ case "$SOURCE_HASH" in
         EXPECTED_BUILD=1780705203
         ;;
     d0945fc67880d048d163cf071ec9cc264cb3618c56cfb73520da36de0188f13e)
+        EXPECTED_BUILD=1780965181
+        ;;
+    15c231465c4df4f557ece6aba070e7601e00b2b17b3772d2248655d41dbbeae2)
         EXPECTED_BUILD=1780965181
         ;;
     *)

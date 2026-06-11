@@ -1269,6 +1269,20 @@
   probe. Its exact failure is native app error 29, localized as `平台无效`,
   with zero planned bytes and no depot list. The remaining blocker is native
   platform/compatibility-tool registration, not stale content state.
+- Valve replaced both active native libraries on June 11, 2026 while retaining
+  client build `1780965181`. The refreshed Valve-signed arm64 UUIDs are
+  `4678FB72-BAE9-3D1B-8313-D9A5667EA814` for `steamclient.dylib` and
+  `609EA3D9-E344-340E-AEBC-FD6F386F9A28` for `steamui.dylib`.
+- Current-session hook logs contain only the unknown-SteamUI diagnostic and no
+  install-gate patch. Read-only LLDB inspection confirmed both current gates
+  retained their original instructions. Error 29 is therefore first explained
+  by rejected binary profiles; native compatibility-tool registration remains
+  a separate later acceptance requirement.
+- Unique structural matching against the prior Valve binaries located the
+  refreshed compatibility gate at `0x00A03DA4`, install gate at `0x00627884`,
+  install destinations at `0x00627888` and `0x006278B4`, and SteamUI getter at
+  `0x005EDF44`. `dyld_info -fixups` located the new `posix_spawn` slot at
+  `0x018FD500`.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

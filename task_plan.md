@@ -234,6 +234,13 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   false-completes, but fails explicitly with native app error 29
   (`InvalidPlatform`); native compatibility-tool registration is now the
   remaining download gate.
+- **Same-build refresh checkpoint:** Valve replaced `steamclient.dylib` and
+  `steamui.dylib` on June 11 while retaining build `1780965181`. The current
+  hook rejected both refreshed UUIDs, so the current process never installed
+  the native compatibility, install, data-object, or launch redirections.
+  Structurally verified refreshed profiles have been added; deployment and a
+  repeated native install-plan test are the next gate before attributing any
+  remaining error 29 to compatibility-tool registration.
 - **Current checkpoint:** verified Steam launch descriptors, managed
   missing-target redirection, and guarded Rockstar recovery have passed live
   acceptance. RDR2 now reaches Rockstar Steam min-mode but not `RDR2.exe`.

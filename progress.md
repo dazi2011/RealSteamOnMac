@@ -1826,3 +1826,12 @@
   one-second false completion: `eInstallState=15`, `eAppError=29`,
   `currentAppID=2358720`, zero required bytes, and an empty depot plan.
   Steam localizes error 29 as `平台无效`.
+- Reconciled the active Valve libraries after discovering a same-build binary
+  refresh. The current arm64 UUIDs and source hashes differ from the original
+  `1780965181` profile even though Steam still reports the same build number.
+- Used exact sequence matching, Capstone disassembly, Mach-O lazy-bind metadata,
+  and bounded read-only LLDB memory checks to recover all five refreshed
+  runtime locations. No live process memory was modified during diagnosis.
+- Added the refreshed UUID-gated profiles to the native engine and offline
+  compatibility-gate patcher, extended the hook contract, and made the live
+  patcher test prefer the refreshed Valve binary when its exact hash matches.
