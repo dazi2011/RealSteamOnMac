@@ -1064,3 +1064,9 @@
 - Task 5 RED verification failed at import with `FileNotFoundError` for the
   intentionally absent `runtime/steam_launch_descriptor.py`; none of the new
   cases can pass through the old executable-directory heuristic.
+- Added a bounded, duplicate-key-rejecting launch-descriptor parser. It
+  validates schema, AppID, entry IDs, OS, relative executable and working
+  directory paths, arguments, defaults, PE headers, and installation-root
+  containment.
+- Task 5 descriptor verification passed all 6 fixtures plus Python bytecode
+  compilation and whitespace validation.

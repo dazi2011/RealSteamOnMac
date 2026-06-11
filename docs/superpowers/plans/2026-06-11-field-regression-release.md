@@ -272,7 +272,7 @@ Run:
 /usr/bin/python3 -m unittest tests.test_steam_launch_descriptor -v
 ```
 
-- [ ] **Step 3: Implement descriptor parsing**
+- [x] **Step 3: Implement descriptor parsing**
 
 Consume a bounded JSON descriptor exported from Steam's decoded app details.
 Validate AppID, OS, executable, working directory, arguments, and launch-entry
