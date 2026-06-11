@@ -1744,3 +1744,36 @@
 - Restored Steam to Simplified Chinese and verified that a subsequent launch
   without a language override still reported `LANGUAGE=schinese`. Native
   Steam resumed as PID `50579`; CrossOver Preview remained untouched.
+
+## 2026-06-12 Native Compatibility Mapping And Zero-Depot Diagnosis
+
+- Changed the compatibility bridge to call Steam's original
+  `SpecifyCompatTool` for project, third-party, and empty selections only
+  after authenticated native registry synchronization. Successful native
+  writes are cached; a rejected write cannot change the selected project tool
+  or post a runtime-control update.
+- Expanded the runtime contract to cover initial and dynamic native mappings,
+  manual project-tool changes, failure rollback, and clearing a selection.
+  All 81 focused JavaScript tests pass.
+- Backed up the deployed UI, SteamUI assets, `config.vdf`, and both Black
+  Myth manifests at
+  `~/Library/Application Support/RealSteamOnMac/backups/native-compat-mapping-20260611T164718Z`.
+- Deployed the mapping bridge and restarted only native Steam. UI status
+  reported `compatNativeSyncs=34`, `registryNativeSyncs=1`, and no error.
+  Live `config.vdf` contains 34 mappings; sampled entries are People Playground
+  to DXMT, Black Myth to GPTK, FOR HONOR to DXMT, and Hogwarts Legacy to GPTK.
+- Native `compat_log.txt` confirms the mappings but contains no registration or
+  manifest-load lines for the four current tools. Startup discovery remains
+  deliberately disabled because the valid-path A/B test removed Steam Cloud
+  settings.
+- Added two fixed-AppID experimental probes. The install-plan probe opens
+  Steam's native wizard and cancels any plan it creates. The verification probe
+  invokes only `VerifyApp`, polls the native action, and always attempts
+  `PauseAppUpdate` in `finally`; it never resumes, installs, launches, or
+  uninstalls.
+- Both Black Myth manifests remain fully-installed zero-content records:
+  `SizeOnDisk=0`, empty `InstalledDepots`, and no install directory. The native
+  wizard produced no plan, and two verify-then-pause runs produced no target
+  depots and mounted zero depots. No 130 GB download began.
+- CrossOver Preview PIDs `19863`, `19885`, and `73736` remained alive throughout
+  the mapping deployment and Black Myth diagnostics.

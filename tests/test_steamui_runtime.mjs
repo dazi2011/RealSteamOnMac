@@ -57,6 +57,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     [4000, details(4000, ["windows", "osx", "linux"])],
   ]);
   const nativeSpecifyCalls = [];
+  let rejectedNativeTool = null;
   const nativeDetailRegistrations = [];
   const nativeDetailUnregistrations = [];
   const nativeDetailCallbacks = new Map();
@@ -134,6 +135,9 @@ test("installs the predicate before dynamically replacing the bootstrap registry
           return [];
         },
         async SpecifyCompatTool(appid, tool) {
+          if (tool === rejectedNativeTool) {
+            throw new Error(`native compatibility tool rejected: ${tool}`);
+          }
           nativeSpecifyCalls.push([appid, tool]);
         },
         RegisterForAppDetails(appid, callback) {
@@ -234,7 +238,9 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   );
 
   await waitFor(
-    () => context.__REALSTEAMONMAC_UI_STATUS__.registryScans === 1,
+    () =>
+      context.__REALSTEAMONMAC_UI_STATUS__.registryScans === 1 &&
+      context.__REALSTEAMONMAC_UI_STATUS__.appids.length === 2,
   );
   assert.deepEqual(
     [...context.__REALSTEAMONMAC_UI_STATUS__.appids],
@@ -287,6 +293,10 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     overviews[1].selected_per_client_data.display_status,
     9,
   );
+  assert.deepEqual(nativeSpecifyCalls, [
+    [1118200, "realsteamonmac-dxmt"],
+    [990080, "realsteamonmac-dxmt"],
+  ]);
   const scansBeforeNativeDetailCallback =
     context.__REALSTEAMONMAC_UI_STATUS__.scans;
   nativeDetailCallbacks.get(1118200)({
@@ -339,7 +349,11 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     990080,
     "realsteamonmac-dxvk",
   );
-  assert.deepEqual(nativeSpecifyCalls, []);
+  assert.deepEqual(nativeSpecifyCalls, [
+    [1118200, "realsteamonmac-dxmt"],
+    [990080, "realsteamonmac-dxmt"],
+    [990080, "realsteamonmac-dxvk"],
+  ]);
   assert.equal(
     context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__(990080),
     "realsteamonmac-dxvk",
@@ -350,6 +364,29 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     "compat_tool=realsteamonmac-dxvk&renderer=dxvk&" +
       "msync=1&retina=0&metal_hud=0&" +
       "metalfx=0&dxr=0&avx=0",
+  );
+
+  const controlRequestCount = controlRequests.length;
+  rejectedNativeTool = "realsteamonmac-gptk";
+  await assert.rejects(
+    context.SteamClient.Apps.SpecifyCompatTool(
+      990080,
+      "realsteamonmac-gptk",
+    ),
+    /native compatibility tool rejected/,
+  );
+  assert.equal(
+    context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__(990080),
+    "realsteamonmac-dxvk",
+  );
+  assert.equal(controlRequests.length, controlRequestCount);
+  rejectedNativeTool = null;
+
+  await context.SteamClient.Apps.SpecifyCompatTool(990080, "");
+  assert.deepEqual(nativeSpecifyCalls.at(-1), [990080, ""]);
+  assert.equal(
+    context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__(990080),
+    "",
   );
 
   const initializedOverviews = [...overviews];

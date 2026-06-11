@@ -1211,6 +1211,27 @@
   Chinese and English tests produced clickable `开始游戏`/`PLAY` and
   `安装`/`INSTALL` controls with no handcrafted action UI and no language
   matching in production code.
+- Steam's original `SpecifyCompatTool` accepts the four project tool names
+  after the authenticated native registry has synchronized. The live
+  `config.vdf` now contains 34 allowlist-scoped mappings, including Black
+  Myth: Wukong to `realsteamonmac-gptk` and People Playground to
+  `realsteamonmac-dxmt`.
+- A successful mapping write is not proof that `CCompatManager` registered the
+  referenced tool. The current `compat_log.txt` records all 34 mappings but no
+  `Processing local tool list`, `Registering tool`, or `Loaded manifest` lines
+  for the four current tools.
+- Historical registrations of `realsteamonmac-experimental` occurred only
+  during experiments that supplied `STEAM_EXTRA_COMPAT_TOOLS_PATHS`. That is
+  the already rejected startup path which removed native Cloud settings; it
+  is not evidence of a second hidden registration mechanism.
+- Black Myth: Wukong currently has duplicate stale manifests in the Windows
+  and macOS Steam libraries. Both report `StateFlags=4`, `SizeOnDisk=0`, an
+  empty `InstalledDepots` object, and no corresponding install directory.
+- Steam verification cannot reconstruct an absent depot list from that state.
+  Two guarded `VerifyApp` runs returned normally, were immediately followed by
+  `PauseAppUpdate`, and ended with zero active/target depots and zero mounted
+  depots. The native install wizard also declined to create a plan because the
+  manifest still claims the app is fully installed.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

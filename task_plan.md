@@ -207,6 +207,21 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   English. Steam was restored to Simplified Chinese and retained it across a
   later launch without a language override. Stale depot-manifest repair remains
   open and is not covered by this checkpoint.
+- **Native mapping checkpoint:** compatibility selections are now committed
+  through Steam's original `SpecifyCompatTool` only after the authenticated
+  native registry accepts the managed AppID set. Successful writes are cached
+  to prevent one-second rewrites; rejected writes leave the prior selection
+  and runtime config untouched. Live `config.vdf` contains all 34 mappings,
+  but Steam has not yet registered the four project tools in
+  `CCompatManager`, so mapping persistence and native tool availability remain
+  separate acceptance gates.
+- **Zero-depot recovery checkpoint:** Black Myth: Wukong has two stale
+  `StateFlags=4` manifests with `SizeOnDisk=0`, no `InstalledDepots`, and no
+  install directory. Native install-wizard inspection and two guarded
+  verify-then-pause runs produced no depot target and mounted zero depots.
+  The next repair step must transition only this backed-up zero-content state
+  through Steam's own uninstall/install lifecycle before claiming reinstall
+  recovery.
 - **Current checkpoint:** verified Steam launch descriptors, managed
   missing-target redirection, and guarded Rockstar recovery have passed live
   acceptance. RDR2 now reaches Rockstar Steam min-mode but not `RDR2.exe`.
@@ -289,7 +304,7 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Treat raw GPTK/DXMT/DXVK/Wine directories as validated catalog inputs | Users can install standard vendor layouts directly; the runtime manager will compose them with an immutable base package instead of requiring project-private wrapper files or mutating the source tree. |
 | Compose raw tools into content-addressed runtime views | Hardlink the immutable selected base Wine, clone or copy user component files into an isolated overlay, and key the cache by base package plus source-tree fingerprint so source edits create a new view without changing old launches. |
 | Reuse a Steamworks bridge for raw Wine only across the same Wine major | A matching Wine 11 bridge retains Steam ownership integration for Wine 11.x; an unknown ABI combination must launch without that bridge instead of injecting an incompatible helper. |
-| Keep native compatibility selection stable through macOS detail refreshes | Steam remains the control owner; a data-only fallback stabilizes checkbox/dropdown state. Do not call native persistence for project tools until the macOS backend actually registers them, because the current API ignores them and can break startup. |
+| Commit compatibility selections only after authenticated native registry sync | Steam remains the control owner; the data-only fallback stabilizes checkbox/dropdown state, while delayed original-API writes persist mappings without racing startup. Successful writes are cached and failures leave project state unchanged; native tool registration is still a separate unresolved gate. |
 | Resize and scale only Steam's native controller configurator | Identify the locale-independent `SP Controller Configurator_*` popup, use `SteamClient.Window` for native sizing, and apply bounded document zoom without adding or replacing UI. |
 
 ## Errors Encountered

@@ -1121,6 +1121,7 @@
   const refreshedActions = new WeakSet();
   const availableCompatTools = new Map();
   const compatSelections = new Map();
+  const nativeCompatSelections = new Map();
   const controlConfigs = new Map();
   const actionStates = new Map();
   const nativeLoadedControlAppids = new Set();
@@ -1655,6 +1656,17 @@
   }
 
   let originalGetAvailableCompatTools = null;
+  let originalSpecifyCompatTool = null;
+
+  async function commitNativeCompatSelection(appid, tool) {
+    if (nativeCompatSelections.get(appid) === tool) {
+      return undefined;
+    }
+    const result = await originalSpecifyCompatTool(appid, tool);
+    nativeCompatSelections.set(appid, tool);
+    status.compatNativeSyncs += 1;
+    return result;
+  }
 
   function installCompatToolBridge() {
     const apps = globalObject.SteamClient?.Apps;
@@ -1666,8 +1678,7 @@
       throw new Error("Steam compatibility tool APIs are unavailable");
     }
 
-    const originalSpecifyCompatTool =
-      apps.SpecifyCompatTool.bind(apps);
+    originalSpecifyCompatTool = apps.SpecifyCompatTool.bind(apps);
     originalGetAvailableCompatTools =
       apps.GetAvailableCompatTools.bind(apps);
     apps.GetAvailableCompatTools = async (appid) => {
@@ -1692,12 +1703,7 @@
         }
       }
 
-      let result;
-      if (!tool || projectCompatToolNames.has(tool)) {
-        result = undefined;
-      } else {
-        result = await originalSpecifyCompatTool(appid, tool);
-      }
+      const result = await commitNativeCompatSelection(appid, tool);
       if (projectCompatToolNames.has(tool)) {
         const renderer = rendererForCompatTool(
           tool,
@@ -1717,7 +1723,7 @@
     return originalSpecifyCompatTool;
   }
 
-  async function syncNativeCompatSelections(originalSpecifyCompatTool) {
+  async function syncNativeCompatSelections() {
     for (const [appid, selectedTool] of compatSelections) {
       if (!selectedTool) {
         continue;
@@ -1731,10 +1737,7 @@
             `for AppID ${appid}`,
         );
       }
-      if (!projectCompatToolNames.has(selectedTool)) {
-        await originalSpecifyCompatTool(appid, selectedTool);
-      }
-      status.compatNativeSyncs += 1;
+      await commitNativeCompatSelection(appid, selectedTool);
     }
   }
 
@@ -1795,6 +1798,7 @@
     }
     compatSelections.delete(appid);
     controlConfigs.delete(appid);
+    nativeCompatSelections.delete(appid);
     nativeLoadedControlAppids.delete(appid);
     lastNativeControlPayloads.delete(appid);
     availableCompatTools.delete(appid);
@@ -1849,7 +1853,9 @@
         loadDetails: loadAppDetails,
       });
       await applyManagedRegistry(nextManagedAppids);
-      await syncNativeRegistry();
+      if (await syncNativeRegistry()) {
+        await syncNativeCompatSelections();
+      }
       await reconcile();
     } catch (error) {
       status.registryLastError = String(error);
@@ -2288,15 +2294,11 @@
   loadControlConfigs();
   persistCompatSelections();
   persistControlConfigs();
-  const originalSpecifyCompatTool = installCompatToolBridge();
+  installCompatToolBridge();
   globalObject.setInterval(reconcile, RECONCILE_INTERVAL_MS);
   globalObject.setInterval(
     refreshManagedRegistry,
     REGISTRY_REFRESH_INTERVAL_MS,
   );
-  void syncNativeCompatSelections(originalSpecifyCompatTool)
-    .then(refreshManagedRegistry)
-    .catch((error) => {
-      status.lastError = String(error);
-    });
+  void refreshManagedRegistry();
 })(globalThis);
