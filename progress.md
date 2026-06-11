@@ -43,6 +43,13 @@
   - Found an inert Create Log checkbox, split component/application install
     workflows, hard-coded Chinese copy, and aggressive one-second DOM/React
     polling.
+  - Read `runtime/realsteamonmac_runtime.py` in full.
+  - Found heuristic EXE guessing instead of Steam launch-config resolution,
+    strict `steamapps` confinement that blocks non-Steam EXEs, and Run Command
+    validation that rejects normal Win+R command names and external files.
+  - Confirmed empty install directories are accepted as installed context and
+    raw CrossOver-like runtime trees cannot be launched without project
+    package metadata.
 - Files modified:
   - `task_plan.md`
   - `findings.md`

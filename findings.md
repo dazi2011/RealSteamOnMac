@@ -112,6 +112,40 @@
   seconds across all owned visible games. This polling design is a plausible
   contributor to slow post-restart action readiness and requires profiling or
   event-driven replacement.
+- `runtime/realsteamonmac_runtime.py` does not read Steam's per-game launch
+  configuration. `discover_default_executable` scans up to 5000 `.exe` files
+  and ranks them by folder-name similarity, depth, and lexical path. This can
+  select test, shipping, launcher, or helper executables incorrectly and is a
+  concrete explanation for paths such as
+  `Hogwarts Legacy/Phoenix-Win64-Test.exe`.
+- The runtime accepts only a PE file as the game context and requires that file
+  to be inside a directory named `steamapps`. A newly added non-Steam `.exe`
+  outside a Steam library cannot use the current launch path.
+- Run Command is narrower than Windows Run: it resolves only an existing PE
+  file under the game install directory or PFX. It rejects command names such
+  as `cmd`, `regedit`, `control`, or `winecfg`, rejects documents and shell
+  associations, and rejects arbitrary selected installers outside those two
+  roots.
+- The file picker accepts `.exe`, `.bat`, and `.cmd`, but
+  `execute_choose_file_action` then rejects any selection outside the game or
+  PFX and the actual Run Command resolver rejects non-PE files. Selecting a
+  normal external EXE can therefore complete the macOS picker and still return
+  no target to the UI because the native job fails validation.
+- `find_app_installation` treats a manifest plus an existing directory as an
+  installation even when the directory is empty. It does not validate depot
+  files, install size, state flags, or Steam's launch executable before
+  presenting the app to action workflows.
+- Open C Drive invokes `/usr/bin/open <prefix>/drive_c`, which should normally
+  reach Finder. Its reported failure is not explained by command construction
+  alone and requires job-log/live LaunchServices evidence.
+- Install Application To Container already runs an arbitrary selected Windows
+  installer in the prefix, while dependency installation uses a separate
+  checksum-pinned catalog. The two backends can be unified behind one native
+  Steam action surface.
+- Runtime selection requires project-specific `realsteamonmac.json` metadata
+  and a `runtimePackage` pointing into the RealSteamOnMac immutable package
+  store. A raw CrossOver-like GPTK/Wine directory cannot currently be launched
+  directly even if its payload is otherwise valid.
 
 ## Requirements
 
