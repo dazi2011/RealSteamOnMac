@@ -239,3 +239,5 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | DXMT v0.80 cannot create its Metal view with stock Wine Staging 11.10 | 1 | Added a Wine 11 client-surface bridge plus a narrow dyld visibility shim; the formal isolated package renders the People Playground menu and exits cleanly. |
 | People Playground's compiler kept Steam running after normal exit | 2 | Proved Wine PID `312` collided with `/usr/libexec/searchpartyd`; added an AppID-only post-exit Wine cleanup. |
 | Runtime installer left official GPTK images mounted after success | 1 | Detach the installer-owned mount points directly, use force only as fallback, and verify a real idempotent reinstall leaves no mounts. |
+| A broad game-evidence scan under `/Volumes` did not terminate promptly | 1 | Terminated the scan without modifying data and switched to explicit known library, manifest, configuration, and log paths. |
+| A shell loop split AppID/path pairs on whitespace and queried `appmanifest_.acf` | 1 | Discarded the invalid output and replaced the loop with an explicit manifest file list. |

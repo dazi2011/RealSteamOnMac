@@ -85,6 +85,21 @@
     intermittent post-restart button and Windows-only state regressions.
   - Confirmed both stable and beta manifest files coexist while the running
     process identifies the active beta build.
+  - Inspected the installed directories for Red Dead Redemption 2, Hogwarts
+    Legacy, Black Myth: Wukong, Aim Lab, and People Playground.
+  - Proved Hogwarts Legacy and Aim Lab retain valid Windows executables while
+    their reported failing targets do not exist, separating launch-metadata
+    corruption from depot loss.
+  - Confirmed Black Myth: Wukong is an approximately 1.1 MB empty shell,
+    matching the reported one-second pseudo-download/stale-installed-state
+    failure class.
+  - Confirmed RDR2 is fully present and reaches `PlayRDR2.exe` through the DXMT
+    runtime; the remaining failure lies in Rockstar/prefix/runtime bootstrap
+    handling after dispatch.
+  - Stopped an overly broad `/Volumes` filesystem scan and replaced it with
+    explicit game, manifest, configuration, and log paths.
+  - Discarded a malformed whitespace-splitting manifest loop and queued an
+    explicit file list so AppIDs and paths cannot be lost.
 - Files modified:
   - `task_plan.md`
   - `findings.md`

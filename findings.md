@@ -290,6 +290,24 @@
   `PlayRDR2.exe`. Its current failure occurs after Steam target selection and
   after the compatibility dispatch boundary, inside prefix/runtime/Rockstar
   handling.
+- Red Dead Redemption 2 occupies about 122 GB and contains both `RDR2.exe` and
+  `PlayRDR2.exe`. Runtime logs show the latter was launched through the DXMT
+  renderer on both 2026-06-10 and 2026-06-11. The game is not missing; recovery
+  must inspect the Rockstar bootstrap state and prefix rather than redownload
+  the depot.
+- Hogwarts Legacy occupies about 72 GB and contains both the top-level
+  `HogwartsLegacy.exe` and
+  `Phoenix/Binaries/Win64/HogwartsLegacy.exe`. The reported
+  `Phoenix-Win64-Test.exe` path does not exist, proving the failure is stale or
+  incorrectly synthesized launch metadata rather than a missing game depot.
+- Aim Lab occupies about 18 GB and contains `AimLab_tb.exe` but no
+  `AimLab.app`. A Windows-only title reaching an `.app` target proves that the
+  native/macOS launch record is being selected or synthesized incorrectly
+  before PE dispatch.
+- `BlackMythWukong` currently occupies only about 1.1 MB and is effectively an
+  empty shell. This is materially different from the Hogwarts and Aim Lab
+  failures and supports the report that Steam accepted stale installed state
+  after a one-second pseudo-download.
 - The deployed compatibility directory contains only the four generated
   RealSteamOnMac wrapper folders; no raw vendor-format tool is currently
   installed there for acceptance testing.
