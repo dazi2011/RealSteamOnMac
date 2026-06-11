@@ -243,3 +243,4 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | A shell loop split AppID/path pairs on whitespace and queried `appmanifest_.acf` | 1 | Discarded the invalid output and replaced the loop with an explicit manifest file list. |
 | zsh preserved a newline-delimited probe list as one `awk` filename | 1 | Re-ran the read-only batch through `xargs`, which passed each probe path as a distinct argument. |
 | The first native-helper patch used an inexact constant-block context | 1 | `apply_patch` changed no file; re-read the exact neighboring lines and applied smaller targeted hunks. |
+| The field-regression plan named two launcher/guard tests that do not exist | 1 | Corrected the plan to use `tests/test_steam_launcher.sh` and `tests/test_hook_environment_isolation.sh`. |

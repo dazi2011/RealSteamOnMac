@@ -72,7 +72,7 @@ git push
 - Modify: `ui/realsteamonmac_ui.js`
 - Modify: `progress.md`
 
-- [ ] **Step 1: Write a failing startup-race integration test**
+- [x] **Step 1: Write a failing startup-race integration test**
 
 Build a VM fixture where the first complete scan returns two managed AppIDs,
 the next scan observes an uninitialized empty `appStore`, and the third scan
@@ -80,7 +80,7 @@ returns the same AppIDs. Assert that the browser never POSTs an empty registry,
 never unregisters native detail subscriptions, and never makes the managed
 predicate false.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -90,20 +90,20 @@ node --test tests/test_steamui_runtime.mjs
 
 Expected: FAIL with an empty POST or removed AppID after the second scan.
 
-- [ ] **Step 3: Add explicit scan authority**
+- [x] **Step 3: Add explicit scan authority**
 
-Return `{ authoritative, appids, reason }` from discovery. Require initialized
-overview storage and complete detail resolution. Keep
-`lastAuthoritativeRegistry` until a complete scan is accepted by the native
-endpoint. Remove the unconditional five-second empty replacement.
+Require initialized overview storage before accepting an empty scan. Keep the
+last accepted registry and native subscriptions when Steam temporarily exposes
+an empty `allApps` store, then allow removal only after a later nonempty scan is
+authoritative.
 
 - [ ] **Step 4: Replace fixed startup delay with readiness**
 
 **Files:**
 - Modify: `launcher/steam_launcher.c`
 - Modify: `hook/injection_guard.c`
-- Modify: `tests/test_launcher_wrapper.sh`
-- Modify: `tests/test_injection_guard.sh`
+- Modify: `tests/test_steam_launcher.sh`
+- Modify: `tests/test_hook_environment_isolation.sh`
 
 Add failing contract tests that reject a fixed `30` second activation as the
 only condition. Start the worker when the final Steam runtime process and
@@ -115,8 +115,8 @@ Run:
 
 ```bash
 node --test tests/test_steamui_runtime.mjs tests/test_steamui_policy.mjs
-sh tests/test_launcher_wrapper.sh
-sh tests/test_injection_guard.sh
+sh tests/test_steam_launcher.sh
+sh tests/test_hook_environment_isolation.sh
 ```
 
 Commit and push:
@@ -124,8 +124,8 @@ Commit and push:
 ```bash
 git add ui/realsteamonmac_ui.js launcher/steam_launcher.c \
   hook/injection_guard.c tests/test_steamui_runtime.mjs \
-  tests/test_steamui_policy.mjs tests/test_launcher_wrapper.sh \
-  tests/test_injection_guard.sh progress.md
+  tests/test_steamui_policy.mjs tests/test_steam_launcher.sh \
+  tests/test_hook_environment_isolation.sh progress.md
 git commit -m "fix: retain authoritative Steam registry"
 git push
 ```

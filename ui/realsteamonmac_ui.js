@@ -1458,6 +1458,11 @@
       if (!Array.isArray(overviews)) {
         throw new Error("Steam app overview store is unavailable");
       }
+      if (overviews.length === 0 && managedAppids.size > 0) {
+        throw new Error(
+          "Steam app overview store is not initialized",
+        );
+      }
       const nextManagedAppids = await discoverManagedApps({
         overviews,
         loadDetails: loadAppDetails,

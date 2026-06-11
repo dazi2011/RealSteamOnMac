@@ -996,3 +996,13 @@
   key. GitHub's latest-release API returns `v0.1.1`, and the installed updater
   reports `{"status":"current","version":"0.1.1"}` on Steam build
   `1780965181`.
+- Added a startup-race integration scenario that first synchronizes two managed
+  AppIDs, exposes a transient empty `appStore.allApps`, then restores the
+  initialized store. The test failed before the fix because the managed
+  predicate became false and native subscriptions were removed.
+- The browser now rejects a transient empty overview store when a nonempty
+  managed registry is already active. It preserves the accepted registry and
+  subscriptions, while a later authoritative nonempty scan can still remove an
+  actually unmanaged game.
+- Focused SteamUI regression after the fix: 64 Node tests passed across
+  `test_steamui_runtime.mjs` and `test_steamui_policy.mjs`.

@@ -857,6 +857,17 @@
   immutable downloads on 2026-06-10 are 18,731,856 bytes for x64 and 6,941,536
   bytes for x86, with SHA-256 values recorded in
   `config/dependencies.json`.
+- Steam can transiently publish an empty `appStore.allApps` collection during
+  restart even after the browser has synchronized a nonempty managed registry.
+  Treating that empty collection as authoritative unregisters native detail
+  subscriptions and recreates the reported delayed Play/Install or
+  Windows-only state. The browser must retain its last accepted registry until
+  Steam exposes an initialized nonempty overview store again.
+- The existing 30-second native-engine delay has prior live evidence that it
+  preserves Steam Cloud through the two-stage `steam_osx` startup. Removing it
+  without a replacement readiness proof would reintroduce a known global
+  settings regression, so registry retention and activation readiness are
+  separate fixes.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
