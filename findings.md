@@ -55,6 +55,18 @@
   requirement and must be re-audited rather than trusted.
 - No matching prior RealSteamOnMac memory entry was found, so repository and
   live-machine evidence are the only accepted sources for this run.
+- Commit `beee125` confirms the current compatibility UI deliberately hides
+  Steam's native compatibility row with `style.display = "none"` and mounts a
+  project-owned `realsteamonmac-controls` panel in its place. This is not a
+  native Steam implementation and directly violates the field requirement.
+- The same code locates the native row by exact Chinese or English text:
+  `强制使用特定 Steam Play 兼容性工具` or
+  `Force the use of a specific Steam Play compatibility tool`. Other Steam
+  locales cannot match this predicate, providing a concrete root cause for
+  language-dependent compatibility UI/action failure.
+- Tests for that behavior encode Chinese text fixtures and explicitly assert
+  that the native row is hidden, so the test suite currently protects the
+  incorrect design instead of detecting it.
 
 ## Requirements
 

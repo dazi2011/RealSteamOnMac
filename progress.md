@@ -24,6 +24,12 @@
   - Decomposed the request into independently verifiable implementation and
     release phases without pausing for an approval loop, per the user's
     explicit instruction.
+  - Audited commit `beee125` and proved the current UI hides Steam's native
+    compatibility row before mounting a project-owned replacement panel.
+  - Proved compatibility-row discovery is hard-coded to Chinese and English
+    label text, explaining failure in other Steam UI languages.
+  - Confirmed current tests explicitly preserve the incorrect hidden-native-row
+    behavior and must be replaced with native-control integration coverage.
 - Files modified:
   - `task_plan.md`
   - `findings.md`
