@@ -1362,3 +1362,26 @@
   native-control fixtures in the install and launcher shell contracts; both
   fixtures now contain the real control anchor and expect all three managed
   gates.
+
+## 2026-06-11 Native Compatibility Selection Stability
+
+- Reproduced the RTF-reported checkbox flicker in the live People Playground
+  properties window. A 15-second, 250 ms CDP trace captured the native React
+  checkbox switching true/false repeatedly while local storage continuously
+  selected `realsteamonmac-dxmt`.
+- Confirmed the conflict source: Steam's native detail refresh clears the
+  macOS compatibility fields, then the one-second project reconcile restores
+  them. The persistent native mapping was also stale at
+  `realsteamonmac-experimental`.
+- Added a stable selected-tool accessor for Steam's existing compatibility
+  component. The guarded chunk patch now uses it only when native detail
+  fields are empty, both for the native checkbox and the native dropdown's
+  selected option.
+- Restored Steam's original `SpecifyCompatTool` call for project tools and
+  startup synchronization, so native per-AppID mappings are authoritative
+  instead of remaining on a removed legacy tool.
+- Added migration from the currently installed native-control patch. Unknown
+  hashes and unexpected checkbox/dropdown anchor counts still fail closed.
+- Pre-deployment verification passed 15 patcher tests, 77 JavaScript
+  runtime/policy tests, SteamUI install/verify/restore, Steam injection,
+  launcher, JavaScript syntax, Python bytecode, and whitespace checks.

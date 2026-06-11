@@ -222,8 +222,16 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     typeof context.__REALSTEAMONMAC_IS_MANAGED_APP__,
     "function",
   );
-  assert.equal(context.__REALSTEAMONMAC_UI_STATUS__.version, 10);
+  assert.equal(
+    typeof context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__,
+    "function",
+  );
+  assert.equal(context.__REALSTEAMONMAC_UI_STATUS__.version, 11);
   assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(1118200), true);
+  assert.equal(
+    context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__(1118200),
+    "realsteamonmac-dxmt",
+  );
 
   await waitFor(
     () => context.__REALSTEAMONMAC_UI_STATUS__.registryScans === 1,
@@ -234,6 +242,10 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   );
   assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(990080), true);
   assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(4000), false);
+  assert.equal(
+    context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__(990080),
+    "realsteamonmac-dxmt",
+  );
   assert.equal(registryRequests.length, 1);
   assert.equal(
     context.__REALSTEAMONMAC_UI_STATUS__.registryNativeSyncs,
@@ -327,7 +339,14 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     990080,
     "realsteamonmac-dxvk",
   );
-  assert.deepEqual(nativeSpecifyCalls, []);
+  assert.deepEqual(nativeSpecifyCalls, [
+    [1118200, "realsteamonmac-dxmt"],
+    [990080, "realsteamonmac-dxvk"],
+  ]);
+  assert.equal(
+    context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__(990080),
+    "realsteamonmac-dxvk",
+  );
   assert.equal(controlRequests.at(-1).options.method, "POST");
   assert.equal(
     controlRequests.at(-1).options.body,

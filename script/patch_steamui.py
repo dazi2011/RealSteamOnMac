@@ -28,7 +28,7 @@ KNOWN_COMPAT_CHUNK_SHA256 = {
 }
 if os.environ.get("REALSTEAMONMAC_ALLOW_TEST_FIXTURES") == "1":
     KNOWN_COMPAT_CHUNK_SHA256.add(
-        "a11487b10dfcece3eb7198407972b65b70a6e1c3c7ab03c0c355f550af8e8764"
+        "ec02f405cb2c195441b41646c95115ebce08286dccb3022e20edbae457983bc1"
     )
 INDEX_NAME = "index.html"
 BACKUP_NAME = "index.html.realsteamonmac.original"
@@ -77,8 +77,24 @@ COMPAT_ENABLE_ANCHOR = (
 COMPAT_ENABLE_DYNAMIC_GATE = (
     "r=(0,s.q3)(()=>u.rV.settings.bCompatEnabled)"
     "||globalThis.__REALSTEAMONMAC_IS_MANAGED_APP__?.(t.unAppID),"
+    "a=vt(t.unAppID,r),o=r&&((!!t.strCompatToolName"
+    "&&t.nCompatToolPriority==h.JN)"
+    "||!!globalThis.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__"
+    "?.(t.unAppID))"
+)
+COMPAT_ENABLE_PREVIOUS_DYNAMIC_GATE = (
+    "r=(0,s.q3)(()=>u.rV.settings.bCompatEnabled)"
+    "||globalThis.__REALSTEAMONMAC_IS_MANAGED_APP__?.(t.unAppID),"
     "a=vt(t.unAppID,r),o=r&&!!t.strCompatToolName"
     "&&t.nCompatToolPriority==h.JN"
+)
+COMPAT_SELECTED_OPTION_ANCHOR = (
+    "selectedOption:t.strCompatToolName,onChange:"
+)
+COMPAT_SELECTED_OPTION_DYNAMIC_GATE = (
+    "selectedOption:t.strCompatToolName"
+    "||globalThis.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__"
+    "?.(t.unAppID)||\"\",onChange:"
 )
 
 
@@ -126,19 +142,30 @@ def build_patched_compat_chunk(original):
         raise ValueError(
             "compatibility chunk does not contain one supported control gate"
         )
+    if original.count(COMPAT_SELECTED_OPTION_ANCHOR) != 1:
+        raise ValueError(
+            "compatibility chunk does not contain one supported selector gate"
+        )
     if (
         COMPAT_PAGE_DYNAMIC_GATE in original
         or COMPAT_PAGE_ALLOWLIST_GATE in original
         or COMPAT_ENABLE_DYNAMIC_GATE in original
+        or COMPAT_ENABLE_PREVIOUS_DYNAMIC_GATE in original
+        or COMPAT_SELECTED_OPTION_DYNAMIC_GATE in original
     ):
         raise ValueError("compatibility chunk is already partially patched")
     patched = original.replace(
         COMPAT_PAGE_ANCHOR,
         COMPAT_PAGE_DYNAMIC_GATE,
     )
-    return patched.replace(
+    patched = patched.replace(
         COMPAT_ENABLE_ANCHOR,
         COMPAT_ENABLE_DYNAMIC_GATE,
+        1,
+    )
+    return patched.replace(
+        COMPAT_SELECTED_OPTION_ANCHOR,
+        COMPAT_SELECTED_OPTION_DYNAMIC_GATE,
         1,
     )
 
@@ -151,6 +178,19 @@ def build_previous_dynamic_compat_chunk(original):
     return original.replace(
         COMPAT_PAGE_ANCHOR,
         COMPAT_PAGE_DYNAMIC_GATE,
+    )
+
+
+def build_previous_native_compat_chunk(original):
+    patched = build_previous_dynamic_compat_chunk(original)
+    if patched.count(COMPAT_ENABLE_ANCHOR) != 1:
+        raise ValueError(
+            "compatibility chunk does not contain one supported control gate"
+        )
+    return patched.replace(
+        COMPAT_ENABLE_ANCHOR,
+        COMPAT_ENABLE_PREVIOUS_DYNAMIC_GATE,
+        1,
     )
 
 
@@ -339,7 +379,10 @@ def prepare_compat_chunk(paths):
         previous = build_previous_dynamic_compat_chunk(
             original.decode("utf-8")
         ).encode("utf-8")
-        if current not in (expected, previous):
+        previous_native = build_previous_native_compat_chunk(
+            original.decode("utf-8")
+        ).encode("utf-8")
+        if current not in (expected, previous, previous_native):
             raise ValueError(
                 "existing compatibility chunk patch is inconsistent"
             )
@@ -410,6 +453,13 @@ def verify_steamui(steamui_root):
         != 1
     ):
         raise ValueError("compatibility control gate count is invalid")
+    if (
+        current_compat.count(
+            COMPAT_SELECTED_OPTION_DYNAMIC_GATE.encode("utf-8")
+        )
+        != 1
+    ):
+        raise ValueError("compatibility selector gate count is invalid")
     if not paths["ui"].is_file() or paths["ui"].stat().st_size == 0:
         raise ValueError("Steam UI asset is missing")
     if not paths["config"].is_file():

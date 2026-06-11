@@ -26,9 +26,13 @@ COMPAT_ENABLE_ANCHOR = (
     "a=vt(t.unAppID,r),o=r&&!!t.strCompatToolName"
     "&&t.nCompatToolPriority==h.JN"
 )
+COMPAT_SELECTED_OPTION_ANCHOR = (
+    "selectedOption:t.strCompatToolName,onChange:"
+)
 CURRENT_COMPAT_CHUNK = (
     f"before{COMPAT_PAGE_ANCHOR}middle{COMPAT_PAGE_ANCHOR}"
-    f"controls{COMPAT_ENABLE_ANCHOR}after"
+    f"controls{COMPAT_ENABLE_ANCHOR}"
+    f"dropdown{COMPAT_SELECTED_OPTION_ANCHOR}after"
 )
 
 
@@ -214,12 +218,22 @@ class SteamUIPatchTests(unittest.TestCase):
             ),
             1,
         )
+        self.assertEqual(
+            patched_compat_chunk.count(
+                self.patcher.COMPAT_SELECTED_OPTION_DYNAMIC_GATE
+            ),
+            1,
+        )
         self.assertIn(
-            "__REALSTEAMONMAC_IS_MANAGED_APP__",
+            "__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__",
             patched_compat_chunk,
         )
         self.assertNotIn(COMPAT_PAGE_ANCHOR, patched_compat_chunk)
         self.assertNotIn(COMPAT_ENABLE_ANCHOR, patched_compat_chunk)
+        self.assertNotIn(
+            COMPAT_SELECTED_OPTION_ANCHOR,
+            patched_compat_chunk,
+        )
 
         config_path = self.steamui / "realsteamonmac" / "config.js"
         config_text = config_path.read_text(encoding="utf-8")
@@ -405,6 +419,44 @@ class SteamUIPatchTests(unittest.TestCase):
         self.assertEqual(
             current.count(self.patcher.COMPAT_ENABLE_DYNAMIC_GATE),
             1,
+        )
+        self.patcher.verify_steamui(self.steamui)
+
+    def test_install_migrates_the_previous_native_control_patch(self):
+        self.patcher.install_steamui(
+            self.steamui,
+            self.ui_source,
+            self.allowlist,
+        )
+        backup = (
+            self.steamui
+            / "chunk~2dcc5aaf7.js.realsteamonmac.original"
+        ).read_text(encoding="utf-8")
+        previous = self.patcher.build_previous_native_compat_chunk(
+            backup
+        )
+        self.compat_chunk.write_text(previous, encoding="utf-8")
+
+        self.patcher.install_steamui(
+            self.steamui,
+            self.ui_source,
+            self.allowlist,
+        )
+
+        current = self.compat_chunk.read_text(encoding="utf-8")
+        self.assertEqual(
+            current.count(self.patcher.COMPAT_ENABLE_DYNAMIC_GATE),
+            1,
+        )
+        self.assertEqual(
+            current.count(
+                self.patcher.COMPAT_SELECTED_OPTION_DYNAMIC_GATE
+            ),
+            1,
+        )
+        self.assertNotIn(
+            self.patcher.COMPAT_ENABLE_PREVIOUS_DYNAMIC_GATE,
+            current,
         )
         self.patcher.verify_steamui(self.steamui)
 

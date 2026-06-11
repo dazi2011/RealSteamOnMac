@@ -15,6 +15,8 @@
   const CONFIG_KEY = "__REALSTEAMONMAC_CONFIG__";
   const MANAGED_PREDICATE_KEY =
     "__REALSTEAMONMAC_IS_MANAGED_APP__";
+  const SELECTED_COMPAT_TOOL_KEY =
+    "__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__";
   const REPAIR_ACTION_KEY =
     "__REALSTEAMONMAC_REQUEST_REPAIR__";
   const COMPAT_SELECTIONS_KEY =
@@ -854,7 +856,7 @@
     config.dependencies,
   );
   const status = {
-    version: 10,
+    version: 11,
     mode: "dynamic-owned-windows-only-registry",
     enabled: true,
     appids: [...managedAppids],
@@ -911,6 +913,8 @@
   let reconcileRunning = false;
   let registryRefreshRunning = false;
   let lastNativeRegistryPayload = null;
+  globalObject[SELECTED_COMPAT_TOOL_KEY] = (appid) =>
+    compatSelections.get(Number(appid)) ?? "";
 
   function releaseNativeDetailsSubscription(appid) {
     const subscription = nativeDetailsSubscriptions.get(appid);
@@ -1451,12 +1455,7 @@
         }
       }
 
-      let result;
-      if (!tool || projectCompatToolNames.has(tool)) {
-        result = undefined;
-      } else {
-        result = await originalSpecifyCompatTool(appid, tool);
-      }
+      const result = await originalSpecifyCompatTool(appid, tool);
       if (projectCompatToolNames.has(tool)) {
         const renderer = rendererForCompatTool(
           tool,
@@ -1490,9 +1489,7 @@
             `for AppID ${appid}`,
         );
       }
-      if (!projectCompatToolNames.has(selectedTool)) {
-        await originalSpecifyCompatTool(appid, selectedTool);
-      }
+      await originalSpecifyCompatTool(appid, selectedTool);
       status.compatNativeSyncs += 1;
     }
   }

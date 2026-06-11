@@ -56,7 +56,7 @@ printf '%s' \
     '<!doctype html><html style="width: 100%; height: 100%"><head><title>SharedJSContext</title><meta charset="utf-8"><script defer="defer" src="/libraries/libraries~00299a408.js"></script><script defer="defer" src="/library.js"></script><link href="/css/library.css" rel="stylesheet"></head><body style="width: 100%; height: 100%; margin: 0; overflow: hidden;"><div id="root" style="height:100%; width: 100%"></div><div style="display:none"></div></body></html>' \
     >"$RUNTIME_APP/Contents/MacOS/steamui/index.html"
 printf '%s' \
-    'before(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")middle(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")controlsr=(0,s.q3)(()=>u.rV.settings.bCompatEnabled),a=vt(t.unAppID,r),o=r&&!!t.strCompatToolName&&t.nCompatToolPriority==h.JNafter' \
+    'before(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")middle(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")controlsr=(0,s.q3)(()=>u.rV.settings.bCompatEnabled),a=vt(t.unAppID,r),o=r&&!!t.strCompatToolName&&t.nCompatToolPriority==h.JNdropdownselectedOption:t.strCompatToolName,onChange:after' \
     >"$RUNTIME_APP/Contents/MacOS/steamui/chunk~2dcc5aaf7.js"
 ln -s steam_osx "$STEAM_APP/Contents/MacOS/steam.sh"
 codesign --force --deep --sign - "$STEAM_APP"
@@ -120,6 +120,9 @@ grep -q '"strDisplayName":"DXMT 0.80"' \
 test "$(grep -o '__REALSTEAMONMAC_IS_MANAGED_APP__' \
     "$RUNTIME_APP/Contents/MacOS/steamui/chunk~2dcc5aaf7.js" |
     wc -l)" -eq 3
+test "$(grep -o '__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__' \
+    "$RUNTIME_APP/Contents/MacOS/steamui/chunk~2dcc5aaf7.js" |
+    wc -l)" -eq 2
 test -x "$STEAM_APP/Contents/MacOS/realsteamonmac_launcher"
 test -x "$STEAM_APP/Contents/MacOS/steam_osx.original"
 test ! -e "$STEAM_APP/Contents/MacOS/steam_osx"

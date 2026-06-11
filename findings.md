@@ -1043,6 +1043,18 @@
   every raw symlink would reject the real product. Resolving each required
   path and enforcing that its final target remains under the same top-level
   tool directory permits the standard layout without accepting path escapes.
+- The native compatibility checkbox oscillation is a two-clock data race, not
+  a Steam control defect. Native app-detail refreshes periodically restore
+  empty macOS compatibility fields; the one-second project reconcile then
+  writes the selected tool back. A 15-second live trace captured repeated
+  `aria-checked` and React `checked` transitions while the stored DXMT
+  selection remained unchanged.
+- `config.vdf` still mapped AppID `1118200` to the removed
+  `realsteamonmac-experimental` tool because the project-tool wrapper
+  intentionally skipped Steam's original `SpecifyCompatTool`. Project
+  selections must be written through the original API, while the native React
+  checkbox and dropdown use the stable per-AppID selection only as a fallback
+  when macOS app details are temporarily empty.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
