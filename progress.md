@@ -1,5 +1,34 @@
 # Progress Log
 
+## Session: 2026-06-11
+
+### Phase 8: Field Regression Remediation And Verified Release
+
+- **Status:** in progress
+- **Started:** 2026-06-11 Asia/Shanghai
+- Actions taken:
+  - Read the complete field report and converted it into explicit subsystem and
+    acceptance requirements.
+  - Created a long-running goal for remediation, verification, packaging, and
+    publication.
+  - Loaded the brainstorming, codebase-learning, and file-based planning
+    workflows.
+  - Ran planning session recovery; no unsynchronized recovery output was
+    reported.
+  - Confirmed the active worktree is clean and aligned with its remote branch at
+    commit `6ace14b`.
+  - Inventoried repository source, tests, research, evidence, packages, and
+    existing planning files.
+  - Searched for out-of-band RTF instruction files; none were present.
+  - Searched project memory; no RealSteamOnMac entry was available.
+  - Decomposed the request into independently verifiable implementation and
+    release phases without pausing for an approval loop, per the user's
+    explicit instruction.
+- Files modified:
+  - `task_plan.md`
+  - `findings.md`
+  - `progress.md`
+
 ## Session: 2026-06-09
 
 ### Phase 1: Takeover Audit And Recovery

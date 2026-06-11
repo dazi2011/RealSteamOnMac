@@ -1,5 +1,61 @@
 # Findings And Decisions
 
+## 2026-06-11 Field Requirements
+
+- Rockstar Launcher installation interruption can leave Red Dead Redemption 2
+  in a persistent `Unable to launch game, please try reinstalling the game`
+  state; recovery must not require deleting the whole game.
+- After a user quits Steam, the next start may take too long to restore Install
+  or Play actions and may temporarily show a Windows-only marker beside Play.
+- Steam UI languages other than Chinese currently break Install and Play
+  actions, which proves action binding depends on localized text or a
+  locale-specific DOM shape.
+- Installed Windows games can resolve to missing or incorrect targets, including
+  `Phoenix-Win64-Test.exe` for Hogwarts Legacy and `AimLab.app` for the
+  Windows-only Aimlabs title.
+- Verification can fail to repair stale executable/install state, and deleting
+  a previously downloaded game can lead Steam to complete a new download in
+  one second after creating only an empty directory.
+- Run Command does not persist an EXE selected from the file picker.
+- Open C Drive does not open the prefix in Finder.
+- Install Application To Container must become the single entry point for
+  Windows dependencies/components; the separate components panel must be
+  removed.
+- Compatibility settings must use Steam's actual compatibility page controls,
+  selector, rows, and switches. Overlay UI and hand-built lookalike controls
+  are explicitly rejected.
+- The canonical user contract is direct side-by-side folders under
+  `~/Library/Application Support/Steam/compatibilitytools.d`, including
+  CrossOver-like GPTK, Wine, DXMT, and DXVK layouts without requiring users to
+  author project-specific `run` scripts or manifests.
+- Stable Steam and Steam beta installations must both be detected and patched
+  by one installer.
+- Steam's Add a Non-Steam Game flow must accept `.exe`; `.app` remains native,
+  while PE executables use the selected compatibility tool.
+- Runtime options must be capability-aware. Unsupported DXR, MetalFX/DLSS,
+  MSync, and renderer features must not remain actionable.
+- CrossOver Preview is an allowed research and licensed component source on
+  this machine, but the shipped product must remain operational without
+  depending on CrossOver at runtime.
+- Acceptance includes downloaded-library launch tests, newer DX12 titles with
+  GPTK, older DX10/DX11 titles with DXMT, representative DLSS conversion tests,
+  CrossOver controls for failures, performance comparison, common dependency
+  installation tests, update.pkg upgrade acceptance, README updates, PKG
+  publication, and remote verification.
+
+## 2026-06-11 Initial Audit
+
+- The active branch is `codex/people-playground-experiment`, clean and aligned
+  with `origin/codex/people-playground-experiment` at `6ace14b`.
+- `origin/main` points to the same commit.
+- No RTF or `codex LOOKLOOK ITTTTT!!!!!!!` instruction file is present.
+- Existing Phase 7 claims native release acceptance, but commit
+  `beee125` is titled `mount compatibility controls without native dropdown`;
+  that wording directly conflicts with the newly restated native-selector
+  requirement and must be re-audited rather than trusted.
+- No matching prior RealSteamOnMac memory entry was found, so repository and
+  live-machine evidence are the only accepted sources for this run.
+
 ## Requirements
 
 - Audit Claude's interrupted work and determine exactly what is complete.

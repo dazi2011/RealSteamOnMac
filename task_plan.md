@@ -9,7 +9,7 @@ requiring CrossOver.
 
 ## Current Phase
 
-Phase 7: Steam-native compatibility UX and public release engineering
+Phase 8: 2026-06-11 field regression remediation and verified release
 
 ## Phases
 
@@ -128,6 +128,40 @@ Phase 7: Steam-native compatibility UX and public release engineering
 - [ ] Publish a verified GitHub release and make the repository public.
 - **Status:** in progress
 
+### Phase 8: Field Regression Remediation And Verified Release
+
+- [ ] Reproduce and map every 2026-06-11 field report to a concrete code path,
+      Steam state transition, or external dependency.
+- [ ] Replace simulated compatibility controls with Steam-owned controls and
+      populate Steam's existing compatibility-tool selector without overlays.
+- [ ] Discover side-by-side user-supplied GPTK, DXMT, DXVK, and Wine trees in
+      standard CrossOver-like layouts under `compatibilitytools.d`.
+- [ ] Derive renderer capabilities from the discovered payload and disable
+      unsupported DXR, MetalFX/DLSS, MSync, and related settings.
+- [ ] Repair stable/beta Steam discovery, language-independent actions,
+      restart readiness, Windows-only labeling, download reconciliation, and
+      stale installed-manifest handling.
+- [ ] Repair Windows executable resolution, Rockstar bootstrap recovery,
+      Windows-only `.exe` launch, and avoid false `.app` target selection.
+- [ ] Allow Steam's add-non-Steam-game flow to accept `.exe` files while
+      preserving native `.app` behavior and applying compatibility only to PE
+      executables.
+- [ ] Make Run Command behave like Windows Run, fix EXE selection persistence,
+      and open the selected prefix drive in Finder.
+- [ ] Merge Windows component installation into Install Application To
+      Container and provide a reviewed, checksum-pinned dependency catalog.
+- [ ] Study CrossOver Preview statically and dynamically for container,
+      command, registry, dependency, and launch behavior without making
+      RealSteamOnMac depend on CrossOver at runtime.
+- [ ] Verify update installation over an existing installation using
+      `update.pkg`.
+- [ ] Run the automated matrix, installed-library game matrix, representative
+      DLSS tests, CrossOver control tests, performance sampling, rollback, and
+      clean/update package acceptance.
+- [ ] Update bilingual README and research/handoff evidence, build signed
+      release artifacts, publish the release, and confirm remote hashes.
+- **Status:** in progress
+
 ## Architecture Decision
 
 Use a hybrid native-frontend architecture:
@@ -154,6 +188,10 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
   compatibility package manifests.
 - Each phase must have automated tests, a live verification note, rollback
   instructions, a focused commit, and a confirmed remote push.
+- Treat each coherent file-edit batch as a small step: test it, commit it, and
+  push it before starting the next batch.
+- Never report a game, DLSS path, package update, or CrossOver comparison as
+  verified unless direct logs/process/window/output evidence was captured.
 
 ## Key Questions
 
