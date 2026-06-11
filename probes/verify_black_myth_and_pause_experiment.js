@@ -12,20 +12,19 @@
     null;
   const clientid =
     overview?.selected_clientid ?? selected?.clientid ?? "0";
-  let beforeAction = null;
+  let beforeActions = [];
   let verifyResult = null;
   let verifyError = null;
-  let plannedAction = null;
+  let activeActions = [];
   let pauseResult = null;
   let pauseError = null;
   try {
-    beforeAction = await SteamClient.Apps.GetGameActionForApp(appid);
+    beforeActions = await SteamClient.Apps.GetActiveGameActions();
     verifyResult = await SteamClient.Apps.VerifyApp(appid);
     for (let attempt = 0; attempt < 20; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 100));
-      plannedAction =
-        await SteamClient.Apps.GetGameActionForApp(appid);
-      if (plannedAction) {
+      activeActions = await SteamClient.Apps.GetActiveGameActions();
+      if (activeActions.length !== 0) {
         break;
       }
     }
@@ -46,16 +45,14 @@
   return {
     appid,
     clientid: String(clientid),
-    beforeAction: JSON.parse(JSON.stringify(beforeAction ?? null)),
+    beforeActions: JSON.parse(JSON.stringify(beforeActions)),
     verifyResult: JSON.parse(JSON.stringify(verifyResult ?? null)),
     verifyError,
-    plannedAction: JSON.parse(JSON.stringify(plannedAction ?? null)),
+    activeActions: JSON.parse(JSON.stringify(activeActions)),
     pauseResult: JSON.parse(JSON.stringify(pauseResult ?? null)),
     pauseError,
-    afterAction: JSON.parse(
-      JSON.stringify(
-        (await SteamClient.Apps.GetGameActionForApp(appid)) ?? null,
-      ),
+    afterActions: JSON.parse(
+      JSON.stringify(await SteamClient.Apps.GetActiveGameActions()),
     ),
   };
 })()

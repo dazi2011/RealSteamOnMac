@@ -7,6 +7,7 @@ PROBE="$ROOT/probes/verify_black_myth_and_pause_experiment.js"
 node --check "$PROBE"
 grep -q 'const appid = 2358720;' "$PROBE"
 grep -q 'SteamClient.Apps.VerifyApp(appid)' "$PROBE"
+grep -q 'SteamClient.Apps.GetActiveGameActions()' "$PROBE"
 grep -q 'SteamClient.Downloads.PauseAppUpdate' "$PROBE"
 
 if grep -Eq 'ContinueInstall|ResumeAppUpdate|RunGame|Uninstall' "$PROBE"; then

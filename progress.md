@@ -1777,3 +1777,22 @@
   depots and mounted zero depots. No 130 GB download began.
 - CrossOver Preview PIDs `19863`, `19885`, and `73736` remained alive throughout
   the mapping deployment and Black Myth diagnostics.
+- Found that the remaining 1.1 MB under the Windows Black Myth install path is
+  four save files rather than game content. Backed them up under the existing
+  native-mapping backup and verified all four SHA-256 hashes.
+- Added and tested a fixed-AppID zero-depot uninstall probe. Its host preflight
+  required both manifests to remain fully installed with size zero and an
+  empty `InstalledDepots`, required the game directory to contain only the
+  four backed-up saves, and required CrossOver Preview to remain alive.
+- Steam's native uninstall removed the Windows-library manifest successfully
+  and preserved every save file. `content_log.txt` records `Uninstalled` and
+  `finished uninstall (No Error)` at 2026-06-12 01:04:25. The duplicate
+  macOS-library manifest remains for a second native lifecycle pass.
+- Corrected the experimental probes after live console evidence showed that
+  `GetGameActionForApp` is callback-based and rejects one argument. The probes
+  now use `GetActiveGameActions()` for Promise-based safety checks and
+  observation.
+- A shutdown timing attempt also exposed a signature issue:
+  `StartShutdown()` without an argument is rejected. Steam's production UI
+  consistently calls `StartShutdown(true)`; the next restart test will use the
+  same native signature.

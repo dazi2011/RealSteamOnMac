@@ -219,9 +219,11 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   `StateFlags=4` manifests with `SizeOnDisk=0`, no `InstalledDepots`, and no
   install directory. Native install-wizard inspection and two guarded
   verify-then-pause runs produced no depot target and mounted zero depots.
-  The next repair step must transition only this backed-up zero-content state
-  through Steam's own uninstall/install lifecycle before claiming reinstall
-  recovery.
+  The Windows-library record has now been removed through Steam's native
+  uninstall lifecycle after backing up and hash-verifying the four save files
+  that occupied its install directory. Steam preserved those saves and logged
+  a clean uninstall. The duplicate macOS-library record still requires the
+  same native lifecycle pass before claiming reinstall recovery.
 - **Current checkpoint:** verified Steam launch descriptors, managed
   missing-target redirection, and guarded Rockstar recovery have passed live
   acceptance. RDR2 now reaches Rockstar Steam min-mode but not `RDR2.exe`.

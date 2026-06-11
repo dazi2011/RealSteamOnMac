@@ -22,9 +22,9 @@
     throw new Error("refusing while another install is active");
   }
 
-  const activeAction =
-    await SteamClient.Apps.GetGameActionForApp(appid);
-  if (activeAction) {
+  const activeActions =
+    await SteamClient.Apps.GetActiveGameActions();
+  if (activeActions.length !== 0) {
     throw new Error("refusing while a game action is active");
   }
 

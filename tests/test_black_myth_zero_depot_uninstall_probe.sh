@@ -9,7 +9,7 @@ grep -q 'const appid = 2358720;' "$PROBE"
 grep -q 'String(overview.size_on_disk) !== "0"' "$PROBE"
 grep -q 'localClient?.installed' "$PROBE"
 grep -q 'GetInstallManagerInfo()' "$PROBE"
-grep -q 'GetGameActionForApp(appid)' "$PROBE"
+grep -q 'GetActiveGameActions()' "$PROBE"
 grep -q 'OpenUninstallWizard(\[appid\], true)' "$PROBE"
 
 if grep -Eq \

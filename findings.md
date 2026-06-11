@@ -1232,6 +1232,21 @@
   `PauseAppUpdate`, and ended with zero active/target depots and zero mounted
   depots. The native install wizard also declined to create a plan because the
   manifest still claims the app is fully installed.
+- The Windows-library Black Myth directory contained only four real save
+  files, not game binaries. They were copied to the recovery backup and
+  verified by matching SHA-256 hashes before any uninstall operation.
+- Steam's native `OpenUninstallWizard([2358720], true)` removed the selected
+  Windows-library zero-depot manifest with `finished uninstall (No Error)`.
+  It preserved all four save files. The duplicate macOS-library zero-depot
+  manifest remains and must be reloaded and removed through the same native
+  lifecycle before testing a fresh install plan.
+- `GetGameActionForApp` is a callback API that requires a second callback
+  argument; awaiting it with one argument only logs a JavaScript exception and
+  returns no useful state. Guarded probes now use the Promise-returning
+  `GetActiveGameActions()` API instead.
+- `SteamClient.User.StartShutdown` requires a Boolean argument. Steam's own
+  menu and `steam://exit` path call `StartShutdown(true)`; a zero-argument call
+  only logs a signature error and does not begin shutdown.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
