@@ -146,6 +146,33 @@
   and a `runtimePackage` pointing into the RealSteamOnMac immutable package
   store. A raw CrossOver-like GPTK/Wine directory cannot currently be launched
   directly even if its payload is otherwise valid.
+- `script/install_realsteamonmac.sh` hard-codes the beta manifest filename
+  `steam_client_publicbeta_signed-2_osx.manifest` and accepts only builds
+  `1780705203` and `1780965181`. Stable Steam, a differently named manifest,
+  and every newer build are rejected before installation.
+- The installer and launcher otherwise use the normal shared macOS paths
+  `/Applications/Steam.app` and
+  `~/Library/Application Support/Steam/Steam.AppBundle/Steam`; the primary
+  stable/beta incompatibility is manifest/build detection, not a separate
+  application bundle path.
+- `launcher/steam_launcher.c` sets
+  `REALSTEAMONMAC_ACTIVATION_DELAY_MS=30000`. Managed-game native state cannot
+  become active for at least 30 seconds after a cold Steam start, directly
+  explaining the reported long delay before Install/Play becomes available.
+- Every Steam launch synchronously reruns the SteamUI patcher before starting
+  Steam. Patch verification plus the fixed 30-second engine delay compounds
+  perceived startup latency.
+- `scan_compat_tools` requires exactly four project-defined regular files in
+  every recognized tool folder: executable `run`, `compatibilitytool.vdf`,
+  `toolmanifest.vdf`, and `realsteamonmac.json`. Raw GPTK, Wine, DXMT, and DXVK
+  payload directories are ignored because none of those marker files exist.
+- The metadata schema also requires a renderer enum, complete project
+  capability map, and immutable `runtime_package` identifier. This is the
+  non-standard user-facing format explicitly rejected in the field report.
+- A viable replacement is to recognize payload signatures in-place and
+  synthesize Steam API records plus a launch adapter outside the user's tool
+  directory. User folders then remain vendor-standard and do not need generated
+  `run` or manifest files.
 
 ## Requirements
 

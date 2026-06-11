@@ -50,6 +50,11 @@
   - Confirmed empty install directories are accepted as installed context and
     raw CrossOver-like runtime trees cannot be launched without project
     package metadata.
+  - Read `runtime/compat_tool_catalog.py`, the compatibility-tool installer,
+    the main installer, the injection installer, and the launcher in full.
+  - Confirmed beta-manifest/build hard-coding, a fixed 30-second activation
+    delay, and strict project-only tool metadata as direct causes of three
+    field reports.
 - Files modified:
   - `task_plan.md`
   - `findings.md`
