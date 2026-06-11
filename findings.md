@@ -266,6 +266,34 @@
   expect unknown builds to fail. No fixture covers stable-channel manifest
   discovery or a profile-selection diagnostic.
 
+## 2026-06-11 Live Machine Evidence
+
+- Native Steam is currently running build `1780965181` through
+  `realsteamonmac_launcher`; installed RealSteamOnMac is version `0.1.1`.
+- The package directory contains both
+  `steam_client_publicbeta_signed_osx.manifest` at build `1773367340` and
+  `steam_client_publicbeta_signed-2_osx.manifest` at build `1780965181`.
+  Filename alone does not identify the active channel/build; the running
+  process reports `1780965181`.
+- A Windows Steam client is simultaneously running inside CrossOver Preview.
+  Native and CrossOver test evidence must be separated by process tree, prefix,
+  and log path.
+- The native hook log captured a registry transition from 34 managed AppIDs to
+  zero, repeated restoration of the install gate while empty, and a later
+  transition back to 34. This transient empty publication directly explains a
+  window where Play/Install disappears or Windows-only state returns after
+  restart.
+- The registry refresh must distinguish “Steam stores not initialized” from a
+  real empty owned library. It should retain the last valid snapshot and only
+  publish removals after an authoritative initialized scan.
+- Hook logs show Red Dead Redemption 2 reaches the redirect with
+  `PlayRDR2.exe`. Its current failure occurs after Steam target selection and
+  after the compatibility dispatch boundary, inside prefix/runtime/Rockstar
+  handling.
+- The deployed compatibility directory contains only the four generated
+  RealSteamOnMac wrapper folders; no raw vendor-format tool is currently
+  installed there for acceptance testing.
+
 ## Requirements
 
 - Audit Claude's interrupted work and determine exactly what is complete.

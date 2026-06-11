@@ -78,6 +78,13 @@
   - Confirmed native process-start tool discovery must remain disabled to avoid
     the proven Cloud regression; the native selector must be restored through
     Steam's UI/API layer instead.
+  - Captured current native Steam process/build, installed state, launcher/hook
+    logs, compatibility directory, runtime layout, Steam libraries, and
+    CrossOver Preview engine roots.
+  - Found a live 34-to-0-to-34 managed-registry transition that explains
+    intermittent post-restart button and Windows-only state regressions.
+  - Confirmed both stable and beta manifest files coexist while the running
+    process identifies the active beta build.
 - Files modified:
   - `task_plan.md`
   - `findings.md`
