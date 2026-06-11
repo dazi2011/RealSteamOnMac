@@ -1069,6 +1069,7 @@
 | Rollback tests did not cover Steam UI resource restoration | Resolved with a real patch-install/restore fixture in `tests/test_restore_steam_from_backup.sh`. |
 | Steam cloud UI showed no console exception | Traced the rendered DOM, protobuf schema, settings store, and CloudStorage state; the deterministic failure is an omitted native setting field. |
 | Computer Use could not start ScreenCaptureKit | Earlier Cloud work used CDP. The later game-exit test used local screenshots, process-scoped foreground activation, and a CoreGraphics click on the visibly confirmed in-game `quit` entry. |
+| Persistent Playwright attachment made Steam CDP unresponsive | Restarted only native Steam and used the project's one-shot WebSocket evaluator. It opened the same native properties page, completed a 50-sample stability trace, and left the endpoint healthy. |
 | Shared app details stayed at status `14` after native data changes | Registered direct native detail subscriptions and published callbacks into the shared details store. |
 | SteamUI getter trampoline retried continuously | Removed the redundant global getter patch and added a contract that rejects its reintroduction. |
 | Native Steamworks bridge failed on missing helper exports | Added macOS-only interface validation and local notification fallback. |

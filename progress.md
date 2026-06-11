@@ -1390,3 +1390,28 @@
 - Pre-deployment verification passed 15 patcher tests, 77 JavaScript
   runtime/policy tests, SteamUI install/verify/restore, Steam injection,
   launcher, JavaScript syntax, Python bytecode, and whitespace checks.
+
+## 2026-06-11 Native Selection Corrective Live Acceptance
+
+- Committed and pushed `d625a16` after 103 Python tests, 83 JavaScript tests,
+  every shell contract test, JavaScript syntax, and whitespace checks passed.
+  The shell pass also corrected the restore fixture to use the current native
+  checkbox and selector anchors.
+- Backed up the installed UI source and compatibility chunk at
+  `~/Library/Application Support/RealSteamOnMac/backups/`
+  `native-write-deferral-20260611T140708Z`, atomically installed UI version 12,
+  and verified the installed SteamUI patch.
+- A controlled native Steam restart restored the full library window. The
+  current helper session emitted no new global-navigator error, chunk
+  TypeError, or browser-frame disconnect; CrossOver Preview control PIDs
+  `19863`, `19885`, and `73736` remained unchanged.
+- The People Playground properties window used Steam's native compatibility
+  checkbox and `DialogDropDown`. A 10-second trace sampled the page 50 times
+  and found one state only: checked `true`, checkbox enabled, selected
+  `DXMT 0.80`, dropdown enabled, zero project panels, and zero project modals.
+- Opening the native dropdown produced exactly four `role=option` entries:
+  DXMT 0.80, DXVK macOS 1.10.3, GPTK 3.0, and WineD3D 11.10.
+- A persistent Playwright CDP attachment again made Steam's debug endpoint
+  unresponsive. Repeating the same navigation with the project's one-shot
+  WebSocket evaluator completed successfully and left CDP healthy. Continue
+  live Steam UI verification with short, immediately closed CDP sessions.
