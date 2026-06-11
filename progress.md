@@ -1055,3 +1055,12 @@
   `git diff --check`, and the native authenticated registry-server harness.
 - A real Black Myth resume was intentionally deferred to the controlled game
   matrix because it would immediately mutate the 149.8 GB download queue.
+- Started Task 5 with six launch-descriptor contracts covering Hogwarts
+  Legacy's stale development target, Aimlabs' erroneous macOS `.app` target,
+  RDR2's explicit launcher, multiple legitimate Windows options, complete
+  failure, AppID mismatch, and path traversal.
+- Corrected the implementation plan to use the repository's real
+  `tests/test_spawn_redirect.sh` harness path.
+- Task 5 RED verification failed at import with `FileNotFoundError` for the
+  intentionally absent `runtime/steam_launch_descriptor.py`; none of the new
+  cases can pass through the old executable-directory heuristic.

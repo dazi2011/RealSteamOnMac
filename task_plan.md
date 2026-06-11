@@ -245,3 +245,4 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | The first native-helper patch used an inexact constant-block context | 1 | `apply_patch` changed no file; re-read the exact neighboring lines and applied smaller targeted hunks. |
 | The field-regression plan named two launcher/guard tests that do not exist | 1 | Corrected the plan to use `tests/test_steam_launcher.sh` and `tests/test_hook_environment_isolation.sh`. |
 | The repair integration assertion ran while the fixture intentionally exposed an empty overview store | 1 | Moved repair calls before the transient-empty registry phase; production correctly refused unavailable app state. |
+| Task 5 named `tests/test_spawn_redirect_harness.sh`, but the repository uses `tests/test_spawn_redirect.sh` | 1 | Corrected both verification and commit paths before editing the spawn redirect implementation. |

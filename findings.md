@@ -890,6 +890,16 @@
   `Installs.OpenInstallWizard`. A managed-only dispatcher can therefore route
   complete-but-damaged content to verification, staged/paused/failed downloads
   to resume, and truly absent content to Steam's install wizard.
+- The spawn hook currently redirects only when Steam's requested path already
+  exists and begins with `MZ`. A missing Hogwarts development target and
+  Aimlabs' `.app` target therefore bypass the runtime before any recovery can
+  occur.
+- Steam appinfo contains both the wrong and correct launch records for the
+  reported cases: Hogwarts has branch-specific `Phoenix-Win64-Test.exe`
+  records plus release `HogwartsLegacy.exe` defaults, while Aimlabs has
+  `AimLab_tb.exe` for Windows and `AimLab.app` for macOS. Launch selection must
+  preserve Steam's decoded entry identity and OS instead of scanning the game
+  directory for a plausible executable.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

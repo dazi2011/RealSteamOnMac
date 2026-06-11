@@ -251,9 +251,9 @@ git push
 - Create: `tests/test_steam_launch_descriptor.py`
 - Modify: `runtime/realsteamonmac_runtime.py`
 - Modify: `hook/compat_gate_hook.c`
-- Modify: `tests/test_spawn_redirect_harness.sh`
+- Modify: `tests/test_spawn_redirect.sh`
 
-- [ ] **Step 1: Add failing launch-entry fixtures**
+- [x] **Step 1: Add failing launch-entry fixtures**
 
 Cover:
 
@@ -264,7 +264,7 @@ Cover:
 - multiple legitimate launch options;
 - no valid Windows launch entry.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -297,7 +297,7 @@ Run:
 ```bash
 /usr/bin/python3 -m unittest \
   tests.test_steam_launch_descriptor tests.test_runtime_manager -v
-sh tests/test_spawn_redirect_harness.sh
+sh tests/test_spawn_redirect.sh
 ```
 
 Commit and push:
@@ -305,7 +305,7 @@ Commit and push:
 ```bash
 git add runtime/steam_launch_descriptor.py runtime/realsteamonmac_runtime.py \
   hook/compat_gate_hook.c tests/test_steam_launch_descriptor.py \
-  tests/test_spawn_redirect_harness.sh
+  tests/test_spawn_redirect.sh
 git commit -m "fix: launch Steam-selected Windows targets"
 git push
 ```
@@ -530,7 +530,7 @@ Run:
 ```bash
 /usr/bin/python3 -m unittest tests.test_nonsteam_shortcut -v
 node --test tests/test_nonsteam_exe_live_probe.mjs
-sh tests/test_spawn_redirect_harness.sh
+sh tests/test_spawn_redirect.sh
 ```
 
 Then commit and push:
@@ -539,7 +539,7 @@ Then commit and push:
 git add script/patch_steamui.py ui/realsteamonmac_ui.js \
   hook/compat_gate_hook.c runtime/nonsteam_shortcut.py \
   tests/test_nonsteam_shortcut.py tests/test_nonsteam_exe_live_probe.mjs \
-  tests/test_spawn_redirect_harness.sh
+  tests/test_spawn_redirect.sh
 git commit -m "feat: add non-Steam Windows shortcuts"
 git push
 ```
