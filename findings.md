@@ -877,6 +877,14 @@
   - Hogwarts Legacy: repair required, state `36`, content present;
   - Black Myth: Wukong: download incomplete, state `1026`, zero installed
     depots and one staged depot.
+- The installed SteamUI's `EDisplayStatus` enum is `0..39`; value `15` is
+  undefined, `14` is InvalidPlatform, and `38/39` represent download/update
+  failure. The previous browser bridge accepted any positive integer except
+  `14`, so unknown future or corrupt values could become visible actions.
+- `CAppOverview` already supplies `size_on_disk`, while selected per-client
+  data supplies `installed`. These Steam-owned fields are sufficient to reject
+  the specific contradictory state where details report ReadyToLaunch (`11`)
+  but the client reports zero bytes or not installed.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

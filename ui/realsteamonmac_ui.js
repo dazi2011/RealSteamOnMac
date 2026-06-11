@@ -4,6 +4,13 @@
   const INVALID_PLATFORM = 14;
   const READY_TO_INSTALL = 9;
   const READY_TO_LAUNCH = 11;
+  const VALID_DISPLAY_STATUSES = new Set(
+    Array.from({ length: 39 }, (_, index) => index + 1).filter(
+      (status) =>
+        status !== INVALID_PLATFORM &&
+        status !== 15,
+    ),
+  );
   const STATUS_KEY = "__REALSTEAMONMAC_UI_STATUS__";
   const CONFIG_KEY = "__REALSTEAMONMAC_CONFIG__";
   const MANAGED_PREDICATE_KEY =
@@ -370,11 +377,24 @@
   function getManagedTargetStatus(state) {
     if (
       state.allowlisted !== true ||
-      !Number.isSafeInteger(state.detailsStatus) ||
-      state.detailsStatus <= 0 ||
-      state.detailsStatus === INVALID_PLATFORM
+      !VALID_DISPLAY_STATUSES.has(state.detailsStatus)
     ) {
       return null;
+    }
+    if (
+      state.detailsStatus === READY_TO_LAUNCH &&
+      (
+        state.hasAnyLocalContent !== true ||
+        state.installed === false ||
+        state.sizeOnDisk === 0 ||
+        state.sizeOnDisk === 0n ||
+        (
+          typeof state.sizeOnDisk === "string" &&
+          /^0+$/.test(state.sizeOnDisk)
+        )
+      )
+    ) {
+      return READY_TO_INSTALL;
     }
     return state.detailsStatus;
   }
@@ -531,6 +551,8 @@
       allowlisted,
       detailsStatus: details.eDisplayStatus,
       hasAnyLocalContent: details.bHasAnyLocalContent,
+      installed: selected.installed,
+      sizeOnDisk: overview.size_on_disk,
     });
     const original = originalStates.get(selected);
     if (original) {
@@ -576,6 +598,8 @@
       detailsStatus: details.eDisplayStatus,
       overviewStatus: selected.display_status,
       hasAnyLocalContent: details.bHasAnyLocalContent,
+      installed: selected.installed,
+      sizeOnDisk: overview.size_on_disk,
     });
     if (!decision.normalize) {
       return "unchanged";

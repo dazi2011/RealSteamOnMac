@@ -1032,3 +1032,11 @@
   states, and rejection of undefined or out-of-range display statuses.
 - The focused policy run failed in exactly three places: staged-only target
   selection, undefined status `15`, and full staged-shell reconciliation.
+- Restricted browser normalization to the current Steam display-status enum,
+  excluding InvalidPlatform and undefined value `15`.
+- Added a narrow consistency rule: an explicit zero-byte or `installed=false`
+  ReadyToLaunch detail is normalized to Steam's ReadyToInstall state instead.
+  All valid active, queued, paused, repair, Cloud, download-failure, and
+  update-failure states remain unchanged.
+- SteamUI policy/runtime regression passed 76 tests plus JavaScript syntax and
+  whitespace validation.

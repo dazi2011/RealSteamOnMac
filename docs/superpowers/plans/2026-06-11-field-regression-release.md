@@ -219,7 +219,7 @@ Run:
 node --test tests/test_steamui_policy.mjs tests/test_steamui_runtime.mjs
 ```
 
-- [ ] **Step 3: Narrow normalization**
+- [x] **Step 3: Narrow normalization**
 
 Normalize only invalid-platform status 14 to the exact authoritative native
 detail status when that status is a valid install/play/update state. Preserve
