@@ -782,7 +782,6 @@
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
       buildManagedAppSet,
-      buildControlPanelMarkup,
       decideOverviewPatch,
       discoverManagedApps,
       findCompatForceToolAnchor,
@@ -792,7 +791,6 @@
       getSelectedData,
       getSteamUIDocuments,
       getManagedTargetStatus,
-      hideNativeCompatAnchor,
       isCompatibilityPropertiesDocument,
       isOwnedWindowsOnlyGame,
       buildControlPayload,
@@ -815,7 +813,6 @@
       reconcileAppState,
       requestNativeRepair,
       rendererForCompatTool,
-      restoreNativeCompatAnchors,
       CONTROL_DEFAULTS,
       ACTION_POLL_INTERVAL_MS,
       COMPAT_TOOL_PRIORITY,
@@ -1261,15 +1258,11 @@
     return actionStates.get(appid);
   }
 
-  function setActionState(appid, value, panel = null) {
+  function setActionState(appid, value) {
     actionStates.set(appid, {
       ...actionStateFor(appid),
       ...value,
     });
-    if (panel) {
-      panel.dataset.signature = "";
-      renderControlPanel(panel, appid);
-    }
   }
 
   async function startNativeAction(appid, payload) {
@@ -1348,7 +1341,7 @@
     throw new Error("native action timed out");
   }
 
-  async function runNativeAction(appid, payload, label, panel) {
+  async function runNativeAction(appid, payload, label) {
     if (actionStateFor(appid).state === "running") {
       return null;
     }
@@ -1361,7 +1354,6 @@
         jobId: "",
         logPath: "",
       },
-      panel,
     );
     status.actionJobsStarted += 1;
     try {
@@ -1373,7 +1365,6 @@
           message: "任务运行中",
           jobId,
         },
-        panel,
       );
       const result = await waitForNativeActionJob(appid, jobId);
       const failed = result.state === "failed";
@@ -1386,7 +1377,6 @@
             : "任务已完成",
           logPath: result.log_path || "",
         },
-        panel,
       );
       if (failed) {
         status.actionJobsFailed += 1;
@@ -1405,7 +1395,6 @@
           state: "failed",
           message: String(error),
         },
-        panel,
       );
       return null;
     }
@@ -3157,7 +3146,6 @@
           force: result !== "unchanged",
         });
       }
-      mountControlPanels();
     } catch (error) {
       status.lastError = String(error);
     } finally {

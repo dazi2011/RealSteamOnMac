@@ -17,7 +17,7 @@ printf '%s' \
     '<!doctype html><html style="width: 100%; height: 100%"><head><title>SharedJSContext</title><meta charset="utf-8"><script defer="defer" src="/libraries/libraries~00299a408.js"></script><script defer="defer" src="/library.js"></script><link href="/css/library.css" rel="stylesheet"></head><body style="width: 100%; height: 100%; margin: 0; overflow: hidden;"><div id="root" style="height:100%; width: 100%"></div><div style="display:none"></div></body></html>' \
     >"$STEAMUI/index.html"
 printf '%s' \
-    'before(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")middle(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")after' \
+    'before(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")middle(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")controlsr=(0,s.q3)(()=>u.rV.settings.bCompatEnabled),a=vt(t.unAppID,r),o=r&&!!t.strCompatToolName&&t.nCompatToolPriority==h.JNafter' \
     >"$STEAMUI/chunk~2dcc5aaf7.js"
 printf '%s\n' 1118200 >"$TMP_ROOT/allowlist.txt"
 printf '%s\n' 0123456789abcdef0123456789abcdef \
@@ -59,7 +59,9 @@ test "$(grep -o '\"renderer\":\"' \
     "$STEAMUI/realsteamonmac/config.js" | wc -l)" -eq 4
 test "$(stat -f '%Lp' "$STEAMUI/realsteamonmac/config.js")" = "600"
 test "$(grep -o '__REALSTEAMONMAC_IS_MANAGED_APP__' \
-    "$STEAMUI/chunk~2dcc5aaf7.js" | wc -l)" -eq 2
+    "$STEAMUI/chunk~2dcc5aaf7.js" | wc -l)" -eq 3
+grep -q 'bCompatEnabled)||globalThis.__REALSTEAMONMAC_IS_MANAGED_APP__?.(t.unAppID)' \
+    "$STEAMUI/chunk~2dcc5aaf7.js"
 
 "$PATCHER" restore --steamui-root "$STEAMUI"
 test ! -e "$STEAMUI/index.html.realsteamonmac.original"
@@ -69,6 +71,6 @@ test ! -e "$STEAMUI/realsteamonmac"
 test "$(shasum -a 256 "$STEAMUI/index.html" | awk '{print $1}')" = \
     "55ced284314dbc65bff38fb1333d4f4bd617635895e2c0e2197b05028c243282"
 test "$(shasum -a 256 "$STEAMUI/chunk~2dcc5aaf7.js" | awk '{print $1}')" = \
-    "d1202ff58c2cb9c0e1c7e91885b6568ae88ccd9225bf029d6b1260a8906107f6"
+    "a11487b10dfcece3eb7198407972b65b70a6e1c3c7ab03c0c355f550af8e8764"
 
 echo "Steam UI resource patch contract: PASS"

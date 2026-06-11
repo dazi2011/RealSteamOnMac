@@ -21,8 +21,14 @@ COMPAT_PAGE_ANCHOR = (
     '(0,f.CI)()&&o.push({title:(0,A.we)'
     '("#AppProperties_CompatibilityPage")'
 )
+COMPAT_ENABLE_ANCHOR = (
+    "r=(0,s.q3)(()=>u.rV.settings.bCompatEnabled),"
+    "a=vt(t.unAppID,r),o=r&&!!t.strCompatToolName"
+    "&&t.nCompatToolPriority==h.JN"
+)
 CURRENT_COMPAT_CHUNK = (
-    f"before{COMPAT_PAGE_ANCHOR}middle{COMPAT_PAGE_ANCHOR}after"
+    f"before{COMPAT_PAGE_ANCHOR}middle{COMPAT_PAGE_ANCHOR}"
+    f"controls{COMPAT_ENABLE_ANCHOR}after"
 )
 
 
@@ -198,11 +204,18 @@ class SteamUIPatchTests(unittest.TestCase):
             ),
             2,
         )
+        self.assertEqual(
+            patched_compat_chunk.count(
+                self.patcher.COMPAT_ENABLE_DYNAMIC_GATE
+            ),
+            1,
+        )
         self.assertIn(
             "__REALSTEAMONMAC_IS_MANAGED_APP__",
             patched_compat_chunk,
         )
         self.assertNotIn(COMPAT_PAGE_ANCHOR, patched_compat_chunk)
+        self.assertNotIn(COMPAT_ENABLE_ANCHOR, patched_compat_chunk)
 
         config_path = self.steamui / "realsteamonmac" / "config.js"
         config_text = config_path.read_text(encoding="utf-8")
@@ -348,6 +361,10 @@ class SteamUIPatchTests(unittest.TestCase):
         self.assertEqual(
             current.count(self.patcher.COMPAT_PAGE_DYNAMIC_GATE),
             2,
+        )
+        self.assertEqual(
+            current.count(self.patcher.COMPAT_ENABLE_DYNAMIC_GATE),
+            1,
         )
         self.assertNotIn(
             self.patcher.COMPAT_PAGE_ALLOWLIST_GATE,

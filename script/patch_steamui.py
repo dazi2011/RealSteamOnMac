@@ -27,7 +27,7 @@ KNOWN_COMPAT_CHUNK_SHA256 = {
 }
 if os.environ.get("REALSTEAMONMAC_ALLOW_TEST_FIXTURES") == "1":
     KNOWN_COMPAT_CHUNK_SHA256.add(
-        "d1202ff58c2cb9c0e1c7e91885b6568ae88ccd9225bf029d6b1260a8906107f6"
+        "a11487b10dfcece3eb7198407972b65b70a6e1c3c7ab03c0c355f550af8e8764"
     )
 INDEX_NAME = "index.html"
 BACKUP_NAME = "index.html.realsteamonmac.original"
@@ -67,6 +67,17 @@ COMPAT_PAGE_ALLOWLIST_GATE = (
     "((0,f.CI)()||globalThis.__REALSTEAMONMAC_CONFIG__"
     "?.appids?.includes(t))&&o.push({title:(0,A.we)"
     '("#AppProperties_CompatibilityPage")'
+)
+COMPAT_ENABLE_ANCHOR = (
+    "r=(0,s.q3)(()=>u.rV.settings.bCompatEnabled),"
+    "a=vt(t.unAppID,r),o=r&&!!t.strCompatToolName"
+    "&&t.nCompatToolPriority==h.JN"
+)
+COMPAT_ENABLE_DYNAMIC_GATE = (
+    "r=(0,s.q3)(()=>u.rV.settings.bCompatEnabled)"
+    "||globalThis.__REALSTEAMONMAC_IS_MANAGED_APP__?.(t.unAppID),"
+    "a=vt(t.unAppID,r),o=r&&!!t.strCompatToolName"
+    "&&t.nCompatToolPriority==h.JN"
 )
 
 
@@ -110,14 +121,24 @@ def build_patched_compat_chunk(original):
         raise ValueError(
             "compatibility chunk does not contain two supported page gates"
         )
+    if original.count(COMPAT_ENABLE_ANCHOR) != 1:
+        raise ValueError(
+            "compatibility chunk does not contain one supported control gate"
+        )
     if (
         COMPAT_PAGE_DYNAMIC_GATE in original
         or COMPAT_PAGE_ALLOWLIST_GATE in original
+        or COMPAT_ENABLE_DYNAMIC_GATE in original
     ):
         raise ValueError("compatibility chunk is already partially patched")
-    return original.replace(
+    patched = original.replace(
         COMPAT_PAGE_ANCHOR,
         COMPAT_PAGE_DYNAMIC_GATE,
+    )
+    return patched.replace(
+        COMPAT_ENABLE_ANCHOR,
+        COMPAT_ENABLE_DYNAMIC_GATE,
+        1,
     )
 
 
@@ -365,6 +386,13 @@ def verify_steamui(steamui_root):
         != 2
     ):
         raise ValueError("compatibility page gate count is invalid")
+    if (
+        current_compat.count(
+            COMPAT_ENABLE_DYNAMIC_GATE.encode("utf-8")
+        )
+        != 1
+    ):
+        raise ValueError("compatibility control gate count is invalid")
     if not paths["ui"].is_file() or paths["ui"].stat().st_size == 0:
         raise ValueError("Steam UI asset is missing")
     if not paths["config"].is_file():

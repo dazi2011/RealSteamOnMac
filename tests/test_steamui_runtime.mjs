@@ -506,27 +506,11 @@ test("ignores the mounted project dropdown during later compatibility scans", ()
   assert.equal(findCompatControlAnchor(documentObject), forceRow);
 });
 
-test("temporarily hides and restores Steam's disabled native compatibility row", () => {
-  const {
-    hideNativeCompatAnchor,
-    restoreNativeCompatAnchors,
-  } = loadRuntimeHelpers();
-  const { documentObject, forceRow } =
-    createCompatibilityDocument();
-  forceRow.style.display = "flex";
-  documentObject.querySelectorAll = (selector) => {
-    if (selector === '[data-realsteamonmac-native-hidden="true"]') {
-      return forceRow.dataset.realsteamonmacNativeHidden === "true"
-        ? [forceRow]
-        : [];
-    }
-    return [];
-  };
+test("does not activate or export the legacy replacement compatibility panel", () => {
+  const helpers = loadRuntimeHelpers();
 
-  hideNativeCompatAnchor(forceRow);
-  assert.equal(forceRow.style.display, "none");
-
-  restoreNativeCompatAnchors(documentObject);
-  assert.equal(forceRow.style.display, "flex");
-  assert.equal(forceRow.dataset.realsteamonmacNativeHidden, undefined);
+  assert.equal(helpers.hideNativeCompatAnchor, undefined);
+  assert.equal(helpers.restoreNativeCompatAnchors, undefined);
+  assert.equal(helpers.buildControlPanelMarkup, undefined);
+  assert.doesNotMatch(source, /\n\s+mountControlPanels\(\);/);
 });

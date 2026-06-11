@@ -13,7 +13,6 @@ const {
   buildControlPayload,
   buildControlUrl,
   buildRunCommandPayload,
-  buildControlPanelMarkup,
   applyToolCapabilities,
   chooseNativeRepairAction,
   compatToolForRenderer,
@@ -321,50 +320,6 @@ test("maps compatibility tools to runtime renderers in both directions", () => {
     "realsteamonmac-wined3d",
   );
   assert.equal(rendererForCompatTool("unknown", projectTools), null);
-});
-
-test("builds compact Steam-style controls without the branded dashboard or inline forms", () => {
-  const markup = buildControlPanelMarkup({
-    appid: 1118200,
-    value: {
-      compat_tool: "realsteamonmac-dxmt",
-      renderer: "dxmt",
-      msync: true,
-      retina: false,
-      metal_hud: false,
-      metalfx: false,
-      dxr: false,
-      avx: false,
-    },
-    rendererLabel: "DXMT 0.80",
-    tool: projectTools[1],
-    compatTools: projectTools,
-    selectedCompatTool: "realsteamonmac-dxmt",
-    actionState: {
-      state: "idle",
-      label: "",
-      message: "等待操作",
-      logPath: "",
-    },
-  });
-
-  assert.match(markup, /realsteamonmac-settings/);
-  assert.match(markup, /data-control-force-compat/);
-  assert.match(markup, /data-control-compat-tool/);
-  assert.match(
-    markup,
-    /强制使用特定 Steam Play 兼容性工具/,
-  );
-  assert.match(markup, />\s*DXMT 0\.80\s*</);
-  assert.match(markup, />\s*GPTK 3\s*</);
-  assert.match(markup, /role="switch"/);
-  assert.match(markup, /data-open-dialog="run-command"/);
-  assert.match(markup, /data-open-dialog="dependencies"/);
-  assert.match(markup, /data-open-dialog="container"/);
-  assert.doesNotMatch(markup, /RealSteamOnMac/);
-  assert.doesNotMatch(markup, /Independent Steam Play/);
-  assert.doesNotMatch(markup, /<textarea/);
-  assert.doesNotMatch(markup, /data-dependency-card/);
 });
 
 test("applies the selected tool capability matrix", () => {
