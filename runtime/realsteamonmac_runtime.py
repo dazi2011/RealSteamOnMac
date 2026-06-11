@@ -125,7 +125,7 @@ DEPENDENCY_DOWNLOAD_HOSTS = frozenset(
 )
 DEPENDENCY_INSTALLERS = frozenset(("exe", "msi", "directx-redist"))
 DEPENDENCY_POSTCONDITIONS = frozenset(
-    ("file", "file-any", "registry-key")
+    ("file", "file-any", "file-sha256", "registry-key")
 )
 DEFAULT_CONFIG = {
     "compat_tool": "",
@@ -2240,6 +2240,16 @@ def validate_dependency_postcondition(postcondition):
             )
             is not None
         )
+    if condition_type == "file-sha256":
+        digest = postcondition.get("sha256")
+        return (
+            set(postcondition) == {"type", "path", "sha256"}
+            and validate_dependency_prefix_path(
+                postcondition.get("path")
+            )
+            and isinstance(digest, str)
+            and re.fullmatch(r"[0-9a-f]{64}", digest) is not None
+        )
     paths = postcondition.get("paths")
     return (
         set(postcondition) == {"type", "paths"}
@@ -2518,6 +2528,13 @@ def dependency_postcondition_met(context, postcondition):
 
     if postcondition["type"] == "file":
         return exists(postcondition["path"])
+    if postcondition["type"] == "file-sha256":
+        candidate = (prefix / postcondition["path"]).resolve()
+        return (
+            candidate.is_relative_to(prefix)
+            and candidate.is_file()
+            and file_sha256(candidate) == postcondition["sha256"]
+        )
     return any(exists(path) for path in postcondition["paths"])
 
 

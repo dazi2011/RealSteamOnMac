@@ -1587,3 +1587,23 @@
 - CrossOver Preview's wineserver, Windows Steam wrapper, and app process, plus
   native Steam, remained alive throughout this batch. Real catalog expansion
   and live component installation acceptance remain the next step.
+
+## 2026-06-11 Reviewed Component Catalog Expansion
+
+- Expanded the production catalog from 3 to 14 checksum-pinned recipes:
+  current Visual C++ v14 x86/x64, Visual C++ 2013/2012/2010/2008 x86/x64,
+  .NET Framework 4.8, DirectX June 2010, XNA 4.0 Refresh, and NVIDIA PhysX
+  Legacy 9.12.1031.
+- All payloads use official Microsoft or NVIDIA hosts with exact sizes and
+  SHA-256 digests. x64 Visual C++ recipes install their matching x86 runtime
+  first; XNA installs .NET Framework 4.8 first.
+- Added exact file-SHA-256 postconditions. DirectX acceptance now requires the
+  native x86 and x64 `d3dx9_43.dll` bytes from Microsoft's package, preventing
+  Wine builtin DLLs from producing false success.
+- Visual C++, .NET, XNA, and PhysX continue to use bounded registry-key
+  postconditions through Wine `reg query`. Receipts remain blocked until all
+  postconditions pass.
+- JSON validation, all 66 runtime-manager tests, the full 123-test Python
+  suite, 79 JavaScript tests, five installer/patch/launcher shell contracts,
+  syntax checks, and whitespace checks passed. Live installation into the
+  preserved People Playground prefix is the next acceptance step.

@@ -2,31 +2,9 @@
   "schema": 1,
   "dependencies": [
     {
-      "id": "vcrun2022",
-      "name": "Microsoft Visual C++ 2015-2022 x64",
-      "description": "Installs the current Microsoft Visual C++ x64 runtime.",
-      "publisher": "Microsoft",
-      "filename": "vc_redist.x64.exe",
-      "url": "https://download.visualstudio.microsoft.com/download/pr/ebdab8e5-1d7b-4d9f-a11b-cbb1720c3b12/843068991DAAA1F73AD9F6239BCE4D0F6A07A51F18C37EA2A867E9BECA71295C/VC_redist.x64.exe",
-      "sha256": "843068991daaa1f73ad9f6239bce4d0f6a07a51f18c37ea2a867e9beca71295c",
-      "size": 18731856,
-      "arguments": [
-        "/install",
-        "/quiet",
-        "/norestart"
-      ],
-      "success_codes": [
-        0,
-        105,
-        194,
-        1641,
-        3010
-      ]
-    },
-    {
       "id": "vcrun2022-x86",
-      "name": "Microsoft Visual C++ 2015-2022 x86",
-      "description": "Installs the current Microsoft Visual C++ x86 runtime for 32-bit games and helpers.",
+      "name": "Microsoft Visual C++ v14 x86 (2015-2022)",
+      "description": "Current Microsoft Visual C++ v14 runtime for 32-bit games and helpers.",
       "publisher": "Microsoft",
       "filename": "vc_redist.x86.exe",
       "url": "https://download.visualstudio.microsoft.com/download/pr/57eef8ae-a341-46c3-b0bc-c041027b54cd/F0BAB33A302B3CDB2E11113760D016F54FD3D2632C65BA7834FAC4F0ABD7F1A3/VC_redist.x86.exe",
@@ -39,16 +17,310 @@
       ],
       "success_codes": [
         0,
+        102,
         105,
         194,
         1641,
         3010
+      ],
+      "installer": "exe",
+      "prerequisites": [],
+      "postconditions": [
+        {
+          "type": "registry-key",
+          "key": "HKLM\\Software\\Wow6432Node\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x86"
+        }
+      ]
+    },
+    {
+      "id": "vcrun2022",
+      "name": "Microsoft Visual C++ v14 x64 (2015-2022)",
+      "description": "Current Microsoft Visual C++ v14 runtime for 64-bit games; installs the x86 runtime first.",
+      "publisher": "Microsoft",
+      "filename": "vc_redist.x64.exe",
+      "url": "https://download.visualstudio.microsoft.com/download/pr/ebdab8e5-1d7b-4d9f-a11b-cbb1720c3b12/843068991DAAA1F73AD9F6239BCE4D0F6A07A51F18C37EA2A867E9BECA71295C/VC_redist.x64.exe",
+      "sha256": "843068991daaa1f73ad9f6239bce4d0f6a07a51f18c37ea2a867e9beca71295c",
+      "size": 18731856,
+      "arguments": [
+        "/install",
+        "/quiet",
+        "/norestart"
+      ],
+      "success_codes": [
+        0,
+        102,
+        105,
+        194,
+        1641,
+        3010
+      ],
+      "installer": "exe",
+      "prerequisites": [
+        "vcrun2022-x86"
+      ],
+      "postconditions": [
+        {
+          "type": "registry-key",
+          "key": "HKLM\\Software\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64"
+        }
+      ]
+    },
+    {
+      "id": "vcrun2013-x86",
+      "name": "Microsoft Visual C++ 2013 Update 5 x86",
+      "description": "Legacy side-by-side Visual C++ 12.0 runtime for 32-bit games.",
+      "publisher": "Microsoft",
+      "filename": "vcredist_x86.exe",
+      "url": "https://download.microsoft.com/download/C/C/2/CC2DF5F8-4454-44B4-802D-5EA68D086676/vcredist_x86.exe",
+      "sha256": "3fd0a926dbcc5306e1b3e529637ab3e698070c6e93b5de7f6ba05d691349ef78",
+      "size": 6510272,
+      "arguments": [
+        "/install",
+        "/quiet",
+        "/norestart"
+      ],
+      "success_codes": [
+        0,
+        102,
+        105,
+        194,
+        1641,
+        3010
+      ],
+      "installer": "exe",
+      "prerequisites": [],
+      "postconditions": [
+        {
+          "type": "registry-key",
+          "key": "HKLM\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{35b83883-40fa-423c-ae73-2aff7e1ea820}"
+        }
+      ]
+    },
+    {
+      "id": "vcrun2013",
+      "name": "Microsoft Visual C++ 2013 Update 5 x64",
+      "description": "Legacy side-by-side Visual C++ 12.0 runtime for 64-bit games; installs x86 first.",
+      "publisher": "Microsoft",
+      "filename": "vcredist_x64.exe",
+      "url": "https://download.microsoft.com/download/C/C/2/CC2DF5F8-4454-44B4-802D-5EA68D086676/vcredist_x64.exe",
+      "sha256": "8588eb697eb2049344e6206d2b66ff63104f1c55e553621ab8ecc504d6b9e9d4",
+      "size": 7201056,
+      "arguments": [
+        "/install",
+        "/quiet",
+        "/norestart"
+      ],
+      "success_codes": [
+        0,
+        102,
+        105,
+        194,
+        1641,
+        3010
+      ],
+      "installer": "exe",
+      "prerequisites": [
+        "vcrun2013-x86"
+      ],
+      "postconditions": [
+        {
+          "type": "registry-key",
+          "key": "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{5d0723d3-cff7-4e07-8d0b-ada737deb5e6}"
+        }
+      ]
+    },
+    {
+      "id": "vcrun2012-x86",
+      "name": "Microsoft Visual C++ 2012 Update 4 x86",
+      "description": "Legacy side-by-side Visual C++ 11.0 runtime for 32-bit games.",
+      "publisher": "Microsoft",
+      "filename": "vcredist_x86.exe",
+      "url": "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x86.exe",
+      "sha256": "b924ad8062eaf4e70437c8be50fa612162795ff0839479546ce907ffa8d6e386",
+      "size": 6554576,
+      "arguments": [
+        "/install",
+        "/quiet",
+        "/norestart"
+      ],
+      "success_codes": [
+        0,
+        102,
+        105,
+        194,
+        1641,
+        3010
+      ],
+      "installer": "exe",
+      "prerequisites": [],
+      "postconditions": [
+        {
+          "type": "registry-key",
+          "key": "HKLM\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{33d1fd90-4274-48a1-9bc1-97e33d9c2d6f}"
+        }
+      ]
+    },
+    {
+      "id": "vcrun2012",
+      "name": "Microsoft Visual C++ 2012 Update 4 x64",
+      "description": "Legacy side-by-side Visual C++ 11.0 runtime for 64-bit games; installs x86 first.",
+      "publisher": "Microsoft",
+      "filename": "vcredist_x64.exe",
+      "url": "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x64.exe",
+      "sha256": "681be3e5ba9fd3da02c09d7e565adfa078640ed66a0d58583efad2c1e3cc4064",
+      "size": 7186992,
+      "arguments": [
+        "/install",
+        "/quiet",
+        "/norestart"
+      ],
+      "success_codes": [
+        0,
+        102,
+        105,
+        194,
+        1641,
+        3010
+      ],
+      "installer": "exe",
+      "prerequisites": [
+        "vcrun2012-x86"
+      ],
+      "postconditions": [
+        {
+          "type": "registry-key",
+          "key": "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{ca67548a-5ebe-413a-b50c-4b9ceb6d66c6}"
+        }
+      ]
+    },
+    {
+      "id": "vcrun2010-x86",
+      "name": "Microsoft Visual C++ 2010 SP1 x86",
+      "description": "Legacy side-by-side Visual C++ 10.0 runtime for 32-bit games.",
+      "publisher": "Microsoft",
+      "filename": "vcredist_x86.exe",
+      "url": "https://download.microsoft.com/download/1/6/5/165255E7-1014-4D0A-B094-B6A430A6BFFC/vcredist_x86.exe",
+      "sha256": "99dce3c841cc6028560830f7866c9ce2928c98cf3256892ef8e6cf755147b0d8",
+      "size": 8993744,
+      "arguments": [
+        "/q",
+        "/norestart"
+      ],
+      "success_codes": [
+        0,
+        102,
+        105,
+        194,
+        1641,
+        3010
+      ],
+      "installer": "exe",
+      "prerequisites": [],
+      "postconditions": [
+        {
+          "type": "registry-key",
+          "key": "HKLM\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{196BB40D-1578-3D01-B289-BEFC77A11A1E}"
+        }
+      ]
+    },
+    {
+      "id": "vcrun2010",
+      "name": "Microsoft Visual C++ 2010 SP1 x64",
+      "description": "Legacy side-by-side Visual C++ 10.0 runtime for 64-bit games; installs x86 first.",
+      "publisher": "Microsoft",
+      "filename": "vcredist_x64.exe",
+      "url": "https://download.microsoft.com/download/1/6/5/165255E7-1014-4D0A-B094-B6A430A6BFFC/vcredist_x64.exe",
+      "sha256": "f3b7a76d84d23f91957aa18456a14b4e90609e4ce8194c5653384ed38dada6f3",
+      "size": 10277328,
+      "arguments": [
+        "/q",
+        "/norestart"
+      ],
+      "success_codes": [
+        0,
+        102,
+        105,
+        194,
+        1641,
+        3010
+      ],
+      "installer": "exe",
+      "prerequisites": [
+        "vcrun2010-x86"
+      ],
+      "postconditions": [
+        {
+          "type": "registry-key",
+          "key": "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{1D8E6291-B0D5-35EC-8441-6616F567A0F7}"
+        }
+      ]
+    },
+    {
+      "id": "vcrun2008-x86",
+      "name": "Microsoft Visual C++ 2008 SP1 x86",
+      "description": "Legacy side-by-side Visual C++ 9.0 runtime for 32-bit games.",
+      "publisher": "Microsoft",
+      "filename": "vcredist_x86.exe",
+      "url": "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x86.exe",
+      "sha256": "8742bcbf24ef328a72d2a27b693cc7071e38d3bb4b9b44dec42aa3d2c8d61d92",
+      "size": 4483040,
+      "arguments": [
+        "/q",
+        "/norestart"
+      ],
+      "success_codes": [
+        0,
+        102,
+        105,
+        194,
+        1641,
+        3010
+      ],
+      "installer": "exe",
+      "prerequisites": [],
+      "postconditions": [
+        {
+          "type": "registry-key",
+          "key": "HKLM\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{9A25302D-30C0-39D9-BD6F-21E6EC160475}"
+        }
+      ]
+    },
+    {
+      "id": "vcrun2008",
+      "name": "Microsoft Visual C++ 2008 SP1 x64",
+      "description": "Legacy side-by-side Visual C++ 9.0 runtime for 64-bit games; installs x86 first.",
+      "publisher": "Microsoft",
+      "filename": "vcredist_x64.exe",
+      "url": "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x64.exe",
+      "sha256": "c5e273a4a16ab4d5471e91c7477719a2f45ddadb76c7f98a38fa5074a6838654",
+      "size": 5211080,
+      "arguments": [
+        "/q",
+        "/norestart"
+      ],
+      "success_codes": [
+        0,
+        102,
+        105,
+        194,
+        1641,
+        3010
+      ],
+      "installer": "exe",
+      "prerequisites": [
+        "vcrun2008-x86"
+      ],
+      "postconditions": [
+        {
+          "type": "registry-key",
+          "key": "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{8220EEFE-38CD-377E-8595-13398D740ACE}"
+        }
       ]
     },
     {
       "id": "dotnet48",
       "name": "Microsoft .NET Framework 4.8",
-      "description": "Installs the official .NET Framework 4.8 offline runtime.",
+      "description": "Official .NET Framework 4.8 offline runtime for applications that require CLR 4.x.",
       "publisher": "Microsoft",
       "filename": "ndp48-x86-x64-allos-enu.exe",
       "url": "https://go.microsoft.com/fwlink/?linkid=2088631",
@@ -64,6 +336,106 @@
         194,
         1641,
         3010
+      ],
+      "installer": "exe",
+      "prerequisites": [],
+      "postconditions": [
+        {
+          "type": "registry-key",
+          "key": "HKLM\\Software\\Microsoft\\NET Framework Setup\\NDP\\v4\\Full"
+        }
+      ]
+    },
+    {
+      "id": "directx-jun2010",
+      "name": "DirectX End-User Runtimes (June 2010)",
+      "description": "Legacy D3DX9/10/11, XAudio 2.7, XInput 1.3, XACT, and Managed DirectX side-by-side libraries; not a modern DirectX upgrade.",
+      "publisher": "Microsoft",
+      "filename": "directx_Jun2010_redist.exe",
+      "url": "https://download.microsoft.com/download/8/4/a/84a35bf1-dafe-4ae8-82af-ad2ae20b6b14/directx_Jun2010_redist.exe",
+      "sha256": "053f76dcbb28802e23341b6a787e3b0791c0fa5c8d4d011b1044172dbf89c73b",
+      "size": 100275120,
+      "arguments": [
+        "/silent"
+      ],
+      "success_codes": [
+        0
+      ],
+      "installer": "directx-redist",
+      "prerequisites": [],
+      "postconditions": [
+        {
+          "type": "file-sha256",
+          "path": "drive_c/windows/system32/d3dx9_43.dll",
+          "sha256": "84b900dbd7fa978d6e0caee26fc54f2f61d92c9c75d10b35f00e3e82cd1d67b4"
+        },
+        {
+          "type": "file-sha256",
+          "path": "drive_c/windows/syswow64/d3dx9_43.dll",
+          "sha256": "0b28546be22c71834501f7d7185ede5d79742457331c7ee09efc14490dd64f5f"
+        }
+      ]
+    },
+    {
+      "id": "xna40",
+      "name": "Microsoft XNA Framework 4.0 Refresh",
+      "description": "XNA 4.0 runtime used by many older Windows games; installs .NET Framework 4.8 first.",
+      "publisher": "Microsoft",
+      "filename": "xnafx40_redist.msi",
+      "url": "https://download.microsoft.com/download/5/3/a/53a804c8-ec78-43cd-a0f0-2fb4d45603d3/xnafx40_redist.msi",
+      "sha256": "2b03c130c4bb5f106b9619bea8150201f7e982709cfe9a0cc8bde75ff0a83b27",
+      "size": 7059456,
+      "arguments": [
+        "/qn",
+        "/norestart"
+      ],
+      "success_codes": [
+        0,
+        102,
+        105,
+        194,
+        1641,
+        3010
+      ],
+      "installer": "msi",
+      "prerequisites": [
+        "dotnet48"
+      ],
+      "postconditions": [
+        {
+          "type": "registry-key",
+          "key": "HKLM\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{2BFC7AA0-544C-4E3A-8796-67F3BE655BE9}"
+        }
+      ]
+    },
+    {
+      "id": "physx-legacy",
+      "name": "NVIDIA PhysX Legacy 9.12.1031",
+      "description": "Legacy PhysX 2.x runtime for older games that are not covered by current PhysX packages.",
+      "publisher": "NVIDIA",
+      "filename": "PhysX-9.12.1031-SystemSoftware-Legacy.msi",
+      "url": "https://us.download.nvidia.com/Windows/9.12.1031/PhysX-9.12.1031-SystemSoftware-Legacy.msi",
+      "sha256": "2554b77a21f265dc6ddb727513ba4543dd9777b17b3f2fbe83a6ff11244fa00e",
+      "size": 20157440,
+      "arguments": [
+        "/qn",
+        "/norestart"
+      ],
+      "success_codes": [
+        0,
+        102,
+        105,
+        194,
+        1641,
+        3010
+      ],
+      "installer": "msi",
+      "prerequisites": [],
+      "postconditions": [
+        {
+          "type": "registry-key",
+          "key": "HKLM\\Software\\Wow6432Node\\AGEIA Technologies"
+        }
       ]
     }
   ],

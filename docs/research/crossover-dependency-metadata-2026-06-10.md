@@ -36,22 +36,33 @@ RealSteamOnMac keeps a small independent catalog in
 
 ## Reviewed Entries
 
-On 2026-06-10, Microsoft's current official Visual C++ v14 links were resolved
-and pinned to immutable `download.visualstudio.microsoft.com` URLs:
+On 2026-06-10 and 2026-06-11, official Microsoft and NVIDIA downloads were
+resolved, downloaded, measured, hashed, and represented as bounded recipes.
+The production catalog now contains:
 
-- x64: 18,731,856 bytes, SHA-256
-  `843068991daaa1f73ad9f6239bce4d0f6a07a51f18c37ea2a867e9beca71295c`;
-- x86: 6,941,536 bytes, SHA-256
-  `f0bab33a302b3cdb2e11113760d016f54fd3d2632c65ba7834fac4f0abd7f1a3`.
+- current Visual C++ v14 x86 and x64;
+- side-by-side Visual C++ 2013, 2012, 2010, and 2008 x86 and x64;
+- .NET Framework 4.8;
+- DirectX End-User Runtimes (June 2010);
+- Microsoft XNA Framework 4.0 Refresh;
+- NVIDIA PhysX Legacy 9.12.1031.
 
-.NET Framework 4.8 remains pinned to its previously verified Microsoft offline
-installer.
+Every download has an exact byte count and SHA-256 digest in
+`config/dependencies.json`. x64 Visual C++ recipes install their matching x86
+runtime first, and XNA installs .NET Framework 4.8 first.
 
-The DirectX June 2010 redistributable was reviewed but not added. Its outer
-executable extracts another installer, while the current dependency contract
-executes one checksum-pinned program. Adding it safely requires a separate
-multi-stage recipe schema and tests rather than pretending extraction alone is
-installation.
+The DirectX outer executable is handled by a dedicated fixed strategy. It
+extracts into a private temporary directory, requires `DXSETUP.exe`, runs that
+one installer, and removes the extraction tree. Success is proven by exact
+SHA-256 hashes for the native x86 and x64 `d3dx9_43.dll` files, not by file
+existence. This matters because a fresh Wine prefix already contains builtin
+DLLs with the same names.
+
+Visual C++, .NET, XNA, and PhysX use product-specific registry keys queried by
+Wine after installation. Receipts are written only after every required
+postcondition passes. The catalog rejects unknown installer strategies,
+untrusted download hosts, cyclic prerequisites, unsafe prefix paths, malformed
+registry keys, and unpinned file hashes.
 
 Chinese fonts were also not imported from CrossOver. A public release needs a
 legally reviewed source and explicit font licensing before offering automated
@@ -61,5 +72,11 @@ installation.
 
 - Microsoft Visual C++ current redistributables:
   https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist
+- Microsoft Visual C++ 2013 and older downloads:
+  https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist#visual-studio-2013-vc-120
 - Microsoft DirectX June 2010 runtime:
   https://www.microsoft.com/en-us/download/details.aspx?id=8109
+- Microsoft Windows Installer command-line options:
+  https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/msiexec
+- NVIDIA PhysX Legacy System Software:
+  https://www.nvidia.com/en-us/drivers/physx/physx-9-12-1031-legacy-driver/

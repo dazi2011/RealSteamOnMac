@@ -884,6 +884,14 @@ class RuntimeManagerTests(unittest.TestCase):
                                         "HKLM\\Software\\Fixture\\"
                                         "Installed"
                                     ),
+                                },
+                                {
+                                    "type": "file-sha256",
+                                    "path": (
+                                        "drive_c/windows/system32/"
+                                        "native.dll"
+                                    ),
+                                    "sha256": "4" * 64,
                                 }
                             ],
                         },
@@ -946,6 +954,10 @@ class RuntimeManagerTests(unittest.TestCase):
             catalog["fixture-base"]["postconditions"][1]["type"],
             "registry-key",
         )
+        self.assertEqual(
+            catalog["fixture-base"]["postconditions"][2]["type"],
+            "file-sha256",
+        )
 
     def test_dependency_catalog_rejects_cycles_and_unsafe_postconditions(self):
         for dependencies, message in (
@@ -987,6 +999,24 @@ class RuntimeManagerTests(unittest.TestCase):
                                     "HKLM\\Software\\Fixture\n"
                                     "Injected"
                                 ),
+                            }
+                        ],
+                    )
+                ],
+                "postcondition",
+            ),
+            (
+                [
+                    self.dependency_entry(
+                        "fixture-one",
+                        postconditions=[
+                            {
+                                "type": "file-sha256",
+                                "path": (
+                                    "drive_c/windows/system32/"
+                                    "native.dll"
+                                ),
+                                "sha256": "not-a-digest",
                             }
                         ],
                     )
@@ -1577,6 +1607,77 @@ class RuntimeManagerTests(unittest.TestCase):
                     returncode=1
                 ),
             )
+
+    def test_dependency_file_hash_postcondition_checks_exact_content(self):
+        context = self.context()
+        native = (
+            context["prefix"]
+            / "drive_c"
+            / "windows"
+            / "system32"
+            / "native.dll"
+        )
+        native.parent.mkdir(parents=True, exist_ok=True)
+        native.write_bytes(b"MZnative")
+        dependency = self.dependency_entry(
+            "fixture-native",
+            postconditions=[
+                {
+                    "type": "file-sha256",
+                    "path": "drive_c/windows/system32/native.dll",
+                    "sha256": hashlib.sha256(b"MZnative").hexdigest(),
+                }
+            ],
+        )
+
+        runtime.verify_dependency_postconditions(context, dependency)
+
+        dependency["postconditions"][0]["sha256"] = "0" * 64
+        with self.assertRaisesRegex(
+            runtime.RuntimeErrorWithContext, "postcondition"
+        ):
+            runtime.verify_dependency_postconditions(context, dependency)
+
+    def test_production_dependency_catalog_is_pinned_and_complete(self):
+        catalog = runtime.load_dependency_catalog(
+            ROOT / "config" / "dependencies.json"
+        )
+
+        self.assertEqual(
+            list(catalog),
+            [
+                "vcrun2022-x86",
+                "vcrun2022",
+                "vcrun2013-x86",
+                "vcrun2013",
+                "vcrun2012-x86",
+                "vcrun2012",
+                "vcrun2010-x86",
+                "vcrun2010",
+                "vcrun2008-x86",
+                "vcrun2008",
+                "dotnet48",
+                "directx-jun2010",
+                "xna40",
+                "physx-legacy",
+            ],
+        )
+        self.assertEqual(catalog["xna40"]["installer"], "msi")
+        self.assertEqual(
+            catalog["xna40"]["prerequisites"], ["dotnet48"]
+        )
+        self.assertEqual(
+            catalog["directx-jun2010"]["installer"],
+            "directx-redist",
+        )
+        self.assertEqual(
+            {
+                condition["type"]
+                for dependency in catalog.values()
+                for condition in dependency["postconditions"]
+            },
+            {"registry-key", "file-sha256"},
+        )
 
     def test_rejects_non_pe_target(self):
         target = self.game / "not-pe"

@@ -177,10 +177,12 @@ Phase 8: 2026-06-11 field regression remediation and verified release
 - **Component-recipe checkpoint:** the runtime now accepts only three bounded
   installer strategies (`exe`, `msi`, and the fixed DirectX redistributable
   flow), validates prerequisite graphs, prefix-relative files, and restricted
-  Wine registry-key postconditions, and writes receipts only after every
-  required check passes. The
-  existing three-entry catalog remains compatible; expanding it with pinned
-  official packages and completing live prefix acceptance are still pending.
+  Wine registry-key or exact file-hash postconditions, and writes receipts
+  only after every required check passes. The production catalog now contains
+  14 pinned official recipes spanning current and legacy Visual C++, .NET 4.8,
+  DirectX June 2010, XNA 4.0 Refresh, and PhysX Legacy. All 66 runtime-manager
+  tests pass; representative live-prefix installation acceptance remains
+  pending.
 - **Current checkpoint:** verified Steam launch descriptors, managed
   missing-target redirection, and guarded Rockstar recovery have passed live
   acceptance. RDR2 now reaches Rockstar Steam min-mode but not `RDR2.exe`.

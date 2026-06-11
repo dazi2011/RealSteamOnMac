@@ -1151,6 +1151,17 @@
   side-by-side. Microsoft also describes the June 2010 DirectX package as
   legacy optional D3DX, XAudio, XInput, XACT, and Managed DirectX components;
   it is not a modern DirectX upgrade.
+- DirectX June 2010 can be accepted without trusting Wine builtin names by
+  hashing the installed native payload. The reviewed package produces
+  SHA-256
+  `84b900dbd7fa978d6e0caee26fc54f2f61d92c9c75d10b35f00e3e82cd1d67b4`
+  for x64 `d3dx9_43.dll` and
+  `0b28546be22c71834501f7d7185ede5d79742457331c7ee09efc14490dd64f5f`
+  for x86. These differ from the fresh-prefix Wine builtin files.
+- The reviewed catalog now has 14 recipes and preserves side-by-side runtime
+  semantics: current v14 does not replace Visual C++ 2013 or older, x64
+  recipes include their x86 counterpart, and XNA declares .NET 4.8 as an
+  explicit prerequisite.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
