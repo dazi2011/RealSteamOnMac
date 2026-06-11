@@ -1157,3 +1157,18 @@
   ordering before the game process, and launch blocking on recovery failure.
   RED failed only because AppID `1174180` is absent from the catalog and the
   runtime has no `execute_configured_launcher_recovery` entry point yet.
+- Added the pinned RDR2 recipe to `config/dependencies.json`: Social Club
+  `/silent` precedes Launcher `/s /t`, using the exact live depot sizes and
+  SHA-256 values.
+- CrossOver's existing RDR2 bottle confirmed the substantive postconditions:
+  Social Club helper/product/uninstall state and Launcher/Steam-helper/product/
+  uninstall state. CrossOver remains a read-only control and runtime
+  dependency is still forbidden.
+- Runtime launch now executes configured launcher recovery after prefix
+  preparation and before the game process. A recovery error blocks launch and
+  retains the snapshot/report path; games without a recipe are unchanged.
+- Added an explicit `recover-launcher` CLI for controlled acceptance and
+  support use.
+- Automated verification passed 7 launcher-recovery tests, 44 runtime-manager
+  tests, and 22 launch-descriptor/app-state/tool-catalog tests, plus JSON,
+  Python bytecode, and whitespace checks.

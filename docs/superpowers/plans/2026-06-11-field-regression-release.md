@@ -340,7 +340,7 @@ Run:
 /usr/bin/python3 -m unittest tests.test_launcher_recovery -v
 ```
 
-- [ ] **Step 4: Implement evidence-driven recovery**
+- [x] **Step 4: Implement evidence-driven recovery**
 
 Create a timestamped prefix snapshot, run only the verified depot prerequisite,
 validate the launcher executable and registry afterward, and retain a mutation

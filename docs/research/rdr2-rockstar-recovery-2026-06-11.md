@@ -95,6 +95,28 @@ healthy. Recovery must use the exact depot-provided prerequisite files in the
 signed script order, preserve the game and prefix, and validate each
 prerequisite after execution.
 
+## CrossOver Control
+
+The existing CrossOver `RDR2` bottle was inspected read-only as a known
+working-state control. It contains:
+
+- `Program Files/Rockstar Games/Social Club/SocialClubHelper.exe`;
+- `Program Files/Rockstar Games/Social Club/socialclub.dll`;
+- the Social Club uninstall record with display version `2.4.0.146`;
+- `Software\Wow6432Node\Rockstar Games\Rockstar Games Social Club`;
+- `Software\Wow6432Node\Rockstar Games\Launcher`;
+- the Launcher and Social Club Steam prerequisite keys;
+- `Rockstar Service`.
+
+The control confirms that Social Club is a substantive installed prerequisite,
+not merely an optional Launcher subdirectory. RealSteamOnMac therefore uses
+the helper PE plus the Social Club product/uninstall registry keys as its SDK
+postconditions. It uses the Launcher and Steam helper PEs plus Launcher
+product/uninstall keys as the Launcher postconditions.
+
+The CrossOver bottle is evidence only. No CrossOver binary or proprietary
+runtime payload is copied into the project or required at runtime.
+
 ## Recovery Boundary
 
 Before any repair mutation, the implementation must create a timestamped
@@ -110,6 +132,11 @@ Automatic recovery may run only the two verified depot installers with the
 arguments from `installscript_sdk.vdf`. It must never delete the game
 directory, replace the whole prefix, or infer an installer from an arbitrary
 download.
+
+The production recipe is stored in `config/dependencies.json`. The runtime
+executes it after prefix preparation and before `PlayRDR2.exe`. A failed hash,
+installer exit, PE check, or registry check blocks the game process and reports
+the snapshot path.
 
 Rollback restores files from the timestamped snapshot while Steam and all Wine
 processes for AppID 1174180 are stopped. The mutation report must list every

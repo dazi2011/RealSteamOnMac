@@ -928,6 +928,14 @@
   `Launcher.exe`. It must snapshot registry, Rockstar state, and logs before
   rerunning only the exact depot installers; whole-prefix or game-directory
   deletion is prohibited.
+- The existing CrossOver RDR2 control contains both 64-bit and 32-bit Social
+  Club trees, `SocialClubHelper.exe`, Social Club product/uninstall keys,
+  Launcher product/uninstall keys, Steam prerequisite keys, and Rockstar
+  Service. This independently confirms that the RealSteamOnMac prefix is
+  missing the SDK half of the chain.
+- Runtime recovery now treats the exact depot hashes as a release contract.
+  A changed Steam redistributable fails closed for review instead of silently
+  executing a newly replaced installer.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

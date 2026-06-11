@@ -20,6 +20,11 @@ if str(RUNTIME_MODULE_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(RUNTIME_MODULE_DIRECTORY))
 
 from compat_tool_catalog import CatalogError, scan_compat_tools
+from launcher_recovery import (
+    LauncherRecoveryError,
+    execute_launcher_recovery,
+    load_launcher_recovery_catalog,
+)
 from steam_launch_descriptor import (
     LaunchDescriptorError,
     build_launch_descriptor_from_appinfo,
@@ -1771,6 +1776,47 @@ def execute_dependency_action(context, runtime_root, fields, log_path):
     }
 
 
+def execute_configured_launcher_recovery(
+    context, wine64, environment, catalog_path=None
+):
+    path = (
+        Path(catalog_path).expanduser()
+        if catalog_path is not None
+        else default_dependency_catalog()
+    )
+    try:
+        recipes = load_launcher_recovery_catalog(path)
+        recipe = recipes.get(context["appid"])
+        if recipe is None:
+            return {
+                "state": "not-configured",
+                "snapshot_path": "",
+                "report_path": "",
+                "steps": [],
+            }
+        result = execute_launcher_recovery(
+            context,
+            recipe,
+            wine64,
+            environment,
+        )
+    except LauncherRecoveryError as error:
+        raise RuntimeErrorWithContext(str(error)) from error
+    log_event(
+        context,
+        {
+            "event": "launcher-recovery",
+            "state": result["state"],
+            "snapshot_path": result["snapshot_path"],
+            "report_path": result["report_path"],
+            "steps": [
+                step["id"] for step in result.get("steps", [])
+            ],
+        },
+    )
+    return result
+
+
 def choose_executable_file():
     script = (
         'set chosenFile to choose file with prompt '
@@ -2157,6 +2203,9 @@ def launch(args):
     _, _, wine_root, wine64, environment = prepare(
         context, runtime_root, config
     )
+    execute_configured_launcher_recovery(
+        context, wine64, environment
+    )
     command = (
         [str(wine64), str(context["executable"])]
         + launch_arguments
@@ -2173,6 +2222,38 @@ def launch(args):
     return run_game_process(
         context, wine_root, command, environment
     )
+
+
+def recover_launcher(args):
+    context = resolve_app_context(
+        args.appid,
+        requested_target=Path(args.executable),
+    )
+    if args.compat_data:
+        requested_compat_data = (
+            Path(args.compat_data).expanduser().resolve()
+        )
+        if requested_compat_data != context["compat_data"]:
+            raise RuntimeErrorWithContext(
+                "compatibility data path must use the Proton layout: "
+                f"expected {context['compat_data']}, "
+                f"got {requested_compat_data}"
+            )
+    runtime_root = Path(args.runtime_root).expanduser().resolve()
+    config = load_config(context)
+    _, _, _, wine64, environment = prepare(
+        context, runtime_root, config
+    )
+    result = execute_configured_launcher_recovery(
+        context, wine64, environment
+    )
+    if result["state"] == "not-configured":
+        raise RuntimeErrorWithContext(
+            f"no launcher recovery is configured for AppID "
+            f"{context['appid']}"
+        )
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
 
 
 def prepare_prefix(args):
@@ -2232,6 +2313,10 @@ def build_parser():
         "arguments", nargs=argparse.REMAINDER
     )
     launch_parser.set_defaults(handler=launch)
+
+    recovery_parser = subparsers.add_parser("recover-launcher")
+    add_context_arguments(recovery_parser)
+    recovery_parser.set_defaults(handler=recover_launcher)
 
     prepare_parser = subparsers.add_parser("prepare-prefix")
     add_context_arguments(prepare_parser)

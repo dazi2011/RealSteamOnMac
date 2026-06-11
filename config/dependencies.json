@@ -66,5 +66,87 @@
         3010
       ]
     }
+  ],
+  "launcher_recoveries": [
+    {
+      "id": "rdr2-rockstar",
+      "appid": 1174180,
+      "snapshot_paths": [
+        "system.reg",
+        "user.reg",
+        "userdef.reg",
+        "drive_c/Program Files/Rockstar Games",
+        "drive_c/Program Files (x86)/Rockstar Games",
+        "drive_c/ProgramData/Rockstar Games"
+      ],
+      "snapshot_globs": [
+        "drive_c/users/*/AppData/Local/Rockstar Games",
+        "drive_c/users/*/AppData/Roaming/Rockstar Games",
+        "drive_c/users/*/Documents/Rockstar Games"
+      ],
+      "steps": [
+        {
+          "id": "social-club",
+          "installer": "Redistributables/Social-Club-Setup.exe",
+          "sha256": "8c057d4199ded0bd70e2f769548dd97bec9e0e89a27109d61026b286d79c7cb5",
+          "size": 127419512,
+          "arguments": [
+            "/silent"
+          ],
+          "success_codes": [
+            0
+          ],
+          "postconditions": [
+            {
+              "type": "pe",
+              "path": "drive_c/Program Files/Rockstar Games/Social Club/SocialClubHelper.exe"
+            },
+            {
+              "type": "registry_key",
+              "file": "system.reg",
+              "key": "Software\\Wow6432Node\\Rockstar Games\\Rockstar Games Social Club"
+            },
+            {
+              "type": "registry_key",
+              "file": "system.reg",
+              "key": "Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Rockstar Games Social Club"
+            }
+          ]
+        },
+        {
+          "id": "rockstar-launcher",
+          "installer": "Redistributables/Rockstar-Games-Launcher.exe",
+          "sha256": "51afae4b364112286fda8abeeda64867830792d6134ab6cf2d54bfbb8d21ece7",
+          "size": 112102008,
+          "arguments": [
+            "/s",
+            "/t"
+          ],
+          "success_codes": [
+            0
+          ],
+          "postconditions": [
+            {
+              "type": "pe",
+              "path": "drive_c/Program Files/Rockstar Games/Launcher/Launcher.exe"
+            },
+            {
+              "type": "pe",
+              "path": "drive_c/Program Files/Rockstar Games/Launcher/RockstarSteamHelper.exe"
+            },
+            {
+              "type": "registry_key",
+              "file": "system.reg",
+              "key": "Software\\Wow6432Node\\Rockstar Games\\Launcher"
+            },
+            {
+              "type": "registry_key",
+              "file": "system.reg",
+              "key": "Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Rockstar Games Launcher"
+            }
+          ]
+        }
+      ]
+    }
   ]
 }
