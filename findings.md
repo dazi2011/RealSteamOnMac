@@ -1186,6 +1186,11 @@
   with a product registry key, and the DirectX extract/install strategy passed
   exact native-payload hashes. This is materially stronger than accepting an
   installer exit code or checking for DLL names that Wine already supplies.
+- Steam dropdown contents can be verified without opening or mutating the
+  menu. The native `DialogDropDown` DOM node's React ancestry retains the
+  `rgOptions` and `selectedOption` props. Live inspection of People Playground
+  returned the exact 14 reviewed dependency IDs while the document contained
+  zero legacy panels and zero project modal layers.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

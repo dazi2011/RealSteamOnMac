@@ -1668,3 +1668,27 @@
 - The final runtime-manager suite contains 67 passing tests. CrossOver Preview
   PIDs `19863`, `19885`, and `73736`, plus native Steam PID `75369`, remained
   alive throughout the live component tests.
+
+## 2026-06-11 Native Dependency Dropdown Acceptance
+
+- Backed up the deployed SteamUI assets to
+  `~/Library/Application Support/RealSteamOnMac/backups/dependency-ui-catalog-20260611T161551Z`
+  and refreshed the guarded config through the installed patcher. Verification
+  passed and the live shared context loaded all 14 reviewed dependency entries.
+- Restarted only native Steam with `-cef-enable-debugging`; CrossOver Preview
+  PIDs `19863`, `19885`, and `73736` remained alive. Native Steam resumed as
+  PID `95029`.
+- Opened People Playground's compatibility page through Steam's own
+  `OpenAppSettingsDialog(1118200, "compatibility")`. The page rendered three
+  Steam `DialogDropDown` controls, seven native checkboxes, and the native
+  Run, dependency, and container actions.
+- Read-only React-fiber inspection proved the component dropdown contains the
+  exact ordered 14-entry catalog. UI status reported
+  `nativeCompatRenders > 0`, `nativeCompatLastError=null`, and all four project
+  compatibility tools available.
+- Live DOM inspection found zero `.realsteamonmac-controls` and zero
+  `.realsteamonmac-modal-layer` elements. The acceptance probes now inspect
+  Steam-native controls and no longer encode the removed replacement-panel
+  contract.
+- Verification passed the probe shell contract, both probe syntax checks,
+  `git diff --check`, and 79 focused SteamUI/CDP JavaScript tests.

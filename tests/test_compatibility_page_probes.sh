@@ -8,16 +8,19 @@ STATE_PROBE="$ROOT/probes/verify_people_playground_compatibility_state.js"
 test -f "$PAGE_PROBE"
 test -f "$STATE_PROBE"
 grep -q 'const appid = 1118200;' "$PAGE_PROBE"
-grep -q 'RealSteamOnMac - DXMT 0.80' "$PAGE_PROBE"
-grep -q 'input\[data-control\]' "$PAGE_PROBE"
-grep -q 'realsteamonmac-controls' "$PAGE_PROBE"
+grep -q '强制使用特定 Steam Play 兼容性工具' "$PAGE_PROBE"
+grep -q '安装应用程序到容器' "$PAGE_PROBE"
 grep -q 'role=combobox' "$PAGE_PROBE"
+grep -q 'DialogDropDown' "$PAGE_PROBE"
+grep -q 'realsteamonmac-controls' "$PAGE_PROBE"
+grep -q 'realsteamonmac-modal-layer' "$PAGE_PROBE"
 grep -q 'const appid = 1118200;' "$STATE_PROBE"
 grep -q 'GetAvailableCompatTools(appid)' "$STATE_PROBE"
-grep -q '__REALSTEAMONMAC_COMPAT_SELECTIONS_V1__' "$STATE_PROBE"
-grep -q '__REALSTEAMONMAC_CONTROL_CONFIGS_V1__' "$STATE_PROBE"
 grep -q 'realsteamonmac-wined3d' "$STATE_PROBE"
+grep -q 'physx-legacy' "$STATE_PROBE"
+grep -q 'props?.rgOptions' "$STATE_PROBE"
 grep -q 'nCompatToolPriority' "$STATE_PROBE"
+grep -q 'DialogDropDown' "$STATE_PROBE"
 
 if grep -Eq \
     'SpecifyCompatTool|\.click\(|ContinueInstall|RunGame|OpenInstallWizard' \
@@ -26,4 +29,4 @@ if grep -Eq \
     exit 1
 fi
 
-echo "compatibility page probe contract: PASS"
+echo "Steam-native compatibility page probe contract: PASS"

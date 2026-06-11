@@ -150,7 +150,7 @@ Phase 8: 2026-06-11 field regression remediation and verified release
       executables.
 - [x] Make Run Command behave like Windows Run, fix EXE selection persistence,
       and open the selected prefix drive in Finder.
-- [ ] Merge Windows component installation into Install Application To
+- [x] Merge Windows component installation into Install Application To
       Container and provide a reviewed, checksum-pinned dependency catalog.
 - [ ] Study CrossOver Preview statically and dynamically for container,
       command, registry, dependency, and launch behavior without making
@@ -185,6 +185,13 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   ordering, registry verification, exact file hashes, and private receipts;
   the active game prefix was used for low-risk VC/PhysX/DirectX tests and an
   APFS-cloned prefix isolated the .NET/XNA test.
+- **Native dependency UI checkpoint:** the deployed SteamUI config and native
+  properties subtree now expose all 14 reviewed recipes through Steam's
+  existing `DialogDropDown`. Live People Playground inspection found three
+  native dropdowns, seven native checkboxes, zero legacy project panels, zero
+  project modal layers, and no native render error. The read-only acceptance
+  probe now derives dropdown options from Steam's React props instead of
+  looking for the removed handcrafted panel.
 - **Current checkpoint:** verified Steam launch descriptors, managed
   missing-target redirection, and guarded Rockstar recovery have passed live
   acceptance. RDR2 now reaches Rockstar Steam min-mode but not `RDR2.exe`.

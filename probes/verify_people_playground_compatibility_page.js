@@ -1,11 +1,9 @@
 (() => {
   const appid = 1118200;
-  const expectedTool = "RealSteamOnMac - DXMT 0.80";
-  const toolSelector = document.querySelector("[role=combobox]");
-  const controlPanel = document.querySelector(
-    ".realsteamonmac-controls",
-  );
   const bodyText = document.body?.innerText ?? "";
+  const comboboxes = Array.from(
+    document.querySelectorAll("[role=combobox]"),
+  );
 
   return {
     appid,
@@ -13,21 +11,30 @@
     hasCompatibilityPage: bodyText
       .split("\n")
       .some((line) => line.trim() === "兼容性"),
-    selectedTool: toolSelector?.innerText?.trim() ?? null,
-    expectedTool,
-    controlPanelCount: document.querySelectorAll(
+    hasSteamPlaySelector: bodyText.includes(
+      "强制使用特定 Steam Play 兼容性工具",
+    ),
+    hasNativeControlSections: [
+      "RealSteamOnMac 兼容性选项",
+      "运行命令",
+      "安装应用程序到容器",
+      "容器操作",
+    ].every((label) => bodyText.includes(label)),
+    comboboxes: comboboxes.map((element) => ({
+      text: element.innerText?.replace(/\s+/g, " ").trim() ?? "",
+      className: String(element.className),
+      isSteamDialogDropDown: element.classList.contains(
+        "DialogDropDown",
+      ),
+    })),
+    nativeCheckboxCount: document.querySelectorAll(
+      "[role=checkbox]",
+    ).length,
+    legacyControlPanelCount: document.querySelectorAll(
       ".realsteamonmac-controls",
     ).length,
-    controlRenderer:
-      controlPanel?.querySelector(
-        ".realsteamonmac-controls__renderer",
-      )?.textContent?.trim() ?? null,
-    controls: Array.from(
-      controlPanel?.querySelectorAll("input[data-control]") ?? [],
-    ).map((input) => ({
-      key: input.dataset.control,
-      checked: input.checked,
-      disabled: input.disabled,
-    })),
+    legacyModalLayerCount: document.querySelectorAll(
+      ".realsteamonmac-modal-layer",
+    ).length,
   };
 })()
