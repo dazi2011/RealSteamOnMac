@@ -1070,3 +1070,7 @@
   containment.
 - Task 5 descriptor verification passed all 6 fixtures plus Python bytecode
   compilation and whitespace validation.
+- Static inspection of the installed SteamUI launch workflow found the native
+  decoded-data API `SteamClient.Apps.GetLaunchOptionsForApp(appid)`. Added a
+  read-only probe that records JSON fields plus own/prototype property names
+  for RDR2, Hogwarts Legacy, Aimlabs, and People Playground.

@@ -900,6 +900,10 @@
   `AimLab_tb.exe` for Windows and `AimLab.app` for macOS. Launch selection must
   preserve Steam's decoded entry identity and OS instead of scanning the game
   directory for a plausible executable.
+- SteamUI's own launch workflow calls
+  `SteamClient.Apps.GetLaunchOptionsForApp(appid)`. This is the preferred
+  decoded launch-option source; the community `AppInfoStore` module is for
+  display metadata and is not evidence of executable launch records.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
