@@ -372,6 +372,38 @@ class SteamUIPatchTests(unittest.TestCase):
         )
         self.patcher.verify_steamui(self.steamui)
 
+    def test_install_migrates_the_previous_dynamic_page_only_patch(self):
+        self.patcher.install_steamui(
+            self.steamui,
+            self.ui_source,
+            self.allowlist,
+        )
+        backup = (
+            self.steamui
+            / "chunk~2dcc5aaf7.js.realsteamonmac.original"
+        ).read_text(encoding="utf-8")
+        previous = self.patcher.build_previous_dynamic_compat_chunk(
+            backup
+        )
+        self.compat_chunk.write_text(previous, encoding="utf-8")
+
+        self.patcher.install_steamui(
+            self.steamui,
+            self.ui_source,
+            self.allowlist,
+        )
+
+        current = self.compat_chunk.read_text(encoding="utf-8")
+        self.assertEqual(
+            current.count(self.patcher.COMPAT_PAGE_DYNAMIC_GATE),
+            2,
+        )
+        self.assertEqual(
+            current.count(self.patcher.COMPAT_ENABLE_DYNAMIC_GATE),
+            1,
+        )
+        self.patcher.verify_steamui(self.steamui)
+
     def test_unknown_clean_index_is_rejected_without_changes(self):
         self.index.write_text(
             CURRENT_INDEX.replace("SharedJSContext", "UnknownBuild"),

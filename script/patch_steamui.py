@@ -142,6 +142,17 @@ def build_patched_compat_chunk(original):
     )
 
 
+def build_previous_dynamic_compat_chunk(original):
+    if original.count(COMPAT_PAGE_ANCHOR) != 2:
+        raise ValueError(
+            "compatibility chunk does not contain two supported page gates"
+        )
+    return original.replace(
+        COMPAT_PAGE_ANCHOR,
+        COMPAT_PAGE_DYNAMIC_GATE,
+    )
+
+
 def atomic_write(path, content):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -324,7 +335,10 @@ def prepare_compat_chunk(paths):
         expected = build_patched_compat_chunk(
             original.decode("utf-8")
         ).encode("utf-8")
-        if current != expected:
+        previous = build_previous_dynamic_compat_chunk(
+            original.decode("utf-8")
+        ).encode("utf-8")
+        if current not in (expected, previous):
             raise ValueError(
                 "existing compatibility chunk patch is inconsistent"
             )
