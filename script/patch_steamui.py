@@ -24,6 +24,7 @@ KNOWN_INDEX_SHA256 = {
 KNOWN_COMPAT_CHUNK_SHA256 = {
     "6d28c06fafb32f99c695f4bc4d1b8a8b8fb5bc1efc425f2a78abb8697af81349",
     "f77316131cbed91865a800103bbda855a43395eecfb2bc866bc58c33fdea4c69",
+    "387e1b1aacdcbddd5b1fbf65b64c9f5222cfe60d917568999c2c7ddedfdf6b0a",
 }
 if os.environ.get("REALSTEAMONMAC_ALLOW_TEST_FIXTURES") == "1":
     KNOWN_COMPAT_CHUNK_SHA256.add(
@@ -358,8 +359,10 @@ def prepare_compat_chunk(paths):
     if paths["compat_backup"].exists():
         original = validated_compat_original(paths["compat_backup"])
         if current != original:
-            raise ValueError(
-                "compatibility chunk backup does not match the clean chunk"
+            return (
+                current,
+                build_patched_compat_chunk(current_text).encode("utf-8"),
+                True,
             )
         return original, build_patched_compat_chunk(
             current_text

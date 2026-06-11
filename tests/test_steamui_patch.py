@@ -121,6 +121,10 @@ class SteamUIPatchTests(unittest.TestCase):
             "f77316131cbed91865a800103bbda855a43395eecfb2bc866bc58c33fdea4c69",
             self.patcher.KNOWN_COMPAT_CHUNK_SHA256,
         )
+        self.assertIn(
+            "387e1b1aacdcbddd5b1fbf65b64c9f5222cfe60d917568999c2c7ddedfdf6b0a",
+            self.patcher.KNOWN_COMPAT_CHUNK_SHA256,
+        )
 
     def write_compat_tool(
         self,
@@ -403,6 +407,36 @@ class SteamUIPatchTests(unittest.TestCase):
             1,
         )
         self.patcher.verify_steamui(self.steamui)
+
+    def test_install_rotates_a_stale_backup_for_a_known_clean_chunk(self):
+        self.patcher.install_steamui(
+            self.steamui,
+            self.ui_source,
+            self.allowlist,
+        )
+        updated = CURRENT_COMPAT_CHUNK.replace("before", "new-build", 1)
+        self.patcher.KNOWN_COMPAT_CHUNK_SHA256.add(
+            self.patcher.sha256_bytes(updated.encode("utf-8"))
+        )
+        self.compat_chunk.write_text(updated, encoding="utf-8")
+
+        self.patcher.install_steamui(
+            self.steamui,
+            self.ui_source,
+            self.allowlist,
+        )
+
+        backup = (
+            self.steamui
+            / "chunk~2dcc5aaf7.js.realsteamonmac.original"
+        )
+        self.assertEqual(backup.read_text(encoding="utf-8"), updated)
+        self.patcher.verify_steamui(self.steamui)
+        self.patcher.restore_steamui(self.steamui)
+        self.assertEqual(
+            self.compat_chunk.read_text(encoding="utf-8"),
+            updated,
+        )
 
     def test_unknown_clean_index_is_rejected_without_changes(self):
         self.index.write_text(
