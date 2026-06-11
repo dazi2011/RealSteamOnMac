@@ -228,8 +228,12 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   The Windows-library record has now been removed through Steam's native
   uninstall lifecycle after backing up and hash-verifying the four save files
   that occupied its install directory. Steam preserved those saves and logged
-  a clean uninstall. The duplicate macOS-library record still requires the
-  same native lifecycle pass before claiming reinstall recovery.
+  a clean uninstall. After restart, the duplicate macOS-library record was
+  removed through the same guarded native lifecycle. Both manifests are now
+  absent and save hashes remain unchanged. A fresh install no longer
+  false-completes, but fails explicitly with native app error 29
+  (`InvalidPlatform`); native compatibility-tool registration is now the
+  remaining download gate.
 - **Current checkpoint:** verified Steam launch descriptors, managed
   missing-target redirection, and guarded Rockstar recovery have passed live
   acceptance. RDR2 now reaches Rockstar Steam min-mode but not `RDR2.exe`.

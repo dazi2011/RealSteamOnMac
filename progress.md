@@ -1809,3 +1809,20 @@
   accounting name is `Steam Helper`. The launcher waited for the fixture to
   exit, logged the completed drain, rebuilt as universal arm64/x86_64, passed
   strict code-signature verification, and passed `-Wall -Wextra -Werror`.
+- Deployed only the launcher after backing up the prior binary; the tested
+  source and installed launcher match after removing their code signatures,
+  and Steam.app passes deep/strict verification. The hook, native engine, and
+  runtime package were deliberately left unchanged.
+- LaunchServices acceptance repeated the two-second stale-helper condition,
+  reached SharedJSContext in four seconds, and remained alive across a second
+  command 15 seconds later. A prior direct `nohup` run ended exactly with its
+  terminal execution session and was rejected as a product-lifetime test.
+- The restart caused Steam to load the remaining macOS-library Black Myth
+  manifest. A second hash-guarded native uninstall removed it cleanly while
+  preserving the four Windows-library save files byte-for-byte. Both AppID
+  2358720 manifests are now absent.
+- Reopened the native install wizard and cancelled it without starting a
+  download. Steam now enters a real installer failure state instead of the
+  one-second false completion: `eInstallState=15`, `eAppError=29`,
+  `currentAppID=2358720`, zero required bytes, and an empty depot plan.
+  Steam localizes error 29 as `平台无效`.

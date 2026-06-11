@@ -1256,6 +1256,19 @@
   process from orphaned `Steam Helper` processes. It preserves normal
   forwarding when `steam_osx` is alive, but waits up to 15 seconds for stale
   helpers to drain when the main process has already exited.
+- A direct terminal child launch ended when the command session was reclaimed;
+  that was not a product crash. LaunchServices acceptance with the same
+  two-second stale-helper fixture reached SharedJSContext in four seconds and
+  remained alive across a separate verification command.
+- After a restart loaded the duplicate macOS-library Black Myth manifest,
+  Steam's native uninstall removed it with another `finished uninstall
+  (No Error)`. Both stale manifests are now absent and all four save hashes
+  still match their backup.
+- The post-cleanup install wizard no longer completes instantly. It enters the
+  failed installer state for AppID 2358720 and is cancelled by the bounded
+  probe. Its exact failure is native app error 29, localized as `平台无效`,
+  with zero planned bytes and no depot list. The remaining blocker is native
+  platform/compatibility-tool registration, not stale content state.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
