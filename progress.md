@@ -1144,3 +1144,12 @@
 - Task 6 RED verification failed at import with `FileNotFoundError` for the
   intentionally absent `runtime/launcher_recovery.py`. The test fixtures and
   runner did not reach any unrelated failure.
+- Implemented the bounded launcher recovery engine. It validates AppID,
+  depot-relative paths, exact installer size/SHA-256, PE headers, fixed argv,
+  success codes, and substantive PE/registry postconditions.
+- Recovery snapshots are selective, size/file-count bounded, atomically
+  published, and include hashes for registry, Rockstar, user, and runtime-log
+  evidence. Unknown or contradictory state fails closed with the snapshot
+  path instead of deleting or replacing the prefix.
+- The focused recovery suite now passes all 6 tests plus Python bytecode and
+  whitespace validation.

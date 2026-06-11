@@ -274,12 +274,12 @@ class LauncherRecoveryTests(unittest.TestCase):
             [
                 [
                     "/fixture/wine64",
-                    str(self.social_installer),
+                    str(self.social_installer.resolve()),
                     "/silent",
                 ],
                 [
                     "/fixture/wine64",
-                    str(self.launcher_installer),
+                    str(self.launcher_installer.resolve()),
                     "/s",
                     "/t",
                 ],
