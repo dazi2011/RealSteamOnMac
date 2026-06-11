@@ -1563,3 +1563,23 @@
   and whitespace checks. The shell fixtures now contain and assert the guarded
   native-controls anchor instead of silently exercising the previous chunk
   shape.
+
+## 2026-06-11 Bounded Component Recipe Executor
+
+- Studied CrossOver Preview's `crossover.tie` component records as an
+  implementation reference. They confirm that reliable component installation
+  requires dependency ordering, installer-specific invocation, and
+  post-install detection rather than a large flat URL list.
+- Extended the runtime catalog with optional, backward-compatible recipe
+  metadata. Only direct EXE, MSI through Wine `msiexec`, and the fixed
+  DirectX redistributable extraction flow are accepted.
+- Added prerequisite existence and cycle validation, safe prefix-relative
+  file postconditions, ordered prerequisite installation, per-component
+  receipts, and fail-closed DirectX `DXSETUP.exe` extraction checks.
+- Added NVIDIA's official download host to the allowlist in preparation for
+  checksum-pinned PhysX entries; no NVIDIA payload is in the catalog yet.
+- Eight focused recipe/download/action tests and all 62 runtime-manager tests
+  passed. The current three-entry production catalog still loads unchanged.
+- CrossOver Preview's wineserver, Windows Steam wrapper, and app process, plus
+  native Steam, remained alive throughout this batch. Real catalog expansion
+  and live component installation acceptance remain the next step.

@@ -174,6 +174,12 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   acceptance used the native MSync toggle, EXE picker, Run button, component
   and container dropdowns, and Open C Drive action. The remaining work in this
   area is catalog breadth and installer acceptance, not replacement UI.
+- **Component-recipe checkpoint:** the runtime now accepts only three bounded
+  installer strategies (`exe`, `msi`, and the fixed DirectX redistributable
+  flow), validates prerequisite graphs and prefix-relative postconditions,
+  and writes receipts only after every required file check passes. The
+  existing three-entry catalog remains compatible; expanding it with pinned
+  official packages and completing live prefix acceptance are still pending.
 - **Current checkpoint:** verified Steam launch descriptors, managed
   missing-target redirection, and guarded Rockstar recovery have passed live
   acceptance. RDR2 now reaches Rockstar Steam min-mode but not `RDR2.exe`.

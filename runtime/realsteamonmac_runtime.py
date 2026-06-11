@@ -120,8 +120,11 @@ DEPENDENCY_DOWNLOAD_HOSTS = frozenset(
         "download.microsoft.com",
         "download.visualstudio.microsoft.com",
         "go.microsoft.com",
+        "us.download.nvidia.com",
     )
 )
+DEPENDENCY_INSTALLERS = frozenset(("exe", "msi", "directx-redist"))
+DEPENDENCY_POSTCONDITIONS = frozenset(("file", "file-any"))
 DEFAULT_CONFIG = {
     "compat_tool": "",
     "renderer": "dxmt",
@@ -2196,6 +2199,73 @@ def build_native_helper_environment(environment):
     }
 
 
+def validate_dependency_prefix_path(value):
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > 512
+        or "\\" in value
+    ):
+        return False
+    path = Path(value)
+    return (
+        not path.is_absolute()
+        and path.parts
+        and path.parts[0] == "drive_c"
+        and all(part not in ("", ".", "..") for part in path.parts)
+    )
+
+
+def validate_dependency_postcondition(postcondition):
+    if not isinstance(postcondition, dict):
+        return False
+    condition_type = postcondition.get("type")
+    if condition_type not in DEPENDENCY_POSTCONDITIONS:
+        return False
+    if condition_type == "file":
+        return (
+            set(postcondition) == {"type", "path"}
+            and validate_dependency_prefix_path(postcondition.get("path"))
+        )
+    paths = postcondition.get("paths")
+    return (
+        set(postcondition) == {"type", "paths"}
+        and isinstance(paths, list)
+        and 1 <= len(paths) <= 16
+        and len(set(paths)) == len(paths)
+        and all(validate_dependency_prefix_path(path) for path in paths)
+    )
+
+
+def validate_dependency_graph(dependencies):
+    for dependency_id, dependency in dependencies.items():
+        for prerequisite in dependency["prerequisites"]:
+            if prerequisite not in dependencies:
+                raise RuntimeErrorWithContext(
+                    "dependency catalog prerequisite is missing: "
+                    f"{dependency_id} -> {prerequisite}"
+                )
+
+    visiting = set()
+    visited = set()
+
+    def visit(dependency_id):
+        if dependency_id in visiting:
+            raise RuntimeErrorWithContext(
+                f"dependency catalog contains a cycle: {dependency_id}"
+            )
+        if dependency_id in visited:
+            return
+        visiting.add(dependency_id)
+        for prerequisite in dependencies[dependency_id]["prerequisites"]:
+            visit(prerequisite)
+        visiting.remove(dependency_id)
+        visited.add(dependency_id)
+
+    for dependency_id in dependencies:
+        visit(dependency_id)
+
+
 def load_dependency_catalog(path=None):
     catalog_path = (
         Path(path).expanduser()
@@ -2228,7 +2298,11 @@ def load_dependency_catalog(path=None):
         size = dependency.get("size")
         arguments = dependency.get("arguments")
         success_codes = dependency.get("success_codes")
+        installer = dependency.get("installer", "exe")
+        prerequisites = dependency.get("prerequisites", [])
+        postconditions = dependency.get("postconditions", [])
         parsed_url = urllib.parse.urlparse(url or "")
+        expected_suffix = ".msi" if installer == "msi" else ".exe"
         valid = (
             isinstance(dependency_id, str)
             and re.fullmatch(r"[a-z0-9][a-z0-9-]{1,31}", dependency_id)
@@ -2239,7 +2313,7 @@ def load_dependency_catalog(path=None):
             and isinstance(dependency.get("publisher"), str)
             and isinstance(filename, str)
             and Path(filename).name == filename
-            and filename.lower().endswith(".exe")
+            and filename.lower().endswith(expected_suffix)
             and parsed_url.scheme == "https"
             and parsed_url.hostname in DEPENDENCY_DOWNLOAD_HOSTS
             and isinstance(digest, str)
@@ -2257,12 +2331,37 @@ def load_dependency_catalog(path=None):
                 isinstance(code, int) and 0 <= code <= 65535
                 for code in success_codes
             )
+            and installer in DEPENDENCY_INSTALLERS
+            and isinstance(prerequisites, list)
+            and len(prerequisites) <= 16
+            and len(set(prerequisites)) == len(prerequisites)
+            and all(
+                isinstance(prerequisite, str)
+                and re.fullmatch(
+                    r"[a-z0-9][a-z0-9-]{1,31}", prerequisite
+                )
+                and prerequisite != dependency_id
+                for prerequisite in prerequisites
+            )
+            and isinstance(postconditions, list)
+            and len(postconditions) <= 16
+            and all(
+                validate_dependency_postcondition(postcondition)
+                for postcondition in postconditions
+            )
         )
         if not valid:
             raise RuntimeErrorWithContext(
-                f"dependency catalog entry is invalid: {dependency_id}"
+                "dependency catalog entry or postcondition is invalid: "
+                f"{dependency_id}"
             )
-        normalized[dependency_id] = dependency
+        normalized[dependency_id] = {
+            **dependency,
+            "installer": installer,
+            "prerequisites": prerequisites,
+            "postconditions": postconditions,
+        }
+    validate_dependency_graph(normalized)
     return normalized
 
 
@@ -2350,6 +2449,74 @@ def download_dependency(dependency, cache_root=None):
             temporary.unlink()
 
 
+def wine_z_path(path):
+    resolved = Path(path).expanduser().resolve()
+    return "Z:" + str(resolved).replace("/", "\\")
+
+
+def build_dependency_install_commands(
+    dependency, wine64, installer, extract_root=None
+):
+    dependency_id = dependency["id"]
+    installer_type = dependency["installer"]
+    arguments = dependency["arguments"]
+    if installer_type == "exe":
+        return [
+            (
+                f"install dependency {dependency_id}",
+                [wine64, installer, *arguments],
+            )
+        ]
+    if installer_type == "msi":
+        return [
+            (
+                f"install dependency {dependency_id}",
+                [wine64, "msiexec", "/i", installer, *arguments],
+            )
+        ]
+    if extract_root is None:
+        raise RuntimeErrorWithContext(
+            "DirectX dependency requires an extraction directory"
+        )
+    extract_root = Path(extract_root)
+    return [
+        (
+            f"extract dependency {dependency_id}",
+            [
+                wine64,
+                installer,
+                "/Q",
+                f"/T:{wine_z_path(extract_root)}",
+            ],
+        ),
+        (
+            f"install dependency {dependency_id}",
+            [wine64, extract_root / "DXSETUP.exe", *arguments],
+        ),
+    ]
+
+
+def dependency_postcondition_met(context, postcondition):
+    prefix = context["prefix"].resolve()
+
+    def exists(relative):
+        candidate = (prefix / relative).resolve()
+        return candidate.is_relative_to(prefix) and candidate.is_file()
+
+    if postcondition["type"] == "file":
+        return exists(postcondition["path"])
+    return any(exists(path) for path in postcondition["paths"])
+
+
+def verify_dependency_postconditions(context, dependency):
+    for postcondition in dependency["postconditions"]:
+        if not dependency_postcondition_met(context, postcondition):
+            raise RuntimeErrorWithContext(
+                "dependency postcondition failed: "
+                f"{dependency['id']} ({postcondition['type']})"
+            )
+
+
 def execute_run_command_action(context, runtime_root, fields, log_path):
     config = load_config(context)
     _, _, _, wine64, environment = prepare(
@@ -2401,48 +2568,100 @@ def execute_dependency_action(context, runtime_root, fields, log_path):
     _, manifest, _, wine64, environment = prepare(
         context, runtime_root, config
     )
-    installer = download_dependency(dependency)
-    command = [wine64, installer, *dependency["arguments"]]
-    result = run_job_process(
-        context,
-        command,
-        environment,
-        log_path,
-        f"install dependency {dependency['id']}",
-    )
-    if result.returncode not in dependency["success_codes"]:
-        raise RuntimeErrorWithContext(
-            f"dependency installer exited with {result.returncode}"
+    installed = []
+    completed = set()
+    receipts = {}
+    exit_codes = {}
+
+    def install(dependency_id):
+        if dependency_id in completed:
+            return
+        current = catalog[dependency_id]
+        for prerequisite in current["prerequisites"]:
+            install(prerequisite)
+
+        installer = download_dependency(current)
+        temporary = None
+        try:
+            extract_root = None
+            if current["installer"] == "directx-redist":
+                context["state"].mkdir(parents=True, exist_ok=True)
+                temporary = tempfile.TemporaryDirectory(
+                    prefix=".directx-redist-",
+                    dir=str(context["state"]),
+                )
+                extract_root = Path(temporary.name)
+                extract_root.chmod(0o700)
+            commands = build_dependency_install_commands(
+                current,
+                wine64,
+                installer,
+                extract_root,
+            )
+            result = None
+            for index, (description, command) in enumerate(commands):
+                if (
+                    current["installer"] == "directx-redist"
+                    and index == 1
+                    and not Path(command[1]).is_file()
+                ):
+                    raise RuntimeErrorWithContext(
+                        "DirectX dependency did not extract DXSETUP.exe"
+                    )
+                result = run_job_process(
+                    context,
+                    command,
+                    environment,
+                    log_path,
+                    description,
+                )
+                if result.returncode not in current["success_codes"]:
+                    raise RuntimeErrorWithContext(
+                        "dependency installer exited with "
+                        f"{result.returncode}: {dependency_id}"
+                    )
+        finally:
+            if temporary is not None:
+                temporary.cleanup()
+
+        verify_dependency_postconditions(context, current)
+        exit_code = result.returncode
+        receipt = (
+            context["state"]
+            / "dependencies"
+            / f"{dependency_id}.json"
         )
-    receipt = (
-        context["state"]
-        / "dependencies"
-        / f"{dependency['id']}.json"
-    )
-    atomic_write_json(
-        receipt,
-        {
-            "schema": 1,
-            "dependency": dependency["id"],
-            "name": dependency["name"],
-            "sha256": dependency["sha256"],
-            "package_id": manifest["package_id"],
-            "renderer": config["renderer"],
-            "installed_at": utc_timestamp(),
-            "exit_code": result.returncode,
-        },
-    )
-    log_event(
-        context,
-        {
-            "event": "dependency-install",
-            "dependency": dependency["id"],
-            "exit_code": result.returncode,
-        },
-    )
-    return result.returncode, {
+        atomic_write_json(
+            receipt,
+            {
+                "schema": 1,
+                "dependency": dependency_id,
+                "name": current["name"],
+                "sha256": current["sha256"],
+                "package_id": manifest["package_id"],
+                "renderer": config["renderer"],
+                "installed_at": utc_timestamp(),
+                "exit_code": exit_code,
+            },
+        )
+        log_event(
+            context,
+            {
+                "event": "dependency-install",
+                "dependency": dependency_id,
+                "exit_code": exit_code,
+            },
+        )
+        completed.add(dependency_id)
+        installed.append(dependency_id)
+        receipts[dependency_id] = str(receipt)
+        exit_codes[dependency_id] = exit_code
+
+    install(dependency["id"])
+    return exit_codes[dependency["id"]], {
         "dependency": dependency["id"],
-        "receipt": str(receipt),
+        "receipt": receipts[dependency["id"]],
+        "installed": installed,
         "renderer": config["renderer"],
     }
 

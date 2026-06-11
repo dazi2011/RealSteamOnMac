@@ -1130,6 +1130,21 @@
   previous guarded chunk patch in place. The current patcher correctly
   recognizes that exact `previous_selected` structure and migrates it to the
   native-controls form after its support-directory copy is refreshed.
+- CrossOver Preview's component list is a recipe graph rather than a flat
+  collection of installers. Current recipes use explicit prerequisite
+  ordering, Windows-version context, DLL handling, extraction stages, and
+  installed-file checks. RealSteamOnMac therefore cannot safely emulate that
+  breadth by adding unstructured URLs to its dropdown.
+- The bounded subset needed by the current product can be represented without
+  accepting arbitrary scripts: direct EXE installers, MSI through Wine
+  `msiexec`, and the Microsoft DirectX redistributable's fixed
+  extract-then-`DXSETUP.exe` flow. Catalog prerequisites are cycle-checked and
+  postconditions are restricted to files beneath the selected prefix.
+- Microsoft documents that the current Visual C++ v14 redistributable covers
+  Visual Studio 2015 and later, while Visual C++ 2013 and older runtimes remain
+  side-by-side. Microsoft also describes the June 2010 DirectX package as
+  legacy optional D3DX, XAudio, XInput, XACT, and Managed DirectX components;
+  it is not a modern DirectX upgrade.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

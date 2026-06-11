@@ -98,6 +98,9 @@ class RuntimeManagerTests(unittest.TestCase):
                             "size": len(self.dependency_bytes),
                             "arguments": ["/quiet"],
                             "success_codes": [0],
+                            "installer": "exe",
+                            "prerequisites": [],
+                            "postconditions": [],
                         }
                     ],
                 }
@@ -196,6 +199,25 @@ class RuntimeManagerTests(unittest.TestCase):
 
     def context(self):
         return runtime.resolve_context(self.executable, "1118200")
+
+    def dependency_entry(self, dependency_id, **overrides):
+        entry = {
+            "id": dependency_id,
+            "name": dependency_id,
+            "description": "Fixture dependency",
+            "publisher": "Microsoft",
+            "filename": f"{dependency_id}.exe",
+            "url": f"https://aka.ms/{dependency_id}.exe",
+            "sha256": self.dependency_digest,
+            "size": len(self.dependency_bytes),
+            "arguments": ["/quiet"],
+            "success_codes": [0],
+            "installer": "exe",
+            "prerequisites": [],
+            "postconditions": [],
+        }
+        entry.update(overrides)
+        return entry
 
     def write_appinfo(self, launch):
         value = {
@@ -831,6 +853,178 @@ class RuntimeManagerTests(unittest.TestCase):
             ):
                 runtime.download_dependency(dependency)
 
+    def test_dependency_catalog_accepts_reviewed_installer_recipes(self):
+        catalog_path = self.root / "recipe-dependencies.json"
+        catalog_path.write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "dependencies": [
+                        {
+                            "id": "fixture-base",
+                            "name": "Fixture Base",
+                            "description": "Base runtime",
+                            "publisher": "Microsoft",
+                            "filename": "base.exe",
+                            "url": "https://aka.ms/base.exe",
+                            "sha256": "1" * 64,
+                            "size": 1,
+                            "arguments": ["/quiet"],
+                            "success_codes": [0],
+                            "installer": "exe",
+                            "prerequisites": [],
+                            "postconditions": [
+                                {
+                                    "type": "file",
+                                    "path": "drive_c/windows/system32/base.dll",
+                                }
+                            ],
+                        },
+                        {
+                            "id": "fixture-msi",
+                            "name": "Fixture MSI",
+                            "description": "MSI runtime",
+                            "publisher": "Microsoft",
+                            "filename": "fixture.msi",
+                            "url": "https://download.microsoft.com/fixture.msi",
+                            "sha256": "2" * 64,
+                            "size": 2,
+                            "arguments": ["/qn", "/norestart"],
+                            "success_codes": [0, 1641, 3010],
+                            "installer": "msi",
+                            "prerequisites": ["fixture-base"],
+                            "postconditions": [],
+                        },
+                        {
+                            "id": "fixture-directx",
+                            "name": "Fixture DirectX",
+                            "description": "DirectX runtime",
+                            "publisher": "Microsoft",
+                            "filename": "directx.exe",
+                            "url": "https://download.microsoft.com/directx.exe",
+                            "sha256": "3" * 64,
+                            "size": 3,
+                            "arguments": ["/silent"],
+                            "success_codes": [0],
+                            "installer": "directx-redist",
+                            "prerequisites": [],
+                            "postconditions": [
+                                {
+                                    "type": "file-any",
+                                    "paths": [
+                                        "drive_c/windows/system32/xinput1_3.dll",
+                                        "drive_c/windows/syswow64/xinput1_3.dll",
+                                    ],
+                                }
+                            ],
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        catalog = runtime.load_dependency_catalog(catalog_path)
+
+        self.assertEqual(catalog["fixture-msi"]["installer"], "msi")
+        self.assertEqual(
+            catalog["fixture-msi"]["prerequisites"],
+            ["fixture-base"],
+        )
+        self.assertEqual(
+            catalog["fixture-directx"]["postconditions"][0]["type"],
+            "file-any",
+        )
+
+    def test_dependency_catalog_rejects_cycles_and_unsafe_postconditions(self):
+        for dependencies, message in (
+            (
+                [
+                    self.dependency_entry(
+                        "fixture-one",
+                        prerequisites=["fixture-two"],
+                    ),
+                    self.dependency_entry(
+                        "fixture-two",
+                        prerequisites=["fixture-one"],
+                    ),
+                ],
+                "cycle",
+            ),
+            (
+                [
+                    self.dependency_entry(
+                        "fixture-one",
+                        postconditions=[
+                            {
+                                "type": "file",
+                                "path": "../outside-prefix",
+                            }
+                        ],
+                    )
+                ],
+                "postcondition",
+            ),
+        ):
+            with self.subTest(message=message):
+                path = self.root / f"{message}.json"
+                path.write_text(
+                    json.dumps(
+                        {"schema": 1, "dependencies": dependencies}
+                    ),
+                    encoding="utf-8",
+                )
+                with self.assertRaisesRegex(
+                    runtime.RuntimeErrorWithContext, message
+                ):
+                    runtime.load_dependency_catalog(path)
+
+    def test_dependency_install_commands_are_strategy_specific(self):
+        wine64 = Path("/fixture/wine64")
+        installer = Path("/cache/fixture.msi")
+        self.assertEqual(
+            runtime.build_dependency_install_commands(
+                {
+                    "id": "fixture-msi",
+                    "installer": "msi",
+                    "arguments": ["/qn"],
+                },
+                wine64,
+                installer,
+            ),
+            [
+                (
+                    "install dependency fixture-msi",
+                    [wine64, "msiexec", "/i", installer, "/qn"],
+                )
+            ],
+        )
+
+        extract_root = self.root / "directx extract"
+        commands = runtime.build_dependency_install_commands(
+            {
+                "id": "fixture-directx",
+                "installer": "directx-redist",
+                "arguments": ["/silent"],
+            },
+            wine64,
+            Path("/cache/directx.exe"),
+            extract_root,
+        )
+        self.assertEqual(
+            commands[0][1],
+            [
+                wine64,
+                Path("/cache/directx.exe"),
+                "/Q",
+                f"/T:{runtime.wine_z_path(extract_root)}",
+            ],
+        )
+        self.assertEqual(
+            commands[1][1],
+            [wine64, extract_root / "DXSETUP.exe", "/silent"],
+        )
+
     def test_action_job_writes_private_completed_status(self):
         arguments = SimpleNamespace(
             appid="1118200",
@@ -1132,6 +1326,154 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(value["dependency"], "fixture-redist")
         self.assertEqual(value["package_id"], "fixture")
         self.assertEqual(receipt.stat().st_mode & 0o777, 0o600)
+
+    def test_dependency_action_installs_prerequisites_and_checks_postconditions(
+        self,
+    ):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        catalog = {
+            "fixture-base": self.dependency_entry(
+                "fixture-base",
+                postconditions=[
+                    {
+                        "type": "file",
+                        "path": "drive_c/windows/system32/base.dll",
+                    }
+                ],
+            ),
+            "fixture-main": self.dependency_entry(
+                "fixture-main",
+                prerequisites=["fixture-base"],
+            ),
+        }
+        installers = {
+            dependency_id: self.root / f"{dependency_id}.exe"
+            for dependency_id in catalog
+        }
+        for installer in installers.values():
+            installer.write_bytes(self.dependency_bytes)
+        commands = []
+
+        def run_process(
+            action_context,
+            command,
+            environment,
+            log_path,
+            description,
+        ):
+            commands.append((description, command))
+            if "fixture-base" in description:
+                installed = (
+                    context["prefix"]
+                    / "drive_c"
+                    / "windows"
+                    / "system32"
+                    / "base.dll"
+                )
+                installed.parent.mkdir(parents=True, exist_ok=True)
+                installed.write_bytes(b"MZbase")
+            return mock.Mock(returncode=0)
+
+        with mock.patch.object(
+            runtime,
+            "load_dependency_catalog",
+            return_value=catalog,
+        ), mock.patch.object(
+            runtime,
+            "prepare",
+            return_value=(
+                self.package,
+                {"package_id": "fixture"},
+                wine64.parent.parent,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+            ),
+        ), mock.patch.object(
+            runtime,
+            "download_dependency",
+            side_effect=lambda dependency: installers[dependency["id"]],
+        ), mock.patch.object(
+            runtime,
+            "run_job_process",
+            side_effect=run_process,
+        ):
+            exit_code, result = runtime.execute_dependency_action(
+                context,
+                self.runtime_root,
+                {"dependency": "fixture-main"},
+                self.root / "dependency-chain.log",
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            [description for description, _ in commands],
+            [
+                "install dependency fixture-base",
+                "install dependency fixture-main",
+            ],
+        )
+        self.assertEqual(
+            result["installed"], ["fixture-base", "fixture-main"]
+        )
+        for dependency_id in result["installed"]:
+            receipt = (
+                context["state"]
+                / "dependencies"
+                / f"{dependency_id}.json"
+            )
+            self.assertTrue(receipt.is_file())
+
+    def test_dependency_action_rejects_missing_postcondition(self):
+        context = self.context()
+        dependency = self.dependency_entry(
+            "fixture-redist",
+            postconditions=[
+                {
+                    "type": "file",
+                    "path": "drive_c/windows/system32/missing.dll",
+                }
+            ],
+        )
+        installer = self.root / "fixture.exe"
+        installer.write_bytes(self.dependency_bytes)
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        with mock.patch.object(
+            runtime,
+            "load_dependency_catalog",
+            return_value={"fixture-redist": dependency},
+        ), mock.patch.object(
+            runtime,
+            "prepare",
+            return_value=(
+                self.package,
+                {"package_id": "fixture"},
+                wine64.parent.parent,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+            ),
+        ), mock.patch.object(
+            runtime,
+            "download_dependency",
+            return_value=installer,
+        ), mock.patch.object(
+            runtime,
+            "run_job_process",
+            return_value=mock.Mock(returncode=0),
+        ):
+            with self.assertRaisesRegex(
+                runtime.RuntimeErrorWithContext, "postcondition"
+            ):
+                runtime.execute_dependency_action(
+                    context,
+                    self.runtime_root,
+                    {"dependency": "fixture-redist"},
+                    self.root / "dependency-postcondition.log",
+                )
 
     def test_rejects_non_pe_target(self):
         target = self.game / "not-pe"
