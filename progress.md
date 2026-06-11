@@ -1796,3 +1796,16 @@
   `StartShutdown()` without an argument is rejected. Steam's production UI
   consistently calls `StartShutdown(true)`; the next restart test will use the
   same native signature.
+- Repeated the shutdown through `StartShutdown(true)`: the main process exited
+  in three seconds, but an immediate relaunch falsely observed the old
+  SharedJSContext and then died with disconnected/broken IPC pipes. Seven
+  seconds later no native Steam process remained, reproducing the reported
+  restart race.
+- Updated the C bootstrap launcher to inspect the macOS process table before
+  patching or executing the runtime. If no `steam_osx` remains but a
+  `Steam Helper` does, it waits in 250 ms intervals for up to 15 seconds.
+  If a main Steam process is still alive, launch forwarding is unchanged.
+- Added a process-level launcher contract using a real executable whose kernel
+  accounting name is `Steam Helper`. The launcher waited for the fixture to
+  exit, logged the completed drain, rebuilt as universal arm64/x86_64, passed
+  strict code-signature verification, and passed `-Wall -Wextra -Werror`.

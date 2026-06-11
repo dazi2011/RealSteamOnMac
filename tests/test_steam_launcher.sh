@@ -13,6 +13,10 @@ test -f "$SOURCE"
 grep -q 'DYLD_INSERT_LIBRARIES' "$SOURCE"
 grep -q 'REALSTEAMONMAC_FORCE_COMPAT' "$SOURCE"
 grep -q 'unsetenv("STEAM_EXTRA_COMPAT_TOOLS_PATHS")' "$SOURCE"
+grep -q 'wait_for_stale_steam_helpers' "$SOURCE"
+grep -q 'process_name_exists("steam_osx")' "$SOURCE"
+grep -q 'process_name_exists("Steam Helper")' "$SOURCE"
+grep -q 'HELPER_DRAIN_MAX_POLLS 60' "$SOURCE"
 if grep -Eq \
     '(^|[^[:alnum:]_])setenv\("STEAM_EXTRA_COMPAT_TOOLS_PATHS"' \
     "$SOURCE"; then
@@ -34,6 +38,7 @@ STEAMUI="$TMP_ROOT/steamui"
 COMPAT_TOOLS="$TMP_ROOT/compatibilitytools.d"
 mkdir -p \
     "$HOME_ROOT" \
+    "$HOME_ROOT/Library/Logs" \
     "$SUPPORT/ui" \
     "$SUPPORT/dependencies" \
     "$STEAMUI" \
@@ -62,6 +67,14 @@ printf '%s' \
     'before(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")middle(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")controlsr=(0,s.q3)(()=>u.rV.settings.bCompatEnabled),a=vt(t.unAppID,r),o=r&&!!t.strCompatToolName&&t.nCompatToolPriority==h.JNdropdownselectedOption:t.strCompatToolName,onChange:native(0,i.jsx)(wt,{...e})]})});function vtafter' \
     >"$STEAMUI/chunk~2dcc5aaf7.js"
 
+HELPER_PID=
+if ! pgrep -x steam_osx >/dev/null 2>&1; then
+    cp /bin/sleep "$TMP_ROOT/Steam Helper"
+    "$TMP_ROOT/Steam Helper" 1 &
+    HELPER_PID=$!
+    sleep 0.1
+fi
+
 HOME="$HOME_ROOT" \
 REALSTEAMONMAC_ALLOW_TEST_FIXTURES=1 \
 REALSTEAMONMAC_RUNTIME_EXECUTABLE="$RUNTIME" \
@@ -69,6 +82,12 @@ REALSTEAMONMAC_SUPPORT_ROOT="$SUPPORT" \
 REALSTEAMONMAC_COMPAT_TOOLS_ROOT="$COMPAT_TOOLS" \
 REALSTEAMONMAC_LAUNCHER_DRY_RUN=1 \
     "$LAUNCHER" -cef-enable-debugging >"$CAPTURE"
+
+if [ -n "$HELPER_PID" ]; then
+    wait "$HELPER_PID"
+    grep -Fq 'stale Steam Helper processes drained after' \
+        "$HOME_ROOT/Library/Logs/RealSteamOnMac/launcher.log"
+fi
 
 grep -Fq "dyld=$SUPPORT/libRealSteamCompatGate.dylib" "$CAPTURE"
 grep -Fq "engine=$SUPPORT/libRealSteamNativeEngine.dylib" "$CAPTURE"

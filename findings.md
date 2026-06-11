@@ -1247,6 +1247,15 @@
 - `SteamClient.User.StartShutdown` requires a Boolean argument. Steam's own
   menu and `steam://exit` path call `StartShutdown(true)`; a zero-argument call
   only logs a signature error and does not begin shutdown.
+- A correct `StartShutdown(true)` closed the main `steam_osx` process in three
+  seconds, but its old CEF helpers and debug endpoint survived briefly. A new
+  runtime launched during that drain window exposed a stale SharedJSContext,
+  then exited with broken IPC pipes. This is the concrete restart race behind
+  the probabilistic delayed or missing library actions after a manual exit.
+- The bootstrap launcher now distinguishes an already-running main Steam
+  process from orphaned `Steam Helper` processes. It preserves normal
+  forwarding when `steam_osx` is alive, but waits up to 15 seconds for stale
+  helpers to drain when the main process has already exited.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

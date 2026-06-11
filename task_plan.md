@@ -207,6 +207,12 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   English. Steam was restored to Simplified Chinese and retained it across a
   later launch without a language override. Stale depot-manifest repair remains
   open and is not covered by this checkpoint.
+- **Restart race checkpoint:** `StartShutdown(true)` proved that the main
+  process can exit before its old CEF helpers and SharedJSContext disappear.
+  Relaunching in that interval produces a false-ready UI followed by broken
+  IPC and process exit. The bootstrap now waits up to 15 seconds for orphaned
+  `Steam Helper` processes when no `steam_osx` remains, while preserving
+  normal forwarding to an already-running Steam instance.
 - **Native mapping checkpoint:** compatibility selections are now committed
   through Steam's original `SpecifyCompatTool` only after the authenticated
   native registry accepts the managed AppID set. Successful writes are cached

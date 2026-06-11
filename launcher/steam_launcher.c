@@ -6,8 +6,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
+#include <sys/user.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#define HELPER_DRAIN_INTERVAL_US 250000
+#define HELPER_DRAIN_MAX_POLLS 60
 
 static void log_line(const char *format, ...) {
   const char *home = getenv("HOME");
@@ -160,6 +165,73 @@ static bool has_argument(int argc, char **argv, const char *argument) {
   return false;
 }
 
+static bool process_name_exists(const char *name) {
+  int mib[] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0};
+  size_t size = 0;
+  if (sysctl(mib, 4, NULL, &size, NULL, 0) != 0 || size == 0) {
+    log_line("could not inspect process table: %s", strerror(errno));
+    return false;
+  }
+
+  struct kinfo_proc *processes = malloc(size);
+  if (processes == NULL) {
+    log_line("could not allocate process table");
+    return false;
+  }
+  if (sysctl(mib, 4, processes, &size, NULL, 0) != 0) {
+    log_line("could not read process table: %s", strerror(errno));
+    free(processes);
+    return false;
+  }
+
+  bool found = false;
+  size_t count = size / sizeof(*processes);
+  for (size_t index = 0; index < count; ++index) {
+    if (
+        processes[index].kp_proc.p_stat != SZOMB &&
+        strcmp(processes[index].kp_proc.p_comm, name) == 0
+    ) {
+      found = true;
+      break;
+    }
+  }
+  free(processes);
+  return found;
+}
+
+static void wait_for_stale_steam_helpers(void) {
+  if (process_name_exists("steam_osx")) {
+    log_line("existing Steam runtime detected; forwarding launch");
+    return;
+  }
+
+  unsigned int polls = 0;
+  while (
+      polls < HELPER_DRAIN_MAX_POLLS &&
+      process_name_exists("Steam Helper")
+  ) {
+    if (polls == 0) {
+      log_line("waiting for stale Steam Helper processes");
+    }
+    usleep(HELPER_DRAIN_INTERVAL_US);
+    ++polls;
+  }
+  if (polls == 0) {
+    return;
+  }
+  if (process_name_exists("Steam Helper")) {
+    log_line(
+        "stale Steam Helper drain timed out after %u ms",
+        polls * (HELPER_DRAIN_INTERVAL_US / 1000)
+    );
+    return;
+  }
+  log_line(
+      "stale Steam Helper processes drained after %u ms",
+      polls * (HELPER_DRAIN_INTERVAL_US / 1000)
+  );
+}
+
 int main(int argc, char **argv) {
   const char *home = getenv("HOME");
   if (home == NULL || *home == '\0') {
@@ -251,6 +323,7 @@ int main(int argc, char **argv) {
     return exec_original_bootstrap(argc, argv,
                                    "RealSteamOnMac support files are missing");
   }
+  wait_for_stale_steam_helpers();
   if (!install_steamui_patch(
           patcher, steamui, ui_source, allowlist, dependencies,
           compat_tools)) {
