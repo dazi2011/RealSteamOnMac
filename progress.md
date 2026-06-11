@@ -1179,3 +1179,8 @@
 - Added RED coverage requiring glob matches whose resolved path escapes the
   prefix to be skipped and recorded as `external_skipped`. RED failed because
   the manifest and containment guard do not exist yet.
+- Added the post-expansion containment guard. Parent-symlink escapes are now
+  recorded as `external_skipped` and never opened; the incomplete 103 MB
+  temporary snapshot from the failed attempt was the only deleted artifact.
+- Verification passed all 8 recovery tests and all 44 runtime-manager tests,
+  plus Python bytecode and whitespace checks.

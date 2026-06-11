@@ -128,6 +128,11 @@ snapshot containing:
 - relevant runtime and Rockstar logs;
 - a JSON manifest containing paths, sizes, SHA-256 values, and missing paths.
 
+Wine user folders can be symbolic links to host directories. Snapshot glob
+matches are resolved again after expansion; matches outside the prefix are
+listed in `external_skipped` and are never hashed or copied. Recovery does not
+mutate those host paths.
+
 Automatic recovery may run only the two verified depot installers with the
 arguments from `installscript_sdk.vdf`. It must never delete the game
 directory, replace the whole prefix, or infer an installer from an arbitrary

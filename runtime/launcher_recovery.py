@@ -369,8 +369,10 @@ def verify_installers(recipe):
 
 def snapshot_sources(context, recipe):
     sources = []
+    external_skipped = []
     seen = set()
     prefix = Path(context["prefix"])
+    resolved_prefix = prefix.resolve()
     for relative in recipe["snapshot_paths"]:
         source = prefix / relative
         key = str(source)
@@ -379,6 +381,17 @@ def snapshot_sources(context, recipe):
             sources.append(("prefix", relative, source))
     for pattern in recipe["snapshot_globs"]:
         for source in sorted(prefix.glob(pattern)):
+            try:
+                resolved_source = source.resolve(strict=False)
+            except OSError:
+                external_skipped.append(str(source))
+                continue
+            if (
+                resolved_source != resolved_prefix
+                and resolved_prefix not in resolved_source.parents
+            ):
+                external_skipped.append(str(source))
+                continue
             relative = str(source.relative_to(prefix))
             key = str(source)
             if key not in seen:
@@ -387,7 +400,7 @@ def snapshot_sources(context, recipe):
     runtime_logs = Path(context["state"]) / "logs"
     if runtime_logs.exists():
         sources.append(("state", "logs", runtime_logs))
-    return sources
+    return sources, sorted(external_skipped)
 
 
 def record_source_files(source, destination, records, limits):
@@ -474,9 +487,8 @@ def create_prefix_snapshot(context, recipe, timestamp=None):
     missing = []
     limits = {"files": 0, "bytes": 0}
     try:
-        for namespace, relative, source in snapshot_sources(
-            context, recipe
-        ):
+        sources, external_skipped = snapshot_sources(context, recipe)
+        for namespace, relative, source in sources:
             copied = temporary / namespace / relative
             if not source.exists() and not source.is_symlink():
                 missing.append(str(source))
@@ -505,6 +517,7 @@ def create_prefix_snapshot(context, recipe, timestamp=None):
                 "install_path": str(context["install_path"]),
                 "files": records,
                 "missing": sorted(missing),
+                "external_skipped": external_skipped,
                 "total_files": limits["files"],
                 "total_bytes": limits["bytes"],
             },

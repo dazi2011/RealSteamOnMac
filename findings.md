@@ -936,6 +936,9 @@
 - Runtime recovery now treats the exact depot hashes as a release contract.
   A changed Steam redistributable fails closed for review instead of silently
   executing a newly replaced installer.
+- Wine's `Documents` directory may point outside the prefix. Snapshot globs
+  require a second real-path containment check after expansion; validating
+  only the glob pattern is insufficient and can traverse host user data.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
