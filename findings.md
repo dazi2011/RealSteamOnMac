@@ -982,6 +982,20 @@
   renderer variants now allow only the two known Unix companion filenames and
   reject absolute paths, `..` traversal, and symlink escapes outside the
   immutable runtime package.
+- Apple's pinned `game-porting-toolkit.rb` is part of the GPTK Wine 7.7 source
+  contract. Its DATA section contains a sequence of dependent Wine patches;
+  dry-running the concatenated stream is invalid because later patches depend
+  on earlier edits. The stream must be applied in order with Homebrew's `p0`
+  semantics and marked complete only after every hunk succeeds.
+- A formal cold build from the pinned Proton commit, CodeWeavers source archive,
+  Apple formula blob, and x86_64 clang 8 toolchain produced a minimum-macOS
+  10.14 Mach-O bundle with no unresolved Win32 API symbols. The paired Wine
+  placeholder PE is deterministic and retains Wine's fixed 2015 timestamp.
+- The release bridge hashes are
+  `2f922dc77b1b850287165528debb9dbae8f49042eabcf70ecb674faeca4cacc8`
+  for `lsteamclient.dll.so` and
+  `264b3fcb0624f6e9fb04642cd0433033a3c8479878f27e5798f84c9228309228`
+  for `lsteamclient.dll`.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

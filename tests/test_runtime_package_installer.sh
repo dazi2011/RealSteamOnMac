@@ -4,6 +4,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 INSTALLER="$ROOT/script/install_runtime_package.sh"
 BRIDGE_BUILDER="$ROOT/script/build_lsteamclient_bridge.sh"
+GPTK_BRIDGE_BUILDER="$ROOT/script/build_gptk_lsteamclient_bridge.sh"
 DXMT_COMPAT_BUILDER="$ROOT/script/build_dxmt_winemac_compat.sh"
 MAKEFILE_GENERATOR="$ROOT/script/generate_lsteamclient_makefile.py"
 RUNTIME="$ROOT/runtime/realsteamonmac_runtime.py"
@@ -11,6 +12,7 @@ COMPAT_CATALOG="$ROOT/runtime/compat_tool_catalog.py"
 
 test -x "$INSTALLER"
 test -f "$BRIDGE_BUILDER"
+test -x "$GPTK_BRIDGE_BUILDER"
 test -x "$DXMT_COMPAT_BUILDER"
 test -f "$MAKEFILE_GENERATOR"
 test -f "$RUNTIME"
@@ -61,6 +63,14 @@ grep -q 'wine-11.10-dxmt-macdrv-compat.patch' "$DXMT_COMPAT_BUILDER"
 grep -q 'MACOSX_DEPLOYMENT_TARGET' "$DXMT_COMPAT_BUILDER"
 grep -q 'cmp -s "\$STAGING/SHA256SUMS" "\$OUTPUT/SHA256SUMS"' "$BRIDGE_BUILDER"
 grep -q 'cmp -s "\$STAGING/build-info.json" "\$OUTPUT/build-info.json"' "$BRIDGE_BUILDER"
+grep -q 'c5ad95671cecaf03c4a92500de84b542add585d1' "$GPTK_BRIDGE_BUILDER"
+grep -q 'cdfe282ce33788bd4f969c8bfb1d3e2de060eb6c296fa1c3cdf4e4690b8b1831' "$GPTK_BRIDGE_BUILDER"
+grep -q '2bc44284e24d39ed64d6f492a0e1f4c47a5ced08' "$GPTK_BRIDGE_BUILDER"
+grep -q '7a124b8e74edd3f453ef366e4e103608857801fbc5e085dc6fe885d57b6c9568' "$GPTK_BRIDGE_BUILDER"
+grep -q 'proton7-lsteamclient-macos.patch' "$GPTK_BRIDGE_BUILDER"
+grep -q 'lsteamclient.dll.so' "$GPTK_BRIDGE_BUILDER"
+grep -q 'advapi32 user32 winecrt0 kernel32 ntdll' "$GPTK_BRIDGE_BUILDER"
+grep -q 'diagnostic Steamworks exports are forbidden' "$GPTK_BRIDGE_BUILDER"
 
 if grep -Eq 'rm -rf "\$DESTINATION"|rm -rf "\$RUNTIME_ROOT/packages"' "$INSTALLER"; then
     echo "installer must never delete an installed runtime package" >&2

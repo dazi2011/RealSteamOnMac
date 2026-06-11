@@ -165,8 +165,9 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   missing-target redirection, and guarded Rockstar recovery have passed live
   acceptance. RDR2 now reaches Rockstar Steam min-mode but not `RDR2.exe`.
   A GPTK/Wine 7.7-specific Proton 7 `lsteamclient` bridge has now passed a
-  real `SteamClient020` interface smoke test against native macOS Steam; the
-  renderer-specific package schema and launch integration are next.
+  real `SteamClient020` interface smoke test against native macOS Steam. Its
+  pinned cold-build script and renderer-specific runtime schema now pass;
+  package installation and live launch integration are next.
 
 ## Architecture Decision
 

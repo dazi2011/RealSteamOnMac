@@ -1231,3 +1231,27 @@
   and modified-managed-file refusal behavior.
 - Full runtime-manager verification passed 47 tests plus Python bytecode and
   whitespace checks.
+- Added `patches/proton7-lsteamclient-macos.patch` with the macOS Carbon
+  key-code conversion and a dedicated
+  `script/build_gptk_lsteamclient_bridge.sh`.
+- The builder pins Proton
+  `c5ad95671cecaf03c4a92500de84b542add585d1`, CodeWeavers source SHA-256
+  `cdfe282ce33788bd4f969c8bfb1d3e2de060eb6c296fa1c3cdf4e4690b8b1831`,
+  and Apple formula commit
+  `2bc44284e24d39ed64d6f492a0e1f4c47a5ced08` plus formula SHA-256
+  `7a124b8e74edd3f453ef366e4e103608857801fbc5e085dc6fe885d57b6c9568`.
+- A clean build exposed and resolved four reproducibility faults: macOS Bison
+  was too old, BSD patch could reverse an already applied patch, the Apple
+  DATA stream cannot be globally dry-run, and Wine's generated `-DCXX` macro
+  can wrap across lines for long paths.
+- The cold build and an identical second invocation both passed. The formal
+  output is a minimum-macOS 10.14 x86_64 Mach-O
+  `lsteamclient.dll.so` plus a PE32+ Wine placeholder and complete build
+  metadata/SHA256SUMS.
+- A separate cache-only probe DLL loaded the formal output through GPTK's own
+  `rundll32.exe`. Native Steam returned `SteamClient020` with
+  `module=0x74940000`, `iface=0x373b80`, and `return_code=0`; the formal bridge
+  exports no `BridgeSmoke` symbol.
+- Static builder contract, shell syntax, patch applicability, artifact format,
+  symbol, linkage, minimum-version, checksum, idempotence, and formal live
+  interface smoke checks all passed.
