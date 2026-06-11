@@ -301,10 +301,39 @@ test("installs the predicate before dynamically replacing the bootstrap registry
       "metalfx=0&dxr=0&avx=0",
   );
 
-  overviews[1].subscribed_to = false;
+  const initializedOverviews = [...overviews];
+  overviews.splice(0, overviews.length);
   await intervalCallbacks.get(5000)();
   await waitFor(
     () => context.__REALSTEAMONMAC_UI_STATUS__.registryScans === 3,
+  );
+  assert.equal(
+    context.__REALSTEAMONMAC_IS_MANAGED_APP__(990080),
+    true,
+  );
+  assert.equal(
+    context.__REALSTEAMONMAC_IS_MANAGED_APP__(1118200),
+    true,
+  );
+  assert.equal(registryRequests.length, 2);
+  assert.deepEqual(nativeDetailUnregistrations, []);
+  assert.match(
+    context.__REALSTEAMONMAC_UI_STATUS__.registryLastError,
+    /overview store is not initialized/,
+  );
+
+  overviews.push(...initializedOverviews);
+  await intervalCallbacks.get(5000)();
+  await waitFor(
+    () => context.__REALSTEAMONMAC_UI_STATUS__.registryScans === 4,
+  );
+  assert.equal(registryRequests.length, 2);
+  assert.deepEqual(nativeDetailUnregistrations, []);
+
+  overviews[1].subscribed_to = false;
+  await intervalCallbacks.get(5000)();
+  await waitFor(
+    () => context.__REALSTEAMONMAC_UI_STATUS__.registryScans === 5,
   );
   assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(990080), false);
   assert.deepEqual(nativeDetailUnregistrations, [990080]);
