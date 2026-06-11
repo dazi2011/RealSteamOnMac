@@ -139,7 +139,7 @@ git push
 - Modify: `tests/test_runtime_manager.py`
 - Modify: `progress.md`
 
-- [ ] **Step 1: Add real-shape manifest fixtures**
+- [x] **Step 1: Add real-shape manifest fixtures**
 
 Create temporary ACF fixtures for:
 
@@ -149,13 +149,13 @@ Create temporary ACF fixtures for:
 - manifest plus empty directory;
 - missing installed depot.
 
-- [ ] **Step 2: Write failing state tests**
+- [x] **Step 2: Write failing state tests**
 
 Assert that only a nonzero installed-depot state with nonempty content can be
 launchable. Assert that staged-only and empty-directory states remain
 installable/incomplete and expose a diagnostic reason.
 
-- [ ] **Step 3: Verify RED**
+- [x] **Step 3: Verify RED**
 
 Run:
 

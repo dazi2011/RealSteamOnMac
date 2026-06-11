@@ -1006,3 +1006,7 @@
   actually unmanaged game.
 - Focused SteamUI regression after the fix: 64 Node tests passed across
   `test_steamui_runtime.mjs` and `test_steamui_policy.mjs`.
+- Added real-shape Steam ACF fixtures for fully installed, files-missing,
+  staged-only, empty-directory, and missing-`InstalledDepots` states.
+- The focused installation-state suite failed RED with `FileNotFoundError` for
+  the intentionally absent `runtime/steam_app_state.py`.
