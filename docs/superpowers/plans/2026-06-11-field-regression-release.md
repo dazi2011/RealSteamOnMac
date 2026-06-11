@@ -321,7 +321,7 @@ git push
 - Modify: `progress.md`
 - Modify: `findings.md`
 
-- [ ] **Step 1: Snapshot the current RDR2 prefix**
+- [x] **Step 1: Snapshot the current RDR2 prefix**
 
 Record hashes and sizes for Rockstar installer files, relevant registry keys,
 launcher directories, and runtime logs. Do not mutate the prefix in this step.

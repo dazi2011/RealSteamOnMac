@@ -916,6 +916,18 @@
     stale `Phoenix-Win64-Test.exe` entries scoped to named beta branches;
   - RDR2: `PlayRDR2.exe` entry `0`;
   - People Playground: `People Playground.exe` entry `0`.
+- RDR2's Rockstar prefix is not a clean missing-install case. Launcher
+  `1.0.106.2879`, its uninstall entry, and `Rockstar Service` exist, but no
+  Social Club payload or Steam `Rockstar Games\Steam\SDK` / `Launcher`
+  prerequisite completion keys exist.
+- The depot's signed SDK install script requires Social Club first with
+  `/silent`, then Rockstar Games Launcher with `/s /t`. The current Launcher
+  installer log stops after registry writes and contains no normal completion
+  record, matching an interrupted bootstrap.
+- Rockstar recovery must validate the full prerequisite chain, not merely
+  `Launcher.exe`. It must snapshot registry, Rockstar state, and logs before
+  rerunning only the exact depot installers; whole-prefix or game-directory
+  deletion is prohibited.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

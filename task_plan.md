@@ -161,6 +161,9 @@ Phase 8: 2026-06-11 field regression remediation and verified release
 - [ ] Update bilingual README and research/handoff evidence, build signed
       release artifacts, publish the release, and confirm remote hashes.
 - **Status:** in progress
+- **Current checkpoint:** verified Steam launch descriptors and managed
+  missing-target redirection are complete. The RDR2 Rockstar prefix has been
+  snapshotted read-only; recovery tests and implementation are next.
 
 ## Architecture Decision
 

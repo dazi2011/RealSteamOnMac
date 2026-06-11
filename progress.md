@@ -1126,3 +1126,14 @@
   JavaScript probe syntax/contract, Python compilation, and whitespace checks.
 - Added `docs/research/steam-launch-descriptor-2026-06-11.md` with pinned
   reference commits, live launch records, validation limits, and rollback.
+- Captured a read-only RDR2 prefix snapshot before Rockstar recovery work.
+  The Launcher payload, uninstall record, and service exist, but Social Club
+  files and both Steam prerequisite completion keys are absent.
+- The Rockstar installer log stops after registry writes without a normal
+  completion record. The service later reaches `SERVICE_RUNNING`, proving
+  that service health alone cannot classify the prerequisite chain as
+  complete.
+- Recorded depot installer, Launcher executable, and Wine registry sizes and
+  SHA-256 values in
+  `docs/research/rdr2-rockstar-recovery-2026-06-11.md`. No prefix, game,
+  manifest, or registry file was mutated during collection.
