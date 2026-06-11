@@ -1734,6 +1734,13 @@ class RuntimeManagerTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
+            catalog["xna40"]["postconditions"][0]["key"],
+            (
+                "HKLM\\Software\\Wow6432Node\\Microsoft\\XNA\\"
+                "Framework\\v4.0"
+            ),
+        )
+        self.assertEqual(
             {
                 condition["type"]
                 for dependency in catalog.values()

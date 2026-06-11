@@ -64,6 +64,12 @@ postcondition passes. The catalog rejects unknown installer strategies,
 untrusted download hosts, cyclic prerequisites, unsafe prefix paths, malformed
 registry keys, and unpinned file hashes.
 
+Live XNA 4.0 Refresh acceptance uses its actual product key at
+`HKLM\Software\Wow6432Node\Microsoft\XNA\Framework\v4.0`. The historical
+uninstall GUID from CrossOver metadata was not emitted by this official MSI
+under Wine, while the product key records `Installed`, `Refresh1Installed`,
+and the native library path.
+
 Live VC++ 2013 acceptance showed that its 32-bit Burn bootstrapper records both
 x86 and x64 bundle uninstall keys below Wine's `Wow6432Node` view. The 2012
 and 2013 x64 recipes therefore query that actual Wine registry location rather

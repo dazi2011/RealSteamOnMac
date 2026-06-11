@@ -404,7 +404,7 @@
       "postconditions": [
         {
           "type": "registry-key",
-          "key": "HKLM\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{2BFC7AA0-544C-4E3A-8796-67F3BE655BE9}"
+          "key": "HKLM\\Software\\Wow6432Node\\Microsoft\\XNA\\Framework\\v4.0"
         }
       ]
     },

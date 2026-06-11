@@ -1642,3 +1642,9 @@
   fixed `/usr/bin/curl` using SecureTransport, HTTPS-only protocols, bounded
   redirects, and a maximum file size. Final-host, exact-size, and SHA-256
   verification remain mandatory; no certificate bypass is permitted.
+- The isolated retry installed .NET 4.8 successfully and wrote its verified
+  receipt. XNA installed its files but failed the historical uninstall-GUID
+  postcondition. Direct registry inspection showed the official MSI's actual
+  Wine product key at
+  `HKLM\Software\Wow6432Node\Microsoft\XNA\Framework\v4.0`; the catalog and
+  production regression test now use that key.

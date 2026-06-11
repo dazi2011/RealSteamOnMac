@@ -1176,6 +1176,11 @@
   `PATH` choosing a different trust store. Fixed system curl with
   SecureTransport keeps TLS verification strict, while final-host, size, and
   checksum validation preserve the existing supply-chain boundary.
+- CrossOver recipe metadata can identify an installer but is not authoritative
+  for Wine's resulting registry view. XNA 4.0 Refresh did not emit the
+  historical uninstall GUID used by the recipe; it did emit the canonical
+  `HKLM\Software\Wow6432Node\Microsoft\XNA\Framework\v4.0` product key with
+  installation and native-library values.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
