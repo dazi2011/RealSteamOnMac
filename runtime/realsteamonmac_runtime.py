@@ -20,6 +20,11 @@ if str(RUNTIME_MODULE_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(RUNTIME_MODULE_DIRECTORY))
 
 from compat_tool_catalog import CatalogError, scan_compat_tools
+from steam_launch_descriptor import (
+    LaunchDescriptorError,
+    build_launch_descriptor_from_appinfo,
+    resolve_launch_descriptor_value,
+)
 from steam_app_state import (
     SteamAppStateError,
     inspect_app_manifest,
@@ -194,6 +199,18 @@ def default_steam_root():
     )
 
 
+def default_appinfo_path(steam_root=None):
+    configured = os.environ.get("REALSTEAMONMAC_APPINFO_PATH")
+    if configured:
+        return Path(configured).expanduser()
+    root = (
+        Path(steam_root).expanduser()
+        if steam_root is not None
+        else default_steam_root()
+    )
+    return root / "appcache" / "appinfo.vdf"
+
+
 def atomic_write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.parent.chmod(0o700)
@@ -282,6 +299,7 @@ def resolve_context(executable, explicit_appid=None, explicit_compat_data=None):
     return {
         "appid": appid,
         "executable": executable,
+        "working_directory": executable.parent,
         "install_path": executable.parent,
         "steamapps": steamapps,
         "compat_data": compat_data,
@@ -433,16 +451,61 @@ def discover_default_executable(installation):
     )
 
 
-def resolve_app_context(appid, steam_root=None):
+def resolve_app_context(
+    appid, steam_root=None, requested_target=None
+):
     installation = find_app_installation(appid, steam_root)
-    executable = discover_default_executable(installation)
+    try:
+        descriptor = build_launch_descriptor_from_appinfo(
+            default_appinfo_path(steam_root),
+            expected_appid=installation["appid"],
+            install_path=installation["install_path"],
+            requested_target=requested_target,
+        )
+        launch = resolve_launch_descriptor_value(
+            descriptor,
+            expected_appid=installation["appid"],
+            install_path=installation["install_path"],
+        )
+    except LaunchDescriptorError as error:
+        diagnostic = ""
+        try:
+            guessed = discover_default_executable(installation)
+            diagnostic = (
+                f"; diagnostic executable present but not selected by "
+                f"Steam: {guessed}"
+            )
+        except RuntimeErrorWithContext:
+            pass
+        raise RuntimeErrorWithContext(
+            f"{error}{diagnostic}"
+        ) from error
     context = resolve_context(
-        executable,
+        launch["executable"],
         str(installation["appid"]),
         str(installation["compat_data"]),
     )
     context["install_path"] = installation["install_path"]
+    context["working_directory"] = launch["working_directory"]
+    context["launch_entry_id"] = launch["entry_id"]
+    context["launch_arguments"] = launch["arguments"]
+    context["requested_target"] = (
+        Path(requested_target).expanduser()
+        if requested_target is not None
+        else None
+    )
     return context
+
+
+def parse_launch_arguments(value):
+    if not value:
+        return []
+    try:
+        return shlex.split(value, posix=True)
+    except ValueError as error:
+        raise RuntimeErrorWithContext(
+            f"Steam launch arguments are invalid: {error}"
+        ) from error
 
 
 def normalize_config(value):
@@ -1982,6 +2045,11 @@ def plan(context, runtime_root, config, arguments):
     return {
         "appid": context["appid"],
         "executable": str(context["executable"]),
+        "working_directory": str(
+            context.get(
+                "working_directory", context["install_path"]
+            )
+        ),
         "arguments": list(arguments),
         "steamapps": str(context["steamapps"]),
         "compat_data": str(context["compat_data"]),
@@ -2015,7 +2083,11 @@ def plan(context, runtime_root, config, arguments):
 def run_game_process(context, wine_root, command, environment):
     result = subprocess.run(
         [str(part) for part in command],
-        cwd=str(context["install_path"]),
+        cwd=str(
+            context.get(
+                "working_directory", context["install_path"]
+            )
+        ),
         env=environment,
         check=False,
     )
@@ -2047,12 +2119,37 @@ def run_game_process(context, wine_root, command, environment):
 
 
 def launch(args):
-    context = resolve_context(
-        Path(args.executable), args.appid, args.compat_data
+    if args.appid:
+        context = resolve_app_context(
+            args.appid,
+            requested_target=Path(args.executable),
+        )
+        if args.compat_data:
+            requested_compat_data = (
+                Path(args.compat_data).expanduser().resolve()
+            )
+            if requested_compat_data != context["compat_data"]:
+                raise RuntimeErrorWithContext(
+                    "compatibility data path must use the Proton layout: "
+                    f"expected {context['compat_data']}, "
+                    f"got {requested_compat_data}"
+                )
+    else:
+        context = resolve_context(
+            Path(args.executable), args.appid, args.compat_data
+        )
+    launch_arguments = (
+        list(args.arguments)
+        if args.arguments
+        else parse_launch_arguments(
+            context.get("launch_arguments", "")
+        )
     )
     runtime_root = Path(args.runtime_root).expanduser().resolve()
     config = load_config(context)
-    launch_plan = plan(context, runtime_root, config, args.arguments)
+    launch_plan = plan(
+        context, runtime_root, config, launch_arguments
+    )
     if args.dry_run:
         print(json.dumps(launch_plan, indent=2, sort_keys=True))
         return 0
@@ -2060,7 +2157,10 @@ def launch(args):
     _, _, wine_root, wine64, environment = prepare(
         context, runtime_root, config
     )
-    command = [str(wine64), str(context["executable"])] + args.arguments
+    command = (
+        [str(wine64), str(context["executable"])]
+        + launch_arguments
+    )
     log_event(
         context,
         {

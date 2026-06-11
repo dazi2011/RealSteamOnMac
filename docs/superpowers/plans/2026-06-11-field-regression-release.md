@@ -278,7 +278,7 @@ Consume a bounded JSON descriptor exported from Steam's decoded app details.
 Validate AppID, OS, executable, working directory, arguments, and launch-entry
 ID. Select the requested/default Windows entry and verify its PE target.
 
-- [ ] **Step 4: Remove normal-path EXE guessing**
+- [x] **Step 4: Remove normal-path EXE guessing**
 
 Use `discover_default_executable` only for a diagnostic report. Normal launch,
 action context, and recovery use the descriptor.

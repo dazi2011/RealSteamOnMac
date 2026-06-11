@@ -1521,8 +1521,46 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(result["arguments"], ["-fixture"])
         self.assertFalse(context["prefix"].exists())
 
+    def test_launch_dry_run_uses_verified_descriptor_arguments(self):
+        working_directory = self.game / "bin"
+        working_directory.mkdir()
+        self.write_appinfo(
+            {
+                "0": {
+                    "executable": "Fixture.exe",
+                    "workingdir": "bin",
+                    "arguments": '-release "two words"',
+                    "type": "default",
+                    "config": {"oslist": "windows"},
+                }
+            }
+        )
+        arguments = SimpleNamespace(
+            appid="1118200",
+            compat_data=None,
+            runtime_root=str(self.runtime_root),
+            executable=str(self.game / "Missing-Test.exe"),
+            dry_run=True,
+            arguments=[],
+        )
+        output = io.StringIO()
+
+        with mock.patch("sys.stdout", output):
+            self.assertEqual(runtime.launch(arguments), 0)
+
+        value = json.loads(output.getvalue())
+        self.assertEqual(value["executable"], str(self.executable.resolve()))
+        self.assertEqual(
+            value["working_directory"],
+            str(working_directory.resolve()),
+        )
+        self.assertEqual(value["arguments"], ["-release", "two words"])
+
     def test_people_playground_cleans_prefix_after_game_exit(self):
         context = self.context()
+        working_directory = self.game / "bin"
+        working_directory.mkdir()
+        context["working_directory"] = working_directory
         _, _, wine_root, wine64 = runtime.load_package(
             self.runtime_root, "dxvk"
         )
@@ -1542,6 +1580,10 @@ class RuntimeManagerTests(unittest.TestCase):
             )
         self.assertEqual(result, 0)
         self.assertEqual(run.call_count, 2)
+        self.assertEqual(
+            run.call_args_list[0].kwargs["cwd"],
+            str(working_directory),
+        )
         self.assertEqual(
             run.call_args_list[1].args[0],
             [str(wine_root / "bin" / "wineserver"), "-k"],

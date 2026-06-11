@@ -1102,3 +1102,13 @@
   runtime failed exactly at the intended boundaries: no working directory or
   launch-entry metadata, no requested-target input, and directory-wide EXE
   guessing when the appinfo target was missing.
+- Runtime launch, action, and recovery context now use only the verified Steam
+  launch descriptor. Directory-wide EXE discovery remains diagnostic-only.
+  The selected working directory and arguments flow into dry-run plans and the
+  game process cwd.
+- Focused verification passed 51 Python tests. Live read-only dry runs:
+  - Aimlabs' requested `AimLab.app` resolved to `AimLab_tb.exe` with its
+    existing GPTK configuration;
+  - RDR2 retained `PlayRDR2.exe` with DXMT;
+  - Hogwarts Legacy failed closed at its existing `repair-required` install
+    state before launch resolution.
