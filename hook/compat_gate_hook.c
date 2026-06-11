@@ -476,6 +476,14 @@ static bool has_exe_suffix(const char *path) {
   return length >= 4 && strcasecmp(path + length - 4, ".exe") == 0;
 }
 
+static bool has_app_suffix(const char *path) {
+  if (path == NULL) {
+    return false;
+  }
+  size_t length = strlen(path);
+  return length >= 4 && strcasecmp(path + length - 4, ".app") == 0;
+}
+
 static bool is_pe_executable(const char *path) {
   if (!has_exe_suffix(path)) {
     return false;
@@ -492,12 +500,32 @@ static bool is_pe_executable(const char *path) {
   return matches;
 }
 
+static bool is_missing_launch_target(const char *path) {
+  if (
+      path == NULL ||
+      (!has_exe_suffix(path) && !has_app_suffix(path))
+  ) {
+    return false;
+  }
+  struct stat file_stat;
+  if (lstat(path, &file_stat) == 0) {
+    return false;
+  }
+  return errno == ENOENT || errno == ENOTDIR;
+}
+
 __attribute__((visibility("default")))
 int realsteamonmac_should_redirect_spawn(
     const char *path, char *const environment[]) {
   ensure_allowlist_loaded();
   uint32_t appid = spawn_appid(environment);
-  return appid != 0 && is_allowlisted(appid) && is_pe_executable(path);
+  return appid != 0 &&
+         is_allowlisted(appid) &&
+         (
+             is_pe_executable(path) ||
+             is_missing_launch_target(path) ||
+             has_app_suffix(path)
+         );
 }
 
 static int realsteamonmac_posix_spawn(
@@ -570,7 +598,7 @@ static int realsteamonmac_posix_spawn(
   char message[1500];
   snprintf(
       message, sizeof(message),
-      "spawn: redirecting AppID %u PE target %s through %s",
+      "spawn: redirecting AppID %u Steam target %s through %s",
       appid, path, runtime);
   log_line(message);
   int result = gOriginalPosixSpawn(
@@ -639,7 +667,7 @@ static void patch_steamclient_spawn_redirect(
       (mach_vm_size_t)page_size, false,
       VM_PROT_READ | VM_PROT_WRITE);
   gSteamClientSpawnPatched = true;
-  log_line("spawn: installed allowlist-scoped PE redirect");
+  log_line("spawn: installed allowlist-scoped launch redirect");
 }
 
 static void add_allowlist_appid(uint32_t appid) {

@@ -20,7 +20,7 @@ grep -q 'spawn_appid' "$SOURCE"
 grep -q 'is_allowlisted(appid)' "$SOURCE"
 grep -q '/usr/bin/python3' "$SOURCE"
 grep -q 'realsteamonmac-runtime' "$SOURCE"
-grep -q 'spawn: installed allowlist-scoped PE redirect' "$SOURCE"
+grep -q 'spawn: installed allowlist-scoped launch redirect' "$SOURCE"
 
 "$BUILD_SCRIPT" >/dev/null
 xcrun clang \

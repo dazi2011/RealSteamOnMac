@@ -1117,3 +1117,12 @@
 - Native RED verification stopped at
   `managed missing EXE target was not redirected`; source contracts also
   failed because the recovery predicates do not exist yet.
+- The allowlist-scoped spawn bridge now redirects existing PE targets,
+  recoverable missing `.exe`/`.app` targets, and `.app` selections for managed
+  Windows-only games. Existing non-PE `.exe` files, native executables, and
+  unmanaged AppIDs remain on Steam's original spawn path.
+- Task 5 final verification passed 51 Python tests, the spawn redirect native
+  harness, compatibility-gate contract, hook environment-isolation contract,
+  JavaScript probe syntax/contract, Python compilation, and whitespace checks.
+- Added `docs/research/steam-launch-descriptor-2026-06-11.md` with pinned
+  reference commits, live launch records, validation limits, and rollback.

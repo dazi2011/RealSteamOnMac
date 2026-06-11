@@ -92,9 +92,10 @@ grep -q 'finish_install_gate_update' "$SOURCE"
 grep -q 'memory_order_release' "$SOURCE"
 grep -q 'registry: accepted %zu managed AppID(s)' "$SOURCE"
 
-# The launch bridge replaces only the resolved steamclient posix_spawn pointer
-# and redirects only allowlisted PE targets. Native executables and unmanaged
-# AppIDs keep the original system implementation.
+# The launch bridge replaces only the resolved steamclient posix_spawn pointer.
+# It redirects verified PE targets plus recoverable missing/.app launch targets
+# only for allowlisted Windows apps. Native executables and unmanaged AppIDs
+# keep the original system implementation.
 grep -q 'STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET' "$SOURCE"
 grep -q 'realsteamonmac_should_redirect_spawn' "$SOURCE"
 grep -q 'patch_steamclient_spawn_redirect' "$SOURCE"

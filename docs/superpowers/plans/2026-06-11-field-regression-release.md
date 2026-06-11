@@ -283,14 +283,14 @@ ID. Select the requested/default Windows entry and verify its PE target.
 Use `discover_default_executable` only for a diagnostic report. Normal launch,
 action context, and recovery use the descriptor.
 
-- [ ] **Step 5: Add missing-target redirection**
+- [x] **Step 5: Add missing-target redirection**
 
 When Steam presents a missing or `.app` target for a managed Windows-only
 AppID, the hook launches the runtime with the validated descriptor instead of
 returning Steam's executable-missing error. Unmanaged and native apps retain
 the original spawn.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run:
 
