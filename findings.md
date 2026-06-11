@@ -978,6 +978,10 @@
   Wine 11 bridge uses `lsteamclient.so`. A single global bridge descriptor is
   therefore structurally wrong; runtime manifests must select bridge paths and
   installed filenames per renderer while retaining backward compatibility.
+- Runtime bridge manifests are an input boundary, not trusted build constants:
+  renderer variants now allow only the two known Unix companion filenames and
+  reject absolute paths, `..` traversal, and symlink escapes outside the
+  immutable runtime package.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

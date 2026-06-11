@@ -1332,6 +1332,82 @@ class RuntimeManagerTests(unittest.TestCase):
         (steam_client / "steamclient.dylib").write_bytes(b"fixture")
         return steam_client
 
+    def add_steamworks_bridge_variants(self):
+        variants = {
+            "dxmt": {
+                "name": "fixture Wine 11 lsteamclient",
+                "windows_dll": (
+                    "steamworks/dxmt/x86_64-windows/lsteamclient.dll"
+                ),
+                "unix_library": (
+                    "steamworks/dxmt/x86_64-unix/lsteamclient.so"
+                ),
+                "unix_install_name": "lsteamclient.so",
+                "windows_bytes": b"MZsteamworks-wine11",
+                "unix_bytes": b"Mach-O Wine 11 fixture",
+            },
+            "gptk": {
+                "name": "fixture GPTK 7 lsteamclient",
+                "windows_dll": (
+                    "steamworks/gptk/x86_64-windows/lsteamclient.dll"
+                ),
+                "unix_library": (
+                    "steamworks/gptk/x86_64-unix/lsteamclient.dll.so"
+                ),
+                "unix_install_name": "lsteamclient.dll.so",
+                "windows_bytes": b"MZsteamworks-gptk7",
+                "unix_bytes": b"Mach-O GPTK 7 fixture",
+            },
+        }
+        manifest_variants = {}
+        for renderer, variant in variants.items():
+            windows = self.package / variant["windows_dll"]
+            unix = self.package / variant["unix_library"]
+            windows.parent.mkdir(parents=True, exist_ok=True)
+            unix.parent.mkdir(parents=True, exist_ok=True)
+            windows.write_bytes(variant["windows_bytes"])
+            unix.write_bytes(variant["unix_bytes"])
+            installed_windows = (
+                self.package
+                / "wine"
+                / renderer
+                / "lib"
+                / "wine"
+                / "x86_64-windows"
+                / "lsteamclient.dll"
+            )
+            installed_unix = (
+                self.package
+                / "wine"
+                / renderer
+                / "lib"
+                / "wine"
+                / "x86_64-unix"
+                / variant["unix_install_name"]
+            )
+            installed_windows.parent.mkdir(parents=True, exist_ok=True)
+            installed_unix.parent.mkdir(parents=True, exist_ok=True)
+            installed_windows.write_bytes(variant["windows_bytes"])
+            installed_unix.write_bytes(variant["unix_bytes"])
+            manifest_variants[renderer] = {
+                key: value
+                for key, value in variant.items()
+                if key not in ("windows_bytes", "unix_bytes")
+            }
+        manifest_path = self.package / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["steamworks_bridge"] = {
+            "name": "fixture renderer-specific lsteamclient",
+            "variants": manifest_variants,
+        }
+        manifest_path.write_text(
+            json.dumps(manifest), encoding="utf-8"
+        )
+        steam_client = self.root / "native-steam"
+        steam_client.mkdir()
+        (steam_client / "steamclient.dylib").write_bytes(b"fixture")
+        return steam_client
+
     def test_steamworks_bridge_maps_environment_and_prefix_files(self):
         steam_client = self.add_steamworks_bridge()
         context = self.context()
@@ -1472,6 +1548,117 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertTrue(
             json.loads(marker.read_text(encoding="utf-8"))["active"]
         )
+
+    def test_renderer_specific_bridge_switches_dxmt_to_gptk(self):
+        steam_client = self.add_steamworks_bridge_variants()
+        context = self.context()
+        steam_directory = (
+            context["prefix"]
+            / "drive_c"
+            / "Program Files (x86)"
+            / "Steam"
+        )
+        marker = context["state"] / "steamworks-bridge.json"
+        with mock.patch.dict(
+            os.environ,
+            {
+                "REALSTEAMONMAC_STEAM_CLIENT_INSTALL": str(
+                    steam_client
+                )
+            },
+            clear=False,
+        ), mock.patch.object(runtime, "run_logged"):
+            runtime.prepare(
+                context,
+                self.runtime_root,
+                {**runtime.DEFAULT_CONFIG, "renderer": "dxmt"},
+            )
+            self.assertEqual(
+                (steam_directory / "lsteamclient.dll").read_bytes(),
+                b"MZsteamworks-wine11",
+            )
+
+            _, _, _, _, environment = runtime.prepare(
+                context,
+                self.runtime_root,
+                {**runtime.DEFAULT_CONFIG, "renderer": "gptk"},
+            )
+
+        self.assertEqual(
+            (steam_directory / "lsteamclient.dll").read_bytes(),
+            b"MZsteamworks-gptk7",
+        )
+        self.assertEqual(
+            (steam_directory / "steamclient64.dll").read_bytes(),
+            b"MZsteamworks-gptk7",
+        )
+        self.assertEqual(
+            json.loads(marker.read_text(encoding="utf-8"))["bridge"],
+            "fixture GPTK 7 lsteamclient",
+        )
+        self.assertIn(
+            "lsteamclient=n,b", environment["WINEDLLOVERRIDES"]
+        )
+
+    def test_renderer_specific_bridge_rejects_bad_unix_install_name(self):
+        steam_client = self.add_steamworks_bridge_variants()
+        manifest_path = self.package / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["steamworks_bridge"]["variants"]["gptk"][
+            "unix_install_name"
+        ] = "../lsteamclient.dll.so"
+        manifest_path.write_text(
+            json.dumps(manifest), encoding="utf-8"
+        )
+        with mock.patch.dict(
+            os.environ,
+            {
+                "REALSTEAMONMAC_STEAM_CLIENT_INSTALL": str(
+                    steam_client
+                )
+            },
+            clear=False,
+        ):
+            with self.assertRaisesRegex(
+                runtime.RuntimeErrorWithContext,
+                "Unix install name is invalid",
+            ):
+                runtime.plan(
+                    self.context(),
+                    self.runtime_root,
+                    {**runtime.DEFAULT_CONFIG, "renderer": "gptk"},
+                    [],
+                )
+
+    def test_renderer_specific_bridge_rejects_package_escape(self):
+        steam_client = self.add_steamworks_bridge_variants()
+        manifest_path = self.package / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["steamworks_bridge"]["variants"]["gptk"][
+            "unix_library"
+        ] = "../../outside/lsteamclient.dll.so"
+        manifest_path.write_text(
+            json.dumps(manifest), encoding="utf-8"
+        )
+        with mock.patch.dict(
+            os.environ,
+            {
+                "REALSTEAMONMAC_STEAM_CLIENT_INSTALL": str(
+                    steam_client
+                )
+            },
+            clear=False,
+        ):
+            with self.assertRaisesRegex(
+                runtime.RuntimeErrorWithContext,
+                "path escapes package",
+            ):
+                runtime.plan(
+                    self.context(),
+                    self.runtime_root,
+                    {**runtime.DEFAULT_CONFIG, "renderer": "gptk"},
+                    [],
+                )
 
     def test_gptk_refuses_to_remove_a_modified_managed_bridge(self):
         steam_client = self.add_steamworks_bridge()

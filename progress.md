@@ -1219,3 +1219,15 @@
 - The cache-only diagnostic export is not a release artifact. The next build
   step removes it, regenerates the clean PE/Mach-O pair, and packages the
   result as a GPTK-specific renderer variant using `lsteamclient.dll.so`.
+- Extended the runtime manifest reader with renderer-specific Steamworks
+  bridge variants while preserving the existing single-bridge schema.
+  Legacy manifests still remove the Wine 11 bridge for GPTK exactly as before.
+- New variants declare their package-local Windows DLL, Unix companion, and
+  fixed Unix install name. Only `lsteamclient.so` and
+  `lsteamclient.dll.so` are accepted, and resolved payload paths must remain
+  inside the immutable runtime package even through symlinks.
+- The shared-prefix ledger safely replaced the Wine 11 bridge with the GPTK
+  bridge during a DXMT-to-GPTK test and retained the existing unmanaged-file
+  and modified-managed-file refusal behavior.
+- Full runtime-manager verification passed 47 tests plus Python bytecode and
+  whitespace checks.

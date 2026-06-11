@@ -38,7 +38,10 @@ from steam_app_state import (
 
 
 RENDERERS = ("gptk", "dxmt", "dxvk", "wined3d")
-STEAMWORKS_RENDERERS = ("dxmt", "dxvk", "wined3d")
+LEGACY_STEAMWORKS_RENDERERS = ("dxmt", "dxvk", "wined3d")
+STEAMWORKS_UNIX_INSTALL_NAMES = frozenset(
+    ("lsteamclient.so", "lsteamclient.dll.so")
+)
 # People Playground's .NET mod compiler mistakes its Wine PID for a macOS PID.
 # It can therefore survive the game indefinitely and keep Steam's AppID active.
 POST_EXIT_PREFIX_KILL_APPIDS = frozenset((1118200,))
@@ -701,6 +704,25 @@ def resolve_steam_client_install():
     return path
 
 
+def resolve_runtime_payload(package, relative, description):
+    if not isinstance(relative, str) or not relative:
+        raise RuntimeErrorWithContext(
+            f"runtime {description} path is invalid: {package}"
+        )
+    root = package.resolve()
+    candidate = Path(relative)
+    if candidate.is_absolute():
+        raise RuntimeErrorWithContext(
+            f"runtime {description} path is invalid: {package}"
+        )
+    resolved = (root / candidate).resolve()
+    if not resolved.is_relative_to(root):
+        raise RuntimeErrorWithContext(
+            f"runtime {description} path escapes package: {package}"
+        )
+    return resolved
+
+
 def load_steamworks_bridge(package, manifest, wine_root, renderer):
     bridge = manifest.get("steamworks_bridge")
     if bridge is None:
@@ -709,25 +731,47 @@ def load_steamworks_bridge(package, manifest, wine_root, renderer):
         raise RuntimeErrorWithContext(
             f"runtime Steamworks bridge metadata is invalid: {package}"
         )
-    renderers = bridge.get("renderers")
-    if not isinstance(renderers, list) or renderer not in renderers:
-        return None
-    if renderer not in STEAMWORKS_RENDERERS:
-        raise RuntimeErrorWithContext(
-            f"Steamworks bridge is unsupported for renderer: {renderer}"
-        )
+    variants = bridge.get("variants")
+    if variants is None:
+        renderers = bridge.get("renderers")
+        if not isinstance(renderers, list) or renderer not in renderers:
+            return None
+        if renderer not in LEGACY_STEAMWORKS_RENDERERS:
+            raise RuntimeErrorWithContext(
+                f"Steamworks bridge is unsupported for renderer: {renderer}"
+            )
+        selected = bridge
+        unix_install_name = "lsteamclient.so"
+    else:
+        if not isinstance(variants, dict):
+            raise RuntimeErrorWithContext(
+                f"runtime Steamworks bridge variants are invalid: {package}"
+            )
+        selected = variants.get(renderer)
+        if selected is None:
+            return None
+        if not isinstance(selected, dict):
+            raise RuntimeErrorWithContext(
+                "runtime Steamworks bridge variant is invalid for "
+                f"renderer {renderer}: {package}"
+            )
+        unix_install_name = selected.get("unix_install_name")
+        if unix_install_name not in STEAMWORKS_UNIX_INSTALL_NAMES:
+            raise RuntimeErrorWithContext(
+                "runtime Steamworks bridge Unix install name is invalid "
+                f"for renderer {renderer}: {package}"
+            )
 
-    windows_relative = bridge.get("windows_dll")
-    unix_relative = bridge.get("unix_library")
-    if not isinstance(windows_relative, str) or not isinstance(
-        unix_relative, str
-    ):
-        raise RuntimeErrorWithContext(
-            f"runtime Steamworks bridge paths are invalid: {package}"
-        )
-
-    windows_dll = package / windows_relative
-    unix_library = package / unix_relative
+    windows_dll = resolve_runtime_payload(
+        package,
+        selected.get("windows_dll"),
+        "Steamworks bridge Windows DLL",
+    )
+    unix_library = resolve_runtime_payload(
+        package,
+        selected.get("unix_library"),
+        "Steamworks bridge Unix library",
+    )
     installed_windows = (
         wine_root
         / "lib"
@@ -740,7 +784,7 @@ def load_steamworks_bridge(package, manifest, wine_root, renderer):
         / "lib"
         / "wine"
         / "x86_64-unix"
-        / "lsteamclient.so"
+        / unix_install_name
     )
     for path in (
         windows_dll,
@@ -754,9 +798,10 @@ def load_steamworks_bridge(package, manifest, wine_root, renderer):
             )
 
     return {
-        "metadata": bridge,
+        "metadata": {**bridge, **selected},
         "windows_dll": windows_dll,
         "unix_library": unix_library,
+        "unix_install_name": unix_install_name,
         "steam_client_install": resolve_steam_client_install(),
     }
 
