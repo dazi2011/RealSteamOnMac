@@ -241,3 +241,4 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Runtime installer left official GPTK images mounted after success | 1 | Detach the installer-owned mount points directly, use force only as fallback, and verify a real idempotent reinstall leaves no mounts. |
 | A broad game-evidence scan under `/Volumes` did not terminate promptly | 1 | Terminated the scan without modifying data and switched to explicit known library, manifest, configuration, and log paths. |
 | A shell loop split AppID/path pairs on whitespace and queried `appmanifest_.acf` | 1 | Discarded the invalid output and replaced the loop with an explicit manifest file list. |
+| zsh preserved a newline-delimited probe list as one `awk` filename | 1 | Re-ran the read-only batch through `xargs`, which passed each probe path as a distinct argument. |

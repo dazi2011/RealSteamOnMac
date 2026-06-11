@@ -114,10 +114,28 @@
     explicitly hide Steam's native row, accept app discovery from only a
     manifest plus directory, and do not test environment scrubbing for native
     helper processes.
+  - Read every Steam CDP probe and confirmed the acceptance tooling is
+    People-Playground-specific, Chinese-text-dependent, and coupled to the
+    project-owned compatibility panel.
+  - Read the current README, interfaces, project history, release design,
+    implementation plan, handoff, dependency research, action workflow, Steam
+    beta validation, and cross-renderer acceptance documents.
+  - Identified a documentation/implementation contradiction: the documents
+    promise Steam's native selector while the deployed code hides it and
+    mounts a replacement.
+  - Audited CrossOver Preview's application-level engine roots, GPTK payload,
+    DXMT/DXVK component roots, bottle templates, recipe database, running
+    process tree, and installed bottle structure.
+  - Confirmed CrossOver uses one shared Wine/component engine plus mutable
+    bottles, while the current RealSteamOnMac package duplicates full Wine
+    roots for each renderer.
   - Stopped an overly broad `/Volumes` filesystem scan and replaced it with
     explicit game, manifest, configuration, and log paths.
   - Discarded a malformed whitespace-splitting manifest loop and queued an
     explicit file list so AppIDs and paths cannot be lost.
+  - Replaced a failed zsh command-substitution probe batch with an explicit
+    `xargs` file list; zsh had preserved the newline-delimited list as one
+    argument.
 - Files modified:
   - `task_plan.md`
   - `findings.md`

@@ -330,6 +330,36 @@
   were persisted as `state="completed"`. Native macOS helper processes must run
   from a scrubbed environment, and nonzero exits must not be reported as
   completed.
+- Existing design, interface, README, probes, and tests are internally
+  inconsistent with the deployed implementation. The documents claim Steam's
+  native selector is retained, while commit `beee125` and the current UI hide
+  that row and render a project-owned replacement. The published acceptance
+  probes explicitly require `.realsteamonmac-controls`, Chinese labels, and
+  project-owned inputs, so they cannot prove the newly required native UI.
+- The old public tool contract requires `compatibilitytool.vdf`,
+  `toolmanifest.vdf`, executable `run`, and `realsteamonmac.json`. That contract
+  describes project wrappers, not the raw GPTK/Wine/DXMT/DXVK payload folders
+  the user expects to drop into `compatibilitytools.d`.
+- CrossOver Preview `27.0.0.40479` keeps its engine shared at application
+  scope: approximately 359 MB under `lib`, 88 MB under `lib64`, and 513 MB
+  under `share`. Bottles contain mutable registry/user/application state and
+  reference the shared engine, explaining why a newly created bottle can be
+  only a few hundred megabytes.
+- CrossOver's GPTK payload exactly follows the requested vendor layout:
+  `lib64/apple_gptk/external/D3DMetal.framework`,
+  `external/libd3dshared.dylib`, and matching `wine/x86_64-unix` plus
+  `wine/x86_64-windows` D3D/DXGI/NVAPI/NVNGX files. CrossOver names the
+  MetalFX bridge `nvngx.dll`; the user-supplied GPTK image may expose
+  `nvngx-on-metalfx.dll`, so discovery must recognize payload roles rather
+  than one project-specific filename.
+- CrossOver keeps DXMT and DXVK as shared component trees under `lib/dxmt` and
+  `lib/dxvk`, while its base Wine tree lives under `lib/wine`. This supports a
+  compositional runtime model: one Wine engine plus independently selectable
+  graphics payloads, not four duplicated Wine installations.
+- CrossOver ships explicit bottle templates for Win10, Win11, Win7, Win8,
+  Vista, and XP under `share/crossover/bottle_templates`, shared bottle data
+  under `share/crossover/bottle_data`, and dependency recipes in
+  `share/crossover/data/crossover.tie`.
 - The deployed compatibility directory contains only the four generated
   RealSteamOnMac wrapper folders; no raw vendor-format tool is currently
   installed there for acceptance testing.
