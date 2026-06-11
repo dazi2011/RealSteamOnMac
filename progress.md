@@ -1074,3 +1074,7 @@
   decoded-data API `SteamClient.Apps.GetLaunchOptionsForApp(appid)`. Added a
   read-only probe that records JSON fields plus own/prototype property names
   for RDR2, Hogwarts Legacy, Aimlabs, and People Playground.
+- Relaunched native Steam normally through the installed launcher with
+  `-cef-enable-debugging`; CDP became ready. The first launch-options probe
+  reached the API but all four calls returned opaque bridge error objects, so
+  the probe now preserves enumerable and own error fields for diagnosis.

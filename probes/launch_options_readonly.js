@@ -17,7 +17,29 @@
         ).sort(),
       }));
     } catch (error) {
-      result[appid] = { error: String(error?.stack ?? error) };
+      result[appid] = {
+        error: String(error?.stack ?? error),
+        json: (() => {
+          try {
+            return JSON.parse(JSON.stringify(error));
+          } catch {
+            return null;
+          }
+        })(),
+        ownProperties: Object.getOwnPropertyNames(error ?? {})
+          .sort()
+          .reduce((values, name) => {
+            try {
+              values[name] = error[name];
+            } catch {
+              values[name] = "<unreadable>";
+            }
+            return values;
+          }, {}),
+        prototypeProperties: Object.getOwnPropertyNames(
+          Object.getPrototypeOf(error ?? {}) ?? {},
+        ).sort(),
+      };
     }
   }
   return result;
