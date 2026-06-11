@@ -1430,3 +1430,16 @@
   Steam's window APIs, adapts to the usable monitor bounds, never shrinks a
   larger user window, and adds no overlay, replacement page, or project
   control.
+- Deployed UI version 13, then restarted native Steam into a clean helper
+  session and navigated through Steam's native People Playground properties
+  and Controller page. The committed implementation, without prototype state,
+  marked the native popup readable and produced a `1440x860` content area at
+  `1.12` computed zoom.
+- A full DOM scan found zero visible elements outside the viewport. The shared
+  UI status reported `controllerWindowsReadable=1`,
+  `controllerLastError=null`, and no project-owned control panels.
+- A desktop capture confirmed the native title bar, Steam Input content,
+  illustration, and native footer hints were all legible and unclipped.
+  CrossOver Preview control PIDs `19863`, `19885`, and `73736` remained alive,
+  and the current helper logs contained no new TypeError, navigator failure,
+  browser-frame disconnect, or patch verification error.
