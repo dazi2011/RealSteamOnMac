@@ -1137,3 +1137,10 @@
   SHA-256 values in
   `docs/research/rdr2-rockstar-recovery-2026-06-11.md`. No prefix, game,
   manifest, or registry file was mutated during collection.
+- Added six Rockstar recovery contracts for ordered partial-state repair,
+  complete-state no-op behavior, tampered installer rejection, malformed PE
+  rejection, selective snapshot hashing, exact argv execution, data
+  preservation, and private mutation reports.
+- Task 6 RED verification failed at import with `FileNotFoundError` for the
+  intentionally absent `runtime/launcher_recovery.py`. The test fixtures and
+  runner did not reach any unrelated failure.

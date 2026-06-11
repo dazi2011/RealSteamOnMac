@@ -326,13 +326,13 @@ git push
 Record hashes and sizes for Rockstar installer files, relevant registry keys,
 launcher directories, and runtime logs. Do not mutate the prefix in this step.
 
-- [ ] **Step 2: Write failing recovery-plan tests**
+- [x] **Step 2: Write failing recovery-plan tests**
 
 Given a depot-provided Rockstar installer plus partial launcher registry/files,
 assert a plan that reruns the prerequisite and preserves game/user data.
 Unknown partial state must fail closed with a snapshot path.
 
-- [ ] **Step 3: Verify RED**
+- [x] **Step 3: Verify RED**
 
 Run:
 
