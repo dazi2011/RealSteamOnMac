@@ -67,6 +67,11 @@
     depots.
   - Identified overlapping 250 ms native polling, periodic full memory scans,
     and one-second JavaScript reconciliation as a performance concern.
+  - Read the guard, DXMT bridge/shim, backup/restore/update/release paths,
+    build helpers, compatibility wrapper files, and package scripts.
+  - Confirmed wrapper `run` files are logging stubs, capabilities are static,
+    and the updater reuses the install package rather than producing a tested
+    `update.pkg`.
 - Files modified:
   - `task_plan.md`
   - `findings.md`

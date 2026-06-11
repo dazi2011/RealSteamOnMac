@@ -223,6 +223,28 @@
   original invalid-platform branch for all other AppIDs. Its safety boundary
   is sound; stale installation repair should be added outside this gate rather
   than broadening the patch.
+- All four bundled `compat-tool/*/run` scripts only append diagnostics and exit
+  zero. They do not launch games or runtimes; actual Play execution depends on
+  the steamclient spawn redirect. Requiring equivalent `run` scripts in
+  user-supplied folders has no functional justification in the current
+  architecture.
+- Tool capabilities are hard-coded in project JSON rather than derived from
+  discovered files, framework versions, Wine features, or renderer exports.
+  Static flags can expose unsupported DXR/MetalFX/MSync options or hide newly
+  available features.
+- The injection guard independently defaults to the same 30-second timer,
+  confirming the delay is intentional at both launcher and guard layers.
+- The update client downloads the next release's
+  `RealSteamOnMac-Install.pkg` and either runs `installer` as root or opens the
+  package. There is no separate `update.pkg` artifact or update-specific
+  package identity.
+- The main installer can reuse the prior clean backup when its state file
+  matches the current Steam build, so in-place package upgrade is plausible,
+  but it remains unverified against a real installed older release.
+- Runtime packages use shared immutable engine trees, while each game PFX holds
+  mutable container state. Further size reduction should deduplicate renderer
+  trees in the shared package, not collapse per-game prefixes that provide
+  isolation.
 
 ## Requirements
 
