@@ -1648,3 +1648,23 @@
   Wine product key at
   `HKLM\Software\Wow6432Node\Microsoft\XNA\Framework\v4.0`; the catalog and
   production regression test now use that key.
+
+## 2026-06-11 Component Installer Live Acceptance
+
+- People Playground's preserved prefix passed production actions for Visual
+  C++ 2012 x86/x64, Visual C++ 2013 x86/x64, PhysX Legacy, and DirectX June
+  2010. Every item has a private receipt with exit code 0.
+- The DirectX two-stage flow downloaded the pinned outer package, extracted to
+  a private temporary directory, ran `DXSETUP.exe`, cleaned the extraction
+  directory, and installed x64/x86 `d3dx9_43.dll` with exact expected
+  SHA-256 hashes.
+- PhysX exercised the MSI strategy and verified
+  `HKLM\Software\Wow6432Node\AGEIA Technologies`. VC++ 2012 and 2013 exercised
+  prerequisite ordering and Wine registry-view correction.
+- The APFS-cloned acceptance prefix passed the complete XNA action: .NET
+  Framework 4.8 installed first, both product keys passed Wine `reg query`,
+  and both receipts were written. The active game prefix did not receive
+  .NET/XNA changes.
+- The final runtime-manager suite contains 67 passing tests. CrossOver Preview
+  PIDs `19863`, `19885`, and `73736`, plus native Steam PID `75369`, remained
+  alive throughout the live component tests.

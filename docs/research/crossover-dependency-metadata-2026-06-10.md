@@ -88,6 +88,17 @@ Chinese fonts were also not imported from CrossOver. A public release needs a
 legally reviewed source and explicit font licensing before offering automated
 installation.
 
+## Live Acceptance
+
+Production actions passed in the preserved People Playground prefix for Visual
+C++ 2012 and 2013 x86/x64, PhysX Legacy, and DirectX June 2010. DirectX's two
+installed `d3dx9_43.dll` files matched the pinned native hashes exactly.
+
+.NET Framework 4.8 and XNA 4.0 Refresh passed in an APFS-cloned acceptance
+prefix so the active game prefix was not exposed to the higher-impact
+framework installation. The complete XNA action installed .NET first, verified
+both registry keys, and wrote both private receipts.
+
 ## Sources
 
 - Microsoft Visual C++ current redistributables:

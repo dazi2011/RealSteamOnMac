@@ -180,9 +180,11 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   Wine registry-key or exact file-hash postconditions, and writes receipts
   only after every required check passes. The production catalog now contains
   14 pinned official recipes spanning current and legacy Visual C++, .NET 4.8,
-  DirectX June 2010, XNA 4.0 Refresh, and PhysX Legacy. All 66 runtime-manager
-  tests pass; representative live-prefix installation acceptance remains
-  pending.
+  DirectX June 2010, XNA 4.0 Refresh, and PhysX Legacy. All 67 runtime-manager
+  tests pass. Live acceptance covers EXE, MSI, DirectX extraction, prerequisite
+  ordering, registry verification, exact file hashes, and private receipts;
+  the active game prefix was used for low-risk VC/PhysX/DirectX tests and an
+  APFS-cloned prefix isolated the .NET/XNA test.
 - **Current checkpoint:** verified Steam launch descriptors, managed
   missing-target redirection, and guarded Rockstar recovery have passed live
   acceptance. RDR2 now reaches Rockstar Steam min-mode but not `RDR2.exe`.

@@ -1181,6 +1181,11 @@
   historical uninstall GUID used by the recipe; it did emit the canonical
   `HKLM\Software\Wow6432Node\Microsoft\XNA\Framework\v4.0` product key with
   installation and native-library values.
+- Representative production acceptance now covers all three bounded installer
+  strategies. Direct EXE recipes passed with prerequisite ordering, MSI passed
+  with a product registry key, and the DirectX extract/install strategy passed
+  exact native-payload hashes. This is materially stronger than accepting an
+  installer exit code or checking for DLL names that Wine already supplies.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
