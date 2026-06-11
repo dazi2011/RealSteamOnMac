@@ -23,7 +23,7 @@ mkdir -p \
 
 STEAMUI="$RUNTIME_APP/Contents/MacOS/steamui"
 ORIGINAL_INDEX='<!doctype html><html style="width: 100%; height: 100%"><head><title>SharedJSContext</title><meta charset="utf-8"><script defer="defer" src="/libraries/libraries~00299a408.js"></script><script defer="defer" src="/library.js"></script><link href="/css/library.css" rel="stylesheet"></head><body style="width: 100%; height: 100%; margin: 0; overflow: hidden;"><div id="root" style="height:100%; width: 100%"></div><div style="display:none"></div></body></html>'
-ORIGINAL_COMPAT='before(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")middle(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")controlsr=(0,s.q3)(()=>u.rV.settings.bCompatEnabled),a=vt(t.unAppID,r),o=r&&!!t.strCompatToolName&&t.nCompatToolPriority==h.JNdropdownselectedOption:t.strCompatToolName,onChange:after'
+ORIGINAL_COMPAT='before(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")middle(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")controlsr=(0,s.q3)(()=>u.rV.settings.bCompatEnabled),a=vt(t.unAppID,r),o=r&&!!t.strCompatToolName&&t.nCompatToolPriority==h.JNdropdownselectedOption:t.strCompatToolName,onChange:native(0,i.jsx)(wt,{...e})]})});function vtafter'
 
 printf 'modified app\n' >"$STEAM_APP/Contents/MacOS/marker"
 printf 'modified runtime\n' >"$RUNTIME_APP/Contents/MacOS/steam_osx"

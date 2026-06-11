@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const require = createRequire(import.meta.url);
+const source = readFileSync(
+  new URL("../ui/realsteamonmac_ui.js", import.meta.url),
+  "utf8",
+);
 const {
   applyNativeControllerReadability,
   buildActionUrl,
@@ -23,12 +28,10 @@ const {
   decideOverviewPatch,
   discoverManagedApps,
   findAppActionComponents,
-  findCompatControlAnchor,
-  findManagedAppidForControls,
   getManagedTargetStatus,
   getSteamUIDocuments,
-  isCompatibilityPropertiesDocument,
   isNativeControllerConfiguratorDocument,
+  isNativeCompatToolboxSupported,
   isOwnedWindowsOnlyGame,
   mergeCompatTools,
   normalizeControlConfig,
@@ -212,210 +215,6 @@ test("uses Steam's native controller window APIs for readable sizing", async () 
   );
 });
 
-test("anchors controls to the compatibility selector instead of the page root", () => {
-  const html = {
-    textContent: "RealSteamOnMac - DXMT",
-    parentElement: null,
-  };
-  const body = {
-    textContent: "RealSteamOnMac - DXMT",
-    innerText:
-      "属性\n兼容性\n强制使用特定 Steam Play 兼容性工具\nRealSteamOnMac - DXMT",
-    parentElement: html,
-  };
-  const dialogBody = {
-    textContent:
-      "强制使用特定 Steam Play 兼容性工具 RealSteamOnMac - DXMT",
-    innerText:
-      "兼容性\n强制使用特定 Steam Play 兼容性工具\nRealSteamOnMac - DXMT",
-    parentElement: body,
-  };
-  const label = {
-    textContent: "RealSteamOnMac - DXMT",
-    parentElement: dialogBody,
-  };
-  const combobox = {
-    textContent: "RealSteamOnMac - DXMT",
-    parentElement: label,
-  };
-  const documentObject = {
-    title: "People Playground - 属性",
-    location: {
-      href: "https://steamloopback.host/properties/1118200/compatibility",
-      hash: "#compatibility",
-    },
-    documentElement: html,
-    body,
-    querySelector(selector) {
-      if (selector === "[role=dialog]") {
-        return dialogBody;
-      }
-      return null;
-    },
-    querySelectorAll(selector) {
-      if (selector === "[role=combobox], select") {
-        return [combobox];
-      }
-      return [html, body, dialogBody, label, combobox];
-    },
-  };
-
-  assert.equal(findCompatControlAnchor(documentObject), dialogBody);
-});
-
-test("rejects a Windows library details page as a compatibility properties document", () => {
-  const page = {
-    textContent:
-      "People Playground RealSteamOnMac - DXMT 0.80 安装 商店页面",
-    parentElement: null,
-  };
-  const toolButton = {
-    textContent: "RealSteamOnMac - DXMT 0.80",
-    parentElement: page,
-  };
-  const documentObject = {
-    title: "Steam",
-    location: {
-      href: "https://steamloopback.host/library/app/1118200",
-      hash: "#library",
-    },
-    documentElement: page,
-    body: page,
-    querySelector() {
-      return null;
-    },
-    querySelectorAll(selector) {
-      if (selector === "[role=combobox], select, button") {
-        return [toolButton];
-      }
-      return [page, toolButton];
-    },
-  };
-
-  assert.equal(
-    isCompatibilityPropertiesDocument(documentObject),
-    false,
-  );
-  assert.equal(findCompatControlAnchor(documentObject), null);
-});
-
-test("accepts a Steam properties compatibility page", () => {
-  const dialog = {
-    textContent: "属性 兼容性 强制使用特定 Steam Play 兼容性工具",
-    innerText: "属性\n兼容性\n强制使用特定 Steam Play 兼容性工具",
-  };
-  const documentObject = {
-    title: "People Playground - 属性",
-    location: {
-      href: "https://steamloopback.host/properties/1118200/compatibility",
-      hash: "#compatibility",
-    },
-    body: dialog,
-    querySelector(selector) {
-      return selector === "[role=dialog]" ? dialog : null;
-    },
-  };
-
-  assert.equal(
-    isCompatibilityPropertiesDocument(documentObject),
-    true,
-  );
-});
-
-function attachReactFiber(element, memoizedProps, parent = null) {
-  Object.defineProperty(element, "__reactFiber$test", {
-    value: {
-      memoizedProps,
-      pendingProps: memoizedProps,
-      return: parent,
-    },
-  });
-  return element;
-}
-
-test("binds controls to the scoped game detail instead of the first library row", () => {
-  const sidebarGame = attachReactFiber({}, { appid: 1665460 });
-  const detailGame = attachReactFiber(
-    {},
-    {
-      overview: { appid: 1118200 },
-      details: { unAppID: 1118200 },
-    },
-  );
-  const anchor = {
-    querySelectorAll() {
-      return [detailGame];
-    },
-  };
-  const documentObject = {
-    location: { href: "about:blank", hash: "" },
-    querySelectorAll() {
-      return [sidebarGame, detailGame];
-    },
-  };
-
-  assert.equal(
-    findManagedAppidForControls(
-      documentObject,
-      anchor,
-      new Set([1118200, 1665460]),
-    ),
-    1118200,
-  );
-});
-
-test("fails closed when the control region contains two game detail AppIDs", () => {
-  const firstGame = attachReactFiber(
-    {},
-    {
-      overview: { appid: 1118200 },
-      details: { unAppID: 1118200 },
-    },
-  );
-  const secondGame = attachReactFiber(
-    {},
-    {
-      overview: { appid: 1665460 },
-      details: { unAppID: 1665460 },
-    },
-  );
-  const anchor = {
-    querySelectorAll() {
-      return [firstGame, secondGame];
-    },
-  };
-
-  assert.equal(
-    findManagedAppidForControls(
-      {
-        location: { href: "about:blank", hash: "" },
-        querySelectorAll() {
-          return [firstGame, secondGame];
-        },
-      },
-      anchor,
-      new Set([1118200, 1665460]),
-    ),
-    null,
-  );
-});
-
-test("uses an explicit managed AppID in the current Steam route", () => {
-  assert.equal(
-    findManagedAppidForControls(
-      {
-        location: {
-          href: "steam://nav/games/details/1118200",
-          hash: "",
-        },
-      },
-      null,
-      new Set([1118200, 1665460]),
-    ),
-    1118200,
-  );
-});
-
 test("maps compatibility tools to runtime renderers in both directions", () => {
   assert.equal(
     rendererForCompatTool("realsteamonmac-dxvk", projectTools),
@@ -583,6 +382,62 @@ test("uses Steam's native file dialog for Windows command targets", async () => 
     await chooseWindowsExecutableWithSteam({}, ""),
     undefined,
   );
+});
+
+test("requires Steam-owned React controls for compatibility actions", () => {
+  const forwardRef = {
+    $$typeof: Symbol("react.forward_ref"),
+    render() {},
+  };
+  const toolbox = {
+    React: {
+      useEffect() {},
+      useState() {},
+    },
+    jsx: {
+      Fragment: Symbol("Fragment"),
+      jsx() {},
+      jsxs() {},
+    },
+    components: {
+      $n: forwardRef,
+      Vb() {},
+      nB: forwardRef,
+      pd() {},
+      y4() {},
+    },
+    styles: {
+      SettingsDialogButton: "button",
+      TopGap: "gap",
+    },
+  };
+
+  assert.equal(isNativeCompatToolboxSupported(toolbox), true);
+  assert.equal(
+    isNativeCompatToolboxSupported({
+      ...toolbox,
+      components: { ...toolbox.components, y4: undefined },
+    }),
+    false,
+  );
+  assert.equal(
+    isNativeCompatToolboxSupported({
+      ...toolbox,
+      components: {
+        ...toolbox.components,
+        $n: { $$typeof: Symbol("react.forward_ref") },
+      },
+    }),
+    false,
+  );
+});
+
+test("production UI source contains no handcrafted compatibility controls", () => {
+  assert.doesNotMatch(source, /\.realsteamonmac-controls/);
+  assert.doesNotMatch(source, /\.realsteamonmac-modal-layer/);
+  assert.doesNotMatch(source, /<select\b/);
+  assert.doesNotMatch(source, /role="switch"/);
+  assert.doesNotMatch(source, /\.innerHTML\s*=/);
 });
 
 test("normalizes the public dependency catalog and removes invalid entries", () => {

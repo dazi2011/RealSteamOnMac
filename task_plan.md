@@ -134,7 +134,7 @@ Phase 8: 2026-06-11 field regression remediation and verified release
       Steam state transition, or external dependency.
 - [x] Replace the simulated force-tool checkbox/dropdown with Steam-owned
       controls and populate Steam's existing selector without overlays.
-- [ ] Re-expose runtime options, Run Command, dependencies, and container
+- [x] Re-expose runtime options, Run Command, dependencies, and container
       actions through Steam-owned controls without reviving the legacy panel.
 - [x] Discover side-by-side user-supplied GPTK, DXMT, DXVK, and Wine trees in
       standard CrossOver-like layouts under `compatibilitytools.d`.
@@ -148,7 +148,7 @@ Phase 8: 2026-06-11 field regression remediation and verified release
 - [ ] Allow Steam's add-non-Steam-game flow to accept `.exe` files while
       preserving native `.app` behavior and applying compatibility only to PE
       executables.
-- [ ] Make Run Command behave like Windows Run, fix EXE selection persistence,
+- [x] Make Run Command behave like Windows Run, fix EXE selection persistence,
       and open the selected prefix drive in Finder.
 - [ ] Merge Windows component installation into Install Application To
       Container and provide a reviewed, checksum-pinned dependency catalog.
@@ -168,9 +168,12 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   applets, documents, URLs, and external installers. Steam's native
   `OpenFileDialog` is wired for EXE/BAT/CMD selection, Finder receives the
   exact prefix `drive_c`, and Install Application routes to the reviewed
-  catalog. Exposing these actions through Steam-owned controls and expanding
-  the catalog remain open, so the two checklist items above are not yet
-  complete.
+  catalog.
+- **Native-controls checkpoint:** the compatibility page now renders all
+  project actions through Steam's existing React control constructors. Live
+  acceptance used the native MSync toggle, EXE picker, Run button, component
+  and container dropdowns, and Open C Drive action. The remaining work in this
+  area is catalog breadth and installer acceptance, not replacement UI.
 - **Current checkpoint:** verified Steam launch descriptors, managed
   missing-target redirection, and guarded Rockstar recovery have passed live
   acceptance. RDR2 now reaches Rockstar Steam min-mode but not `RDR2.exe`.

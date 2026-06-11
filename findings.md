@@ -1107,6 +1107,29 @@
   instructs callers to use the reviewed component catalog; the UI routes the
   container action to that catalog and removes the separate Windows Components
   button.
+- Steam's current properties module exports a mixed React component shape.
+  `Vb`, `pd`, and `y4` are function components, while `$n`, `nB`, and `xh`
+  are `forwardRef` objects with `$$typeof` and `render`. Requiring every
+  constructor to be a JavaScript function incorrectly rejects valid
+  Steam-owned controls.
+- The native compatibility subtree can safely call one global renderer with
+  the current app details, React runtime, JSX runtime, Steam component module,
+  and Steam stylesheet module. This avoids route scanning, translated-text
+  matching, hidden native rows, copied CSS, replacement selectors, and modal
+  overlays.
+- Live Steam proved the project control area uses native
+  `DialogCheckbox`, `DialogTextInputBase`, `DialogDropDown`, and
+  `DialogButton` implementations. The page contained zero legacy project
+  panels and zero project modal layers.
+- The installed runtime CLI can drift behind the repository even when the UI
+  and patcher are current. The stale deployed CLI still used POSIX `shlex` and
+  rejected `cmd`; atomically replacing it with the already tested repository
+  runtime restored Windows Run semantics. Package-update acceptance must
+  explicitly compare installed runtime hashes, not only source and PKG hashes.
+- A Steam public-beta self-update can remove injected assets and leave a
+  previous guarded chunk patch in place. The current patcher correctly
+  recognizes that exact `previous_selected` structure and migrates it to the
+  native-controls form after its support-directory copy is refreshed.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

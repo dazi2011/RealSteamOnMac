@@ -28,7 +28,7 @@ KNOWN_COMPAT_CHUNK_SHA256 = {
 }
 if os.environ.get("REALSTEAMONMAC_ALLOW_TEST_FIXTURES") == "1":
     KNOWN_COMPAT_CHUNK_SHA256.add(
-        "ec02f405cb2c195441b41646c95115ebce08286dccb3022e20edbae457983bc1"
+        "8fb392221299eea6b5326f8e3ed351d4cf4456fa2c56a32e752e057fb34d49df"
     )
 INDEX_NAME = "index.html"
 BACKUP_NAME = "index.html.realsteamonmac.original"
@@ -96,6 +96,15 @@ COMPAT_SELECTED_OPTION_DYNAMIC_GATE = (
     "||globalThis.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__"
     "?.(t.unAppID)||\"\",onChange:"
 )
+NATIVE_CONTROLS_ANCHOR = (
+    '(0,i.jsx)(wt,{...e})]})});function vt'
+)
+NATIVE_CONTROLS_DYNAMIC_GATE = (
+    '(0,i.jsx)(wt,{...e}),'
+    'globalThis.__REALSTEAMONMAC_RENDER_NATIVE_COMPAT_CONTROLS__'
+    '?.({details:t,React:n,jsx:i,components:c,styles:K()})'
+    ']})});function vt'
+)
 
 
 def sha256_bytes(content):
@@ -146,12 +155,18 @@ def build_patched_compat_chunk(original):
         raise ValueError(
             "compatibility chunk does not contain one supported selector gate"
         )
+    if original.count(NATIVE_CONTROLS_ANCHOR) != 1:
+        raise ValueError(
+            "compatibility chunk does not contain one supported native controls "
+            "anchor"
+        )
     if (
         COMPAT_PAGE_DYNAMIC_GATE in original
         or COMPAT_PAGE_ALLOWLIST_GATE in original
         or COMPAT_ENABLE_DYNAMIC_GATE in original
         or COMPAT_ENABLE_PREVIOUS_DYNAMIC_GATE in original
         or COMPAT_SELECTED_OPTION_DYNAMIC_GATE in original
+        or NATIVE_CONTROLS_DYNAMIC_GATE in original
     ):
         raise ValueError("compatibility chunk is already partially patched")
     patched = original.replace(
@@ -163,9 +178,14 @@ def build_patched_compat_chunk(original):
         COMPAT_ENABLE_DYNAMIC_GATE,
         1,
     )
-    return patched.replace(
+    patched = patched.replace(
         COMPAT_SELECTED_OPTION_ANCHOR,
         COMPAT_SELECTED_OPTION_DYNAMIC_GATE,
+        1,
+    )
+    return patched.replace(
+        NATIVE_CONTROLS_ANCHOR,
+        NATIVE_CONTROLS_DYNAMIC_GATE,
         1,
     )
 
@@ -190,6 +210,29 @@ def build_previous_native_compat_chunk(original):
     return patched.replace(
         COMPAT_ENABLE_ANCHOR,
         COMPAT_ENABLE_PREVIOUS_DYNAMIC_GATE,
+        1,
+    )
+
+
+def build_previous_selected_compat_chunk(original):
+    patched = build_previous_native_compat_chunk(original)
+    if patched.count(COMPAT_ENABLE_PREVIOUS_DYNAMIC_GATE) != 1:
+        raise ValueError(
+            "compatibility chunk does not contain one supported native control "
+            "gate"
+        )
+    patched = patched.replace(
+        COMPAT_ENABLE_PREVIOUS_DYNAMIC_GATE,
+        COMPAT_ENABLE_DYNAMIC_GATE,
+        1,
+    )
+    if patched.count(COMPAT_SELECTED_OPTION_ANCHOR) != 1:
+        raise ValueError(
+            "compatibility chunk does not contain one supported selector gate"
+        )
+    return patched.replace(
+        COMPAT_SELECTED_OPTION_ANCHOR,
+        COMPAT_SELECTED_OPTION_DYNAMIC_GATE,
         1,
     )
 
@@ -382,7 +425,15 @@ def prepare_compat_chunk(paths):
         previous_native = build_previous_native_compat_chunk(
             original.decode("utf-8")
         ).encode("utf-8")
-        if current not in (expected, previous, previous_native):
+        previous_selected = build_previous_selected_compat_chunk(
+            original.decode("utf-8")
+        ).encode("utf-8")
+        if current not in (
+            expected,
+            previous,
+            previous_native,
+            previous_selected,
+        ):
             raise ValueError(
                 "existing compatibility chunk patch is inconsistent"
             )
@@ -460,6 +511,13 @@ def verify_steamui(steamui_root):
         != 1
     ):
         raise ValueError("compatibility selector gate count is invalid")
+    if (
+        current_compat.count(
+            NATIVE_CONTROLS_DYNAMIC_GATE.encode("utf-8")
+        )
+        != 1
+    ):
+        raise ValueError("native compatibility controls gate count is invalid")
     if not paths["ui"].is_file() or paths["ui"].stat().st_size == 0:
         raise ValueError("Steam UI asset is missing")
     if not paths["config"].is_file():

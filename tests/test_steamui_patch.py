@@ -29,10 +29,14 @@ COMPAT_ENABLE_ANCHOR = (
 COMPAT_SELECTED_OPTION_ANCHOR = (
     "selectedOption:t.strCompatToolName,onChange:"
 )
+NATIVE_CONTROLS_ANCHOR = (
+    '(0,i.jsx)(wt,{...e})]})});function vt'
+)
 CURRENT_COMPAT_CHUNK = (
     f"before{COMPAT_PAGE_ANCHOR}middle{COMPAT_PAGE_ANCHOR}"
     f"controls{COMPAT_ENABLE_ANCHOR}"
-    f"dropdown{COMPAT_SELECTED_OPTION_ANCHOR}after"
+    f"dropdown{COMPAT_SELECTED_OPTION_ANCHOR}"
+    f"native{NATIVE_CONTROLS_ANCHOR}after"
 )
 
 
@@ -224,6 +228,12 @@ class SteamUIPatchTests(unittest.TestCase):
             ),
             1,
         )
+        self.assertEqual(
+            patched_compat_chunk.count(
+                self.patcher.NATIVE_CONTROLS_DYNAMIC_GATE
+            ),
+            1,
+        )
         self.assertIn(
             "__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__",
             patched_compat_chunk,
@@ -232,6 +242,10 @@ class SteamUIPatchTests(unittest.TestCase):
         self.assertNotIn(COMPAT_ENABLE_ANCHOR, patched_compat_chunk)
         self.assertNotIn(
             COMPAT_SELECTED_OPTION_ANCHOR,
+            patched_compat_chunk,
+        )
+        self.assertNotIn(
+            NATIVE_CONTROLS_ANCHOR,
             patched_compat_chunk,
         )
 
@@ -323,6 +337,16 @@ class SteamUIPatchTests(unittest.TestCase):
                 / "chunk~2dcc5aaf7.js.realsteamonmac.original"
             ).exists()
         )
+
+    def test_native_controls_anchor_is_required(self):
+        unsupported = CURRENT_COMPAT_CHUNK.replace(
+            NATIVE_CONTROLS_ANCHOR,
+            "missing-native-controls-anchor",
+        )
+        with self.assertRaisesRegex(
+            ValueError, "native controls"
+        ):
+            self.patcher.build_patched_compat_chunk(unsupported)
 
     def test_allowlist_parser_filters_invalid_and_duplicate_values(self):
         self.allowlist.write_text(

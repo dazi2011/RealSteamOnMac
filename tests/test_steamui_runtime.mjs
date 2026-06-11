@@ -226,7 +226,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     typeof context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__,
     "function",
   );
-  assert.equal(context.__REALSTEAMONMAC_UI_STATUS__.version, 14);
+  assert.equal(context.__REALSTEAMONMAC_UI_STATUS__.version, 15);
   assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(1118200), true);
   assert.equal(
     context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__(1118200),
@@ -403,130 +403,10 @@ function loadRuntimeHelpers() {
   return module.exports;
 }
 
-function createElement(text, className = "") {
-  const element = {
-    className,
-    children: [],
-    dataset: {},
-    ownerDocument: null,
-    parentElement: null,
-    style: {},
-    textContent: text,
-    append(child) {
-      child.parentElement = this;
-      child.ownerDocument = this.ownerDocument;
-      this.children.push(child);
-      return child;
-    },
-    contains(candidate) {
-      return this === candidate ||
-        this.children.some((child) => child.contains(candidate));
-    },
-  };
-  return element;
-}
-
-function createCompatibilityDocument({ nativeCombobox = null } = {}) {
-  const documentElement = createElement("");
-  const body = createElement(
-    "兼容性\n强制使用特定 Steam Play 兼容性工具",
-  );
-  const content = createElement(
-    "兼容性 强制使用特定 Steam Play 兼容性工具",
-  );
-  const forceRow = createElement(
-    "强制使用特定 Steam Play 兼容性工具",
-  );
-  const forceLabel = createElement(
-    "强制使用特定 Steam Play 兼容性工具",
-  );
-  const forceText = createElement(
-    "强制使用特定 Steam Play 兼容性工具",
-  );
-  const projectPanel = createElement(
-    "强制使用特定 Steam Play 兼容性工具 DXMT 0.80",
-    "realsteamonmac-controls",
-  );
-  const projectSelect = createElement("DXMT 0.80");
-
-  const documentObject = {
-    body,
-    documentElement,
-    location: { href: "about:blank", hash: "" },
-    title: "People Playground",
-    querySelector(selector) {
-      return selector === "[role=dialog]" ? content : null;
-    },
-    querySelectorAll(selector) {
-      if (selector === "[role=combobox], select") {
-        return [
-          ...(nativeCombobox ? [nativeCombobox] : []),
-          projectSelect,
-        ];
-      }
-      if (selector === "*") {
-        return [
-          content,
-          forceRow,
-          forceLabel,
-          forceText,
-          projectPanel,
-          projectSelect,
-        ];
-      }
-      return [];
-    },
-  };
-
-  for (const element of [
-    documentElement,
-    body,
-    content,
-    forceRow,
-    forceLabel,
-    forceText,
-    projectPanel,
-    projectSelect,
-    nativeCombobox,
-  ].filter(Boolean)) {
-    element.ownerDocument = documentObject;
-  }
-  documentElement.append(body);
-  body.append(content);
-  content.append(forceRow);
-  forceRow.append(forceLabel);
-  forceLabel.append(forceText);
-  content.append(projectPanel);
-  projectPanel.append(projectSelect);
-  if (nativeCombobox) {
-    forceRow.append(nativeCombobox);
-  }
-
-  return { documentObject, forceRow };
-}
-
-test("finds the native force-tool row when macOS omits the disabled dropdown", () => {
-  const { findCompatControlAnchor } = loadRuntimeHelpers();
-  const { documentObject, forceRow } =
-    createCompatibilityDocument();
-
-  assert.equal(findCompatControlAnchor(documentObject), forceRow);
-});
-
-test("ignores the mounted project dropdown during later compatibility scans", () => {
-  const { findCompatControlAnchor } = loadRuntimeHelpers();
-  const nativeCombobox = createElement("Proton Experimental");
-  const { documentObject, forceRow } =
-    createCompatibilityDocument({ nativeCombobox });
-
-  assert.equal(findCompatControlAnchor(documentObject), forceRow);
-});
-
 test("does not activate or export the legacy replacement compatibility panel", () => {
   const helpers = loadRuntimeHelpers();
 
-  assert.equal(helpers.hideNativeCompatAnchor, undefined);
-  assert.equal(helpers.restoreNativeCompatAnchors, undefined);
   assert.equal(helpers.buildControlPanelMarkup, undefined);
   assert.doesNotMatch(source, /\n\s+mountControlPanels\(\);/);
+  assert.doesNotMatch(source, /function mountControlPanels\(/);
 });

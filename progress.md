@@ -1508,3 +1508,58 @@
   policy/runtime suites passed 79 tests. Final repository verification passed
   113 Python tests, 85 JavaScript tests, all 28 shell contract tests, Python
   bytecode compilation, JavaScript syntax checks, and whitespace checks.
+
+## 2026-06-11 Steam-Owned Action Controls
+
+- Replaced the dormant handcrafted compatibility panel with a guarded child of
+  Steam's existing compatibility React subtree. The injected call passes
+  Steam's own React, JSX, component, stylesheet, and app-detail objects; it
+  does not scan translated text or mount a separate DOM root.
+- Removed the old route/document detection, copied CSS, fake switches,
+  replacement selectors, panel markup, and modal layer. Source and live DOM
+  checks found zero `.realsteamonmac-controls`, zero
+  `.realsteamonmac-modal-layer`, no handcrafted `<select>`, no project
+  `role="switch"`, and no `innerHTML` mount.
+- Added Steam-native MSync, Retina, Metal HUD, MetalFX, DXR, and AVX toggles;
+  native text fields and file picker for Run Command; native dependency and
+  container dropdowns; native action buttons; and a disabled native status
+  field.
+- Live component inspection showed Steam mixes function components with
+  `forwardRef` component objects. The validator now accepts only those two
+  valid React forms and still fails closed on missing or malformed
+  constructors.
+- A controlled restart triggered the public-beta update from client build
+  `1780965181` to `1781139754`. Steam removed the project asset directory and
+  left the previous selected-tool chunk patch. The refreshed support patcher
+  migrated that exact guarded structure to chunk SHA-256
+  `10deb9010054af847d3b1ae8f226b34b3281d54a04cdc767a81abaab96d42fb4`.
+- Live People Playground acceptance reported UI version 15,
+  `nativeCompatRenders > 0`, `nativeCompatLastError=null`, and
+  `controlLastError=null`. The native dropdown listed DXMT 0.80, DXVK macOS
+  1.10.3, GPTK 3.0, and WineD3D 11.10.
+- The native MSync toggle saved and restored the backend value; the
+  `controlNativeSaves` counter advanced twice with no error. Under DXMT, the
+  unsupported DXR toggle ignored clicks and did not advance the save counter.
+  Selecting GPTK through Steam's native dropdown unlocked DXR and changed the
+  native details to `realsteamonmac-gptk`; selecting DXMT restored both the
+  tool and disabled state.
+- Steam's native file chooser selected
+  `/Volumes/990pro/games/mac/steamapps/common/People Playground/People Playground.exe`;
+  the command field retained the full absolute path after the panel closed.
+- The first native Run-button attempt exposed a stale installed runtime CLI.
+  Its old code treated `cmd` as a game-relative file. After backing it up and
+  atomically installing the already tested repository runtime, job
+  `3f43ea69fffb21284dd675c3a7645cf5` completed with exit code 0 and emitted
+  `REALSTEAMONMAC_NATIVE_UI_OK`.
+- Native Open C Drive job `aebaad8f1342925edbd87801c42b85ca`
+  completed with exit code 0 and invoked Finder with the exact path
+  `/Volumes/990pro/games/mac/steamapps/compatdata/1118200/pfx/drive_c`.
+- The installed runtime hash now matches the repository runtime:
+  `527db7ae05429dc5bf974d9b9b41fe46a22e6e702789201f2cafed0e84ad024b`.
+  CrossOver Preview PIDs `19863`, `19885`, and `73736` remained alive through
+  all native Steam restarts.
+- Final repository verification passed 114 Python tests, 79 JavaScript tests,
+  all 28 shell contract tests, Python bytecode compilation, JavaScript syntax,
+  and whitespace checks. The shell fixtures now contain and assert the guarded
+  native-controls anchor instead of silently exercising the previous chunk
+  shape.

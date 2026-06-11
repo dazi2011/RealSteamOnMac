@@ -17,7 +17,7 @@ printf '%s' \
     '<!doctype html><html style="width: 100%; height: 100%"><head><title>SharedJSContext</title><meta charset="utf-8"><script defer="defer" src="/libraries/libraries~00299a408.js"></script><script defer="defer" src="/library.js"></script><link href="/css/library.css" rel="stylesheet"></head><body style="width: 100%; height: 100%; margin: 0; overflow: hidden;"><div id="root" style="height:100%; width: 100%"></div><div style="display:none"></div></body></html>' \
     >"$STEAMUI/index.html"
 printf '%s' \
-    'before(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")middle(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")controlsr=(0,s.q3)(()=>u.rV.settings.bCompatEnabled),a=vt(t.unAppID,r),o=r&&!!t.strCompatToolName&&t.nCompatToolPriority==h.JNdropdownselectedOption:t.strCompatToolName,onChange:after' \
+    'before(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")middle(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")controlsr=(0,s.q3)(()=>u.rV.settings.bCompatEnabled),a=vt(t.unAppID,r),o=r&&!!t.strCompatToolName&&t.nCompatToolPriority==h.JNdropdownselectedOption:t.strCompatToolName,onChange:native(0,i.jsx)(wt,{...e})]})});function vtafter' \
     >"$STEAMUI/chunk~2dcc5aaf7.js"
 printf '%s\n' 1118200 >"$TMP_ROOT/allowlist.txt"
 printf '%s\n' 0123456789abcdef0123456789abcdef \
@@ -64,6 +64,8 @@ grep -q 'bCompatEnabled)||globalThis.__REALSTEAMONMAC_IS_MANAGED_APP__?.(t.unApp
     "$STEAMUI/chunk~2dcc5aaf7.js"
 test "$(grep -o '__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__' \
     "$STEAMUI/chunk~2dcc5aaf7.js" | wc -l)" -eq 2
+test "$(grep -o '__REALSTEAMONMAC_RENDER_NATIVE_COMPAT_CONTROLS__' \
+    "$STEAMUI/chunk~2dcc5aaf7.js" | wc -l)" -eq 1
 
 "$PATCHER" restore --steamui-root "$STEAMUI"
 test ! -e "$STEAMUI/index.html.realsteamonmac.original"
@@ -73,6 +75,6 @@ test ! -e "$STEAMUI/realsteamonmac"
 test "$(shasum -a 256 "$STEAMUI/index.html" | awk '{print $1}')" = \
     "55ced284314dbc65bff38fb1333d4f4bd617635895e2c0e2197b05028c243282"
 test "$(shasum -a 256 "$STEAMUI/chunk~2dcc5aaf7.js" | awk '{print $1}')" = \
-    "ec02f405cb2c195441b41646c95115ebce08286dccb3022e20edbae457983bc1"
+    "8fb392221299eea6b5326f8e3ed351d4cf4456fa2c56a32e752e057fb34d49df"
 
 echo "Steam UI resource patch contract: PASS"
