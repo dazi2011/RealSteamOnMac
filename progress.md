@@ -1835,3 +1835,22 @@
 - Added the refreshed UUID-gated profiles to the native engine and offline
   compatibility-gate patcher, extended the hook contract, and made the live
   patcher test prefer the refreshed Valve binary when its exact hash matches.
+- Re-ran hook, offline patcher, spawn redirect, native registry, environment
+  isolation, launcher, and injection-installer contracts. One initial
+  injection test failure was a shared-artifact race caused by running multiple
+  rebuilding tests concurrently; the same test passed when run serially.
+- Backed up the deployed native engine under
+  `~/Library/Application Support/RealSteamOnMac/backups/steam-refresh-profile-20260611T172909Z`
+  and atomically installed the tested engine hash
+  `bdc80bde7ea80130681d85a0bd65db7ac11912414d6bd4959ad83b7d26e3acaf`.
+- Restarted only native Steam through `StartShutdown(true)` and LaunchServices.
+  CrossOver Preview PIDs `19863`, `19885`, and `73736` remained alive.
+- Current-session logs prove the refreshed profile is live: the install gate
+  rebuilt from one to 34 AppIDs, data reconciliation patched 34 objects, and
+  the spawn redirect installed. LLDB confirmed the install instruction is now
+  a branch, the SteamUI getter remains original, and the spawn slot points into
+  the deployed native engine.
+- Repeated the bounded Black Myth install-plan probe. Error 29 is gone:
+  `eInstallState=7`, `eAppError=0`, and the probe cancelled successfully.
+  Required bytes remain zero, no AppID manifest was created, and no download
+  began, isolating native tool registration/depot selection as the next gate.

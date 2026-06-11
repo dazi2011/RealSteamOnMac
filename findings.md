@@ -1283,6 +1283,21 @@
   install destinations at `0x00627888` and `0x006278B4`, and SteamUI getter at
   `0x005EDF44`. `dyld_info -fixups` located the new `posix_spawn` slot at
   `0x018FD500`.
+- The delayed production path intentionally does not call the legacy
+  `realsteamonmac_apply_text_hooks()` entrypoint. Its lifetime worker patches
+  only the allowlist-scoped install gate, app data objects, and `posix_spawn`
+  slot. The broad compatibility-gate function remains an offline/legacy
+  profile and must not be re-enabled without a separate behavioral proof.
+- Deploying the refreshed native engine restored all three production
+  mechanisms in the current session. New log lines show the install gate
+  rebuilt from one bootstrap AppID to 34 managed AppIDs, one initial app object
+  patched followed by 33 more, and the allowlist-scoped spawn redirect
+  installed.
+- The guarded Black Myth install-plan probe now reaches install state `7` with
+  native app error `0`, proving the refreshed install-gate profile removes the
+  error-29 blocker. The plan still reports zero required bytes and was
+  cancelled without creating a manifest or starting a download. Native tool
+  registration and Windows-depot selection are now the active blocker.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

@@ -241,6 +241,13 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   Structurally verified refreshed profiles have been added; deployment and a
   repeated native install-plan test are the next gate before attributing any
   remaining error 29 to compatibility-tool registration.
+- **Same-build refresh acceptance:** the tested engine was deployed with a
+  rollback copy, and the current Steam session installed the refreshed
+  allowlist-scoped gate, data reconciliation, and spawn redirect. Black Myth
+  moved from error 29 to install state `7` with error `0`. The bounded probe
+  cancelled without a manifest or download, but the plan still contains zero
+  bytes; post-initialization native tool registration and Windows-depot
+  selection are now the next implementation target.
 - **Current checkpoint:** verified Steam launch descriptors, managed
   missing-target redirection, and guarded Rockstar recovery have passed live
   acceptance. RDR2 now reaches Rockstar Steam min-mode but not `RDR2.exe`.
