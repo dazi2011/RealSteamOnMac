@@ -136,6 +136,15 @@
   - Replaced a failed zsh command-substitution probe batch with an explicit
     `xargs` file list; zsh had preserved the newline-delimited list as one
     argument.
+  - Completed implementation-plan Task 1 with test-first development.
+  - Added RED coverage proving Open C Drive leaked Wine/Steam/DYLD variables
+    and container exit `-6` was persisted as completed.
+  - Added a native-helper environment allowlist and made dependency/container
+    jobs fail on nonzero process exits.
+  - Passed all 38 runtime-manager tests.
+  - Passed a live Finder smoke test against the People Playground `drive_c`;
+    `/usr/bin/open` returned zero with the fatal DXMT shim removed from its
+    environment.
 - Files modified:
   - `task_plan.md`
   - `findings.md`

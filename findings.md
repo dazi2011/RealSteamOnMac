@@ -330,6 +330,11 @@
   were persisted as `state="completed"`. Native macOS helper processes must run
   from a scrubbed environment, and nonzero exits must not be reported as
   completed.
+- Task 1 now fixes both defects at their source. Native helper subprocesses
+  receive only an explicit host-variable allowlist, and dependency/container
+  nonzero exits transition the job to failed. A live `/usr/bin/open` smoke test
+  against the People Playground `drive_c` returned zero even when the source
+  environment contained the previously fatal x86_64 DXMT shim.
 - Existing design, interface, README, probes, and tests are internally
   inconsistent with the deployed implementation. The documents claim Steam's
   native selector is retained, while commit `beee125` and the current UI hide

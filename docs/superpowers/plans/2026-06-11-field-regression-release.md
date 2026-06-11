@@ -18,14 +18,14 @@
 - Modify: `findings.md`
 - Modify: `progress.md`
 
-- [ ] **Step 1: Write failing tests for Finder environment isolation and nonzero container exits**
+- [x] **Step 1: Write failing tests for Finder environment isolation and nonzero container exits**
 
 Add tests that call `execute_container_action(... open-c-drive ...)`, capture
 the environment passed to `run_job_process`, and assert that Wine, Steam, and
 DYLD variables are absent. Add an `action_job` test whose container action
 returns `-6` and assert the final JSON state is `failed`.
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run:
 
@@ -38,14 +38,14 @@ Run:
 Expected: FAIL because `/usr/bin/open` receives the Wine environment and
 container nonzero exits are written as completed.
 
-- [ ] **Step 3: Implement the minimal fix**
+- [x] **Step 3: Implement the minimal fix**
 
 Add `build_native_helper_environment()` with an explicit allowlist of required
 host variables. Use it only for native macOS helper commands. In `action_job`,
 raise `RuntimeErrorWithContext` for nonzero dependency and container exits just
 as the run-command path already does.
 
-- [ ] **Step 4: Verify GREEN and regression**
+- [x] **Step 4: Verify GREEN and regression**
 
 Run the two focused tests, then:
 
@@ -55,7 +55,7 @@ Run the two focused tests, then:
 
 Expected: all runtime-manager tests PASS.
 
-- [ ] **Step 5: Commit and push**
+- [x] **Step 5: Commit and push**
 
 ```bash
 git add tests/test_runtime_manager.py runtime/realsteamonmac_runtime.py \

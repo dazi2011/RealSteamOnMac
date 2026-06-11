@@ -63,6 +63,20 @@ RESERVED_ENVIRONMENT_PREFIXES = (
     "REALSTEAMONMAC_",
     "STEAM_",
 )
+NATIVE_HELPER_ENVIRONMENT_NAMES = frozenset(
+    (
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "LOGNAME",
+        "PATH",
+        "SHELL",
+        "TMPDIR",
+        "USER",
+        "__CF_USER_TEXT_ENCODING",
+    )
+)
 DEPENDENCY_DOWNLOAD_HOSTS = frozenset(
     (
         "aka.ms",
@@ -1439,6 +1453,14 @@ def run_job_process(context, command, environment, log_path, description):
         )
 
 
+def build_native_helper_environment(environment):
+    return {
+        name: value
+        for name, value in environment.items()
+        if name in NATIVE_HELPER_ENVIRONMENT_NAMES
+    }
+
+
 def load_dependency_catalog(path=None):
     catalog_path = (
         Path(path).expanduser()
@@ -1783,6 +1805,7 @@ def execute_container_action(context, runtime_root, fields, log_path):
     )
     if operation == "open-c-drive":
         command = ["/usr/bin/open", context["prefix"] / "drive_c"]
+        environment = build_native_helper_environment(environment)
     elif operation == "install-application":
         selected = choose_executable_file()
         command = (
@@ -1850,10 +1873,18 @@ def action_job(args):
                 exit_code, result = execute_dependency_action(
                     context, runtime_root, fields, paths["log"]
                 )
+                if exit_code != 0:
+                    raise RuntimeErrorWithContext(
+                        f"dependency installation exited with {exit_code}"
+                    )
             elif action == "container":
                 exit_code, result = execute_container_action(
                     context, runtime_root, fields, paths["log"]
                 )
+                if exit_code != 0:
+                    raise RuntimeErrorWithContext(
+                        f"container operation exited with {exit_code}"
+                    )
             else:
                 exit_code, result = execute_choose_file_action(context)
         write_job_status(
