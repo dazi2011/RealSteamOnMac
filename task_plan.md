@@ -244,6 +244,7 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Scope forced Wine cleanup to People Playground | Its .NET helper confuses Wine PID 312 with persistent macOS PID 312; a global cleanup policy could break launcher-style games. |
 | Treat raw GPTK/DXMT/DXVK/Wine directories as validated catalog inputs | Users can install standard vendor layouts directly; the runtime manager will compose them with an immutable base package instead of requiring project-private wrapper files or mutating the source tree. |
 | Keep native compatibility selection stable through macOS detail refreshes | Steam remains the control owner; a data-only fallback stabilizes checkbox/dropdown state. Do not call native persistence for project tools until the macOS backend actually registers them, because the current API ignores them and can break startup. |
+| Resize and scale only Steam's native controller configurator | Identify the locale-independent `SP Controller Configurator_*` popup, use `SteamClient.Window` for native sizing, and apply bounded document zoom without adding or replacing UI. |
 
 ## Errors Encountered
 

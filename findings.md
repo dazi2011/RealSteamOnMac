@@ -1057,6 +1057,12 @@
   breaking the main Steam window. The native React checkbox and dropdown must
   therefore use stable project selection data until backend registration is
   implemented without the Cloud regression.
+- Steam's native controller configurator is a locale-independent popup named
+  `SP Controller Configurator_uid0`. Steam itself exposes `SetMinSize`,
+  `ResizeTo`, `MoveTo`, and monitor-dimension APIs in that window. Its stock
+  module only guarantees an `800x650` minimum. On the current `1920x977`
+  usable display, a native `1440x860` window plus `112%` document zoom
+  produced no element overflow or clipping.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

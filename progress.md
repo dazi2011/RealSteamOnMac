@@ -1415,3 +1415,18 @@
   unresponsive. Repeating the same navigation with the project's one-shot
   WebSocket evaluator completed successfully and left CDP healthy. Continue
   live Steam UI verification with short, immediately closed CDP sessions.
+
+## 2026-06-11 Native Controller Readability
+
+- Confirmed the RTF report refers to Steam's separate native controller
+  configurator, not a project-owned page. Its popup name is
+  `SP Controller Configurator_uid0`, its initial content area was
+  `1280x800`, and its smallest native labels were 12 CSS pixels.
+- Steam exposes native `SetMinSize`, `ResizeTo`, `MoveTo`,
+  `GetWindowDimensions`, and `GetDefaultMonitorDimensions` methods in this
+  popup. A live prototype resized it to `1440x860`, centered it, and applied
+  `112%` document zoom. The final DOM reported zero overflowing elements.
+- Added a locale-independent, controller-popup-only readability path. It uses
+  Steam's window APIs, adapts to the usable monitor bounds, never shrinks a
+  larger user window, and adds no overlay, replacement page, or project
+  control.

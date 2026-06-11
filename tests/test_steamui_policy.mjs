@@ -4,6 +4,7 @@ import test from "node:test";
 
 const require = createRequire(import.meta.url);
 const {
+  applyNativeControllerReadability,
   buildActionUrl,
   buildDependencyPayload,
   buildContainerActionPayload,
@@ -13,6 +14,8 @@ const {
   buildControlPayload,
   buildControlUrl,
   buildRunCommandPayload,
+  controllerReadabilityTarget,
+  controllerReadabilityZoom,
   applyToolCapabilities,
   chooseNativeRepairAction,
   compatToolForRenderer,
@@ -24,6 +27,7 @@ const {
   getManagedTargetStatus,
   getSteamUIDocuments,
   isCompatibilityPropertiesDocument,
+  isNativeControllerConfiguratorDocument,
   isOwnedWindowsOnlyGame,
   mergeCompatTools,
   normalizeControlConfig,
@@ -103,6 +107,107 @@ test("discovers Steam popup documents tracked by the shared context", () => {
       },
     }),
     [mainDocument, propertiesDocument],
+  );
+});
+
+test("uses Steam's native controller window APIs for readable sizing", async () => {
+  const calls = [];
+  const style = new Map();
+  const documentObject = {
+    defaultView: {
+      name: "SP Controller Configurator_uid0",
+      innerWidth: 800,
+      innerHeight: 650,
+      SteamClient: {
+        Window: {
+          async GetDefaultMonitorDimensions() {
+            return {
+              nUsableLeft: 0,
+              nUsableTop: 30,
+              nUsableWidth: 1920,
+              nUsableHeight: 977,
+            };
+          },
+          async GetWindowDimensions() {
+            return {
+              x: 340,
+              y: 138,
+              width: 1280,
+              height: 800,
+            };
+          },
+          async SetMinSize(width, height) {
+            calls.push(["min", width, height]);
+          },
+          async ResizeTo(width, height, scaled) {
+            calls.push(["resize", width, height, scaled]);
+          },
+          async MoveTo(x, y, scaled) {
+            calls.push(["move", x, y, scaled]);
+          },
+        },
+      },
+    },
+    documentElement: {
+      dataset: {},
+      style: {
+        setProperty(name, value, priority) {
+          style.set(name, [value, priority]);
+        },
+      },
+    },
+  };
+
+  assert.equal(
+    isNativeControllerConfiguratorDocument(documentObject),
+    true,
+  );
+  assert.deepEqual(
+    controllerReadabilityTarget({
+      nUsableLeft: 0,
+      nUsableTop: 30,
+      nUsableWidth: 1920,
+      nUsableHeight: 977,
+    }),
+    {
+      left: 0,
+      top: 30,
+      usableWidth: 1920,
+      usableHeight: 977,
+      width: 1440,
+      height: 860,
+      minWidth: 1100,
+      minHeight: 700,
+    },
+  );
+  assert.equal(controllerReadabilityZoom(1440, 860), 1.12);
+  assert.equal(
+    await applyNativeControllerReadability(documentObject),
+    "resized",
+  );
+  assert.deepEqual(calls, [
+    ["min", 1100, 700],
+    ["resize", 1440, 860, false],
+    ["move", 260, 108, false],
+  ]);
+  assert.deepEqual(style.get("zoom"), ["1.12", "important"]);
+  assert.equal(
+    documentObject.documentElement.dataset
+      .realsteamonmacControllerReadability,
+    "true",
+  );
+  assert.equal(
+    await applyNativeControllerReadability(documentObject),
+    "unchanged",
+  );
+  assert.equal(calls.length, 3);
+
+  assert.equal(
+    isNativeControllerConfiguratorDocument({
+      defaultView: { name: "People Playground" },
+      documentElement: { style: {} },
+    }),
+    false,
   );
 });
 
