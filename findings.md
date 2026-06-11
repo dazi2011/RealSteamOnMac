@@ -1191,6 +1191,12 @@
   `rgOptions` and `selectedOption` props. Live inspection of People Playground
   returned the exact 14 reviewed dependency IDs while the document contained
   zero legacy panels and zero project modal layers.
+- Steam can retain multiple channel/variant manifests simultaneously. On the
+  current public-beta installation, `signed-2` build `1780965181` is the active
+  variant while `signed` build `1781139754` is downloaded but not selected.
+  The matching `.installed` marker plus Steam's `package/beta` file is required
+  to identify the active channel and variant; choosing the highest manifest
+  version would report the wrong running build.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

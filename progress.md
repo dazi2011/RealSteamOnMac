@@ -1692,3 +1692,26 @@
   contract.
 - Verification passed the probe shell contract, both probe syntax checks,
   `git diff --check`, and 79 focused SteamUI/CDP JavaScript tests.
+
+## 2026-06-11 Stable And Beta Steam Manifest Discovery
+
+- Reproduced the regular-Steam installer failure in the contract fixture: the
+  one-click installer required
+  `steam_client_publicbeta_signed-2_osx.manifest` even when no beta channel was
+  selected.
+- Replaced the hardcoded public-beta name with bounded discovery from Steam's
+  own `package/beta` file. The installer accepts only a short lowercase channel
+  identifier and checks `signed-2`, `signed`, then base variants in that order.
+- A candidate manifest is active only when the matching `.installed` marker
+  exists. This prevents a newer downloaded manifest from being mistaken for
+  the currently running build.
+- Installation state now records `steam_channel`; existing state without that
+  field remains readable, while a later stable/beta channel change requires a
+  new clean rollback backup.
+- Public-beta and stable fixtures both selected build `1780965181`. The beta
+  fixture also contained an inactive `1781139754` manifest and correctly
+  ignored it.
+- Read-only validation against the live package selected channel `publicbeta`,
+  manifest `steam_client_publicbeta_signed-2_osx.manifest`, and running build
+  `1780965181`. Shell syntax, whitespace validation, and the full one-click
+  installer contract passed.

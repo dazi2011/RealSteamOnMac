@@ -192,6 +192,12 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   project modal layers, and no native render error. The read-only acceptance
   probe now derives dropdown options from Steam's React props instead of
   looking for the removed handcrafted panel.
+- **Steam channel checkpoint:** the one-click installer no longer assumes a
+  public-beta manifest name. It reads Steam's bounded `package/beta` channel,
+  selects the active `signed-2` manifest only when its matching `.installed`
+  marker exists, records `stable` or the beta channel in installation state,
+  and refuses a channel change against a clean backup. Stable and public-beta
+  fixtures pass, including a newer downloaded but inactive manifest.
 - **Current checkpoint:** verified Steam launch descriptors, managed
   missing-target redirection, and guarded Rockstar recovery have passed live
   acceptance. RDR2 now reaches Rockstar Steam min-mode but not `RDR2.exe`.

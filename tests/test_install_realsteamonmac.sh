@@ -21,12 +21,22 @@ mkdir -p \
     "$BACKUP" \
     "$TMP/bin"
 : >"$RUNTIME_APP/Contents/MacOS/steam_osx"
+printf 'publicbeta\n' \
+    >"$RUNTIME_APP/Contents/MacOS/package/beta"
 cat >"$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.manifest" <<'EOF'
 "osx"
 {
     "version" "1780965181"
 }
 EOF
+: >"$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.installed"
+cat >"$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed_osx.manifest" <<'EOF'
+"osx"
+{
+    "version" "1781139754"
+}
+EOF
+: >"$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed_osx.installed"
 : >"$GPTK"
 
 make_recorder() {
@@ -138,6 +148,46 @@ printf '%s\n' "$injection_call" |
     grep -Fq "	--steam-app	$STEAM_APP"
 test -f "$SUPPORT/install-state.json"
 grep -q '"steam_build": "1780965181"' "$SUPPORT/install-state.json"
+grep -q '"steam_channel": "publicbeta"' "$SUPPORT/install-state.json"
+
+: >"$LOG"
+STABLE_SUPPORT="$TMP/stable-support"
+STABLE_RUNTIME_ROOT="$STABLE_SUPPORT/runtimes"
+rm "$RUNTIME_APP/Contents/MacOS/package/beta"
+mv \
+    "$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.manifest" \
+    "$RUNTIME_APP/Contents/MacOS/package/steam_client_signed-2_osx.manifest"
+mv \
+    "$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.installed" \
+    "$RUNTIME_APP/Contents/MacOS/package/steam_client_signed-2_osx.installed"
+env \
+    REALSTEAMONMAC_HOOK_BUILDER="$TMP/bin/hook" \
+    REALSTEAMONMAC_LAUNCHER_BUILDER="$TMP/bin/launcher" \
+    REALSTEAMONMAC_BRIDGE_BUILDER="$TMP/bin/bridge" \
+    REALSTEAMONMAC_RUNTIME_INSTALLER="$TMP/bin/runtime" \
+    REALSTEAMONMAC_INJECTION_INSTALLER="$TMP/bin/injection" \
+    REALSTEAMONMAC_BACKUP_BUILDER="$TMP/bin/backup" \
+    "$ROOT/script/install_realsteamonmac.sh" \
+        --clean-backup "$BACKUP" \
+        --without-gptk \
+        --steam-app "$STEAM_APP" \
+        --runtime-app "$RUNTIME_APP" \
+        --support-root "$STABLE_SUPPORT" \
+        --compat-tools-root "$COMPAT_TOOLS" \
+        --runtime-root "$STABLE_RUNTIME_ROOT" \
+        --cache-dir "$CACHE"
+grep -q '"steam_build": "1780965181"' \
+    "$STABLE_SUPPORT/install-state.json"
+grep -q '"steam_channel": "stable"' \
+    "$STABLE_SUPPORT/install-state.json"
+mv \
+    "$RUNTIME_APP/Contents/MacOS/package/steam_client_signed-2_osx.manifest" \
+    "$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.manifest"
+mv \
+    "$RUNTIME_APP/Contents/MacOS/package/steam_client_signed-2_osx.installed" \
+    "$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.installed"
+printf 'publicbeta\n' \
+    >"$RUNTIME_APP/Contents/MacOS/package/beta"
 
 : >"$LOG"
 sed -i '' 's/1780965181/1780705203/' \
