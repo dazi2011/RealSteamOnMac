@@ -1098,3 +1098,7 @@
   - Hogwarts requested entry `0` to default entry `13` /
     `HogwartsLegacy.exe`;
   - People Playground and RDR2 remained on entry `0`.
+- Added runtime integration RED coverage with a verified v41 fixture. The old
+  runtime failed exactly at the intended boundaries: no working directory or
+  launch-entry metadata, no requested-target input, and directory-wide EXE
+  guessing when the appinfo target was missing.

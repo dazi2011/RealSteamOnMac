@@ -1,7 +1,9 @@
 import importlib.util
+import hashlib
 import io
 import json
 import os
+import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -37,6 +39,9 @@ class RuntimeManagerTests(unittest.TestCase):
                 "REALSTEAMONMAC_DEPENDENCY_CACHE": str(
                     self.root / "dependency-cache"
                 ),
+                "REALSTEAMONMAC_APPINFO_PATH": str(
+                    self.root / "appinfo.vdf"
+                ),
             },
         )
         self.environment.start()
@@ -45,6 +50,15 @@ class RuntimeManagerTests(unittest.TestCase):
         self.game.mkdir(parents=True)
         self.executable = self.game / "Fixture.exe"
         self.executable.write_bytes(b"MZfixture")
+        self.write_appinfo(
+            {
+                "0": {
+                    "executable": "Fixture.exe",
+                    "type": "default",
+                    "config": {"oslist": "windows"},
+                }
+            }
+        )
         (self.steamapps / "appmanifest_1118200.acf").write_text(
             '"AppState"\n{\n'
             '\t"appid"\t\t"1118200"\n'
@@ -182,6 +196,71 @@ class RuntimeManagerTests(unittest.TestCase):
     def context(self):
         return runtime.resolve_context(self.executable, "1118200")
 
+    def write_appinfo(self, launch):
+        value = {
+            "appinfo": {
+                "config": {
+                    "installdir": "Fixture Game",
+                    "launch": launch,
+                }
+            }
+        }
+        keys = []
+        seen = set()
+
+        def collect(node):
+            for key, child in node.items():
+                if key not in seen:
+                    seen.add(key)
+                    keys.append(key)
+                if isinstance(child, dict):
+                    collect(child)
+
+        collect(value)
+        indices = {key: index for index, key in enumerate(keys)}
+
+        def encode(node):
+            payload = bytearray()
+            for key, child in node.items():
+                if isinstance(child, dict):
+                    payload.append(0)
+                    payload.extend(struct.pack("<i", indices[key]))
+                    payload.extend(encode(child))
+                elif isinstance(child, str):
+                    payload.append(1)
+                    payload.extend(struct.pack("<i", indices[key]))
+                    payload.extend(child.encode("utf-8") + b"\x00")
+                elif isinstance(child, int):
+                    payload.append(2)
+                    payload.extend(struct.pack("<ii", indices[key], child))
+                else:
+                    raise TypeError(f"unsupported appinfo fixture: {child!r}")
+            payload.append(8)
+            return payload
+
+        binary_vdf = encode(value)
+        metadata = (
+            struct.pack("<IIQ", 2, 1_700_000_000, 0)
+            + (b"\x11" * 20)
+            + struct.pack("<I", 123)
+            + hashlib.sha1(binary_vdf).digest()
+        )
+        entry = (
+            struct.pack("<II", 1118200, len(metadata) + len(binary_vdf))
+            + metadata
+            + binary_vdf
+            + struct.pack("<I", 0)
+        )
+        table_offset = 16 + len(entry)
+        table = bytearray(struct.pack("<I", len(keys)))
+        for key in keys:
+            table.extend(key.encode("utf-8") + b"\x00")
+        (self.root / "appinfo.vdf").write_bytes(
+            struct.pack("<IIq", 0x07564429, 1, table_offset)
+            + entry
+            + table
+        )
+
     def write_compat_tool(
         self,
         tool,
@@ -252,6 +331,9 @@ class RuntimeManagerTests(unittest.TestCase):
         context = runtime.resolve_app_context("1118200")
         self.assertEqual(context["executable"], self.executable.resolve())
         self.assertEqual(context["install_path"], self.game.resolve())
+        self.assertEqual(context["working_directory"], self.game.resolve())
+        self.assertEqual(context["launch_entry_id"], "0")
+        self.assertEqual(context["launch_arguments"], "")
         self.assertEqual(
             context["compat_data"],
             self.steamapps.resolve() / "compatdata" / "1118200",
@@ -324,17 +406,74 @@ class RuntimeManagerTests(unittest.TestCase):
         nested.parent.mkdir()
         self.executable.unlink()
         nested.write_bytes(b"MZnested-fixture")
+        self.write_appinfo(
+            {
+                "0": {
+                    "executable": "bin/Fixture.exe",
+                    "workingdir": "bin",
+                    "type": "default",
+                    "config": {"oslist": "windows"},
+                }
+            }
+        )
 
         context = runtime.resolve_app_context("1118200")
 
         self.assertEqual(context["executable"], nested.resolve())
         self.assertEqual(context["install_path"], self.game.resolve())
+        self.assertEqual(
+            context["working_directory"], nested.parent.resolve()
+        )
         sibling = self.game / "Redist.exe"
         sibling.write_bytes(b"MZredist")
         self.assertEqual(
             runtime.resolve_command_target(context, "Redist.exe"),
             sibling.resolve(),
         )
+
+    def test_stale_steam_target_falls_back_to_verified_default(self):
+        self.write_appinfo(
+            {
+                "0": {
+                    "executable": "Missing-Test.exe",
+                    "arguments": "-development",
+                    "type": "option1",
+                    "config": {"oslist": "windows"},
+                },
+                "1": {
+                    "executable": "Fixture.exe",
+                    "arguments": "-release",
+                    "type": "default",
+                    "config": {"oslist": "windows"},
+                },
+            }
+        )
+
+        context = runtime.resolve_app_context(
+            "1118200",
+            requested_target=self.game / "Missing-Test.exe",
+        )
+
+        self.assertEqual(context["executable"], self.executable.resolve())
+        self.assertEqual(context["launch_entry_id"], "1")
+        self.assertEqual(context["launch_arguments"], "-release")
+
+    def test_app_context_does_not_guess_an_unrelated_executable(self):
+        self.write_appinfo(
+            {
+                "0": {
+                    "executable": "Missing.exe",
+                    "type": "default",
+                    "config": {"oslist": "windows"},
+                }
+            }
+        )
+
+        with self.assertRaisesRegex(
+            runtime.RuntimeErrorWithContext,
+            "no valid Windows launch entry",
+        ):
+            runtime.resolve_app_context("1118200")
 
     def test_action_payload_is_fixed_and_rejects_duplicates(self):
         self.assertEqual(
