@@ -28,6 +28,7 @@ fi
 
 INSTALLER="$PAYLOAD_ROOT/script/install_realsteamonmac.sh"
 BRIDGE="$PAYLOAD_ROOT/prebuilt/lsteamclient-proton11b5-macos2"
+GPTK_BRIDGE="$PAYLOAD_ROOT/prebuilt/lsteamclient-proton7-gptk7.7-macos1"
 VERIFIER="$PAYLOAD_ROOT/prebuilt/realsteamonmac-verify-signature"
 [ -x "$INSTALLER" ] || {
     echo "packaged installer is missing" >&2
@@ -35,6 +36,14 @@ VERIFIER="$PAYLOAD_ROOT/prebuilt/realsteamonmac-verify-signature"
 }
 [ -f "$BRIDGE/x86_64-windows/lsteamclient.dll" ] || {
     echo "packaged Steamworks bridge is incomplete" >&2
+    exit 1
+}
+[ -f "$GPTK_BRIDGE/x86_64-windows/lsteamclient.dll" ] || {
+    echo "packaged GPTK Steamworks bridge is incomplete" >&2
+    exit 1
+}
+[ -f "$GPTK_BRIDGE/x86_64-unix/lsteamclient.dll.so" ] || {
+    echo "packaged GPTK Steamworks bridge is incomplete" >&2
     exit 1
 }
 [ -x "$VERIFIER" ] || {
@@ -65,7 +74,10 @@ set -- \
     --backup-root "$BACKUP_ROOT" \
     --steamworks-bridge "$BRIDGE"
 if [ -f "$GPTK_DMG" ]; then
-    set -- "$@" --gptk-dmg "$GPTK_DMG"
+    set -- \
+        "$@" \
+        --gptk-dmg "$GPTK_DMG" \
+        --gptk-steamworks-bridge "$GPTK_BRIDGE"
 else
     set -- "$@" --without-gptk
 fi

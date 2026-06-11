@@ -1255,3 +1255,18 @@
 - Static builder contract, shell syntax, patch applicability, artifact format,
   symbol, linkage, minimum-version, checksum, idempotence, and formal live
   interface smoke checks all passed.
+- Extended the runtime package installer with a separate
+  `--gptk-steamworks-bridge` input and a new immutable package suffix. Wine 11
+  bridge files are installed only into DXMT, DXVK, and WineD3D; the Wine 7.7
+  bridge is installed only into GPTK with its required
+  `lsteamclient.dll.so` Unix companion name.
+- Runtime manifests now emit renderer-specific bridge variants for all four
+  renderers. The existing runtime reader retains legacy-manifest support.
+- The one-click installer builds both pinned bridges for GPTK installs and
+  only the Wine 11 bridge for open installs. Release PKGs embed both formal
+  payloads, while `postinstall` forwards the GPTK payload only when the user
+  has supplied the GPTK DMG.
+- Installer, runtime-package, and release-packaging contract tests passed.
+  The release test built and inspected temporary install/uninstall PKGs,
+  verified both package hashes, and validated the signed release manifest.
+  All 47 runtime-manager tests and whitespace/shell syntax checks also passed.

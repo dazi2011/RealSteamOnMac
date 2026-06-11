@@ -14,7 +14,9 @@ mkdir -p \
     "$PAYLOAD/script" \
     "$PAYLOAD/config" \
     "$PAYLOAD/prebuilt/lsteamclient-proton11b5-macos2/x86_64-windows" \
-    "$PAYLOAD/prebuilt/lsteamclient-proton11b5-macos2/x86_64-unix"
+    "$PAYLOAD/prebuilt/lsteamclient-proton11b5-macos2/x86_64-unix" \
+    "$PAYLOAD/prebuilt/lsteamclient-proton7-gptk7.7-macos1/x86_64-windows" \
+    "$PAYLOAD/prebuilt/lsteamclient-proton7-gptk7.7-macos1/x86_64-unix"
 
 cp "$ROOT/script/check_for_updates.py" "$PAYLOAD/script/check_for_updates.py"
 cp "$ROOT/config/release-public-key.hex" \
@@ -24,6 +26,10 @@ printf 'bridge\n' \
     >"$PAYLOAD/prebuilt/lsteamclient-proton11b5-macos2/x86_64-windows/lsteamclient.dll"
 printf 'bridge\n' \
     >"$PAYLOAD/prebuilt/lsteamclient-proton11b5-macos2/x86_64-unix/lsteamclient.so"
+printf 'gptk bridge\n' \
+    >"$PAYLOAD/prebuilt/lsteamclient-proton7-gptk7.7-macos1/x86_64-windows/lsteamclient.dll"
+printf 'gptk bridge\n' \
+    >"$PAYLOAD/prebuilt/lsteamclient-proton7-gptk7.7-macos1/x86_64-unix/lsteamclient.dll.so"
 cp /usr/bin/true \
     "$PAYLOAD/prebuilt/realsteamonmac-verify-signature"
 
@@ -57,10 +63,26 @@ grep -q -- '--quit-steam' "$CALLS"
 grep -q -- '--without-gptk' "$CALLS"
 grep -q -- "--steamworks-bridge $PAYLOAD/prebuilt/lsteamclient-proton11b5-macos2" \
     "$CALLS"
+if grep -q -- '--gptk-steamworks-bridge' "$CALLS"; then
+    echo "open runtime install must not receive the GPTK bridge" >&2
+    exit 1
+fi
 SUPPORT="$HOME_ROOT/Library/Application Support/RealSteamOnMac"
 test -x "$SUPPORT/bin/check-for-updates"
 test -x "$SUPPORT/bin/verify-release-signature"
 test -f "$SUPPORT/release-public-key.hex"
+
+mkdir -p "$HOME_ROOT/Downloads"
+: >"$HOME_ROOT/Downloads/Game_Porting_Toolkit_3.0.dmg"
+env \
+    REALSTEAMONMAC_PACKAGE_PAYLOAD_ROOT="$PAYLOAD" \
+    REALSTEAMONMAC_PACKAGE_USER="$USER_NAME" \
+    REALSTEAMONMAC_PACKAGE_HOME="$HOME_ROOT" \
+    REALSTEAMONMAC_PACKAGE_RUNNER="$TMP_ROOT/runner" \
+    "$ROOT/packaging/install/scripts/postinstall"
+grep -q -- '--gptk-dmg' "$CALLS"
+grep -q -- "--gptk-steamworks-bridge $PAYLOAD/prebuilt/lsteamclient-proton7-gptk7.7-macos1" \
+    "$CALLS"
 
 rm -rf "$PAYLOAD"
 mkdir -p "$PAYLOAD/script"
@@ -85,6 +107,14 @@ FAKE_BRIDGE="$TMP_ROOT/bridge"
 mkdir -p "$FAKE_BRIDGE/x86_64-windows" "$FAKE_BRIDGE/x86_64-unix"
 printf 'fixture\n' >"$FAKE_BRIDGE/x86_64-windows/lsteamclient.dll"
 printf 'fixture\n' >"$FAKE_BRIDGE/x86_64-unix/lsteamclient.so"
+FAKE_GPTK_BRIDGE="$TMP_ROOT/gptk-bridge"
+mkdir -p \
+    "$FAKE_GPTK_BRIDGE/x86_64-windows" \
+    "$FAKE_GPTK_BRIDGE/x86_64-unix"
+printf 'fixture\n' \
+    >"$FAKE_GPTK_BRIDGE/x86_64-windows/lsteamclient.dll"
+printf 'fixture\n' \
+    >"$FAKE_GPTK_BRIDGE/x86_64-unix/lsteamclient.dll.so"
 FAKE_DXMT_COMPAT="$TMP_ROOT/dxmt-winemac-compat"
 mkdir -p "$FAKE_DXMT_COMPAT"
 printf 'fixture winemac\n' >"$FAKE_DXMT_COMPAT/winemac.so"
@@ -112,6 +142,7 @@ env REALSTEAMONMAC_ALLOW_TEST_FIXTURES=1 \
     "$ROOT/script/build_release_pkgs.sh" \
         --output "$DIST" \
         --steamworks-bridge "$FAKE_BRIDGE" \
+        --gptk-steamworks-bridge "$FAKE_GPTK_BRIDGE" \
         --dxmt-winemac-compat "$FAKE_DXMT_COMPAT" >/dev/null
 
 for package in \

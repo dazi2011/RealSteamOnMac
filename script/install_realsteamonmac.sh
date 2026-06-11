@@ -5,6 +5,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 HOOK_BUILDER=${REALSTEAMONMAC_HOOK_BUILDER:-"$ROOT/script/build_compat_gate_hook.sh"}
 LAUNCHER_BUILDER=${REALSTEAMONMAC_LAUNCHER_BUILDER:-"$ROOT/script/build_steam_launcher.sh"}
 BRIDGE_BUILDER=${REALSTEAMONMAC_BRIDGE_BUILDER:-"$ROOT/script/build_lsteamclient_bridge.sh"}
+GPTK_BRIDGE_BUILDER=${REALSTEAMONMAC_GPTK_BRIDGE_BUILDER:-"$ROOT/script/build_gptk_lsteamclient_bridge.sh"}
 RUNTIME_INSTALLER=${REALSTEAMONMAC_RUNTIME_INSTALLER:-"$ROOT/script/install_runtime_package.sh"}
 INJECTION_INSTALLER=${REALSTEAMONMAC_INJECTION_INSTALLER:-"$ROOT/script/install_steam_injection.sh"}
 BACKUP_BUILDER=${REALSTEAMONMAC_BACKUP_BUILDER:-"$ROOT/script/backup_steam.sh"}
@@ -24,6 +25,7 @@ GPTK_REDIST=""
 WITHOUT_GPTK=false
 QUIT_STEAM=false
 STEAMWORKS_BRIDGE=""
+GPTK_STEAMWORKS_BRIDGE=""
 
 usage() {
     cat >&2 <<EOF
@@ -39,6 +41,7 @@ options:
   --runtime-root DIRECTORY
   --cache-dir DIRECTORY
   --steamworks-bridge DIRECTORY
+  --gptk-steamworks-bridge DIRECTORY
 
 If no GPTK option is supplied, the installer uses
 ~/Downloads/Game_Porting_Toolkit_3.0.dmg when present and otherwise installs
@@ -111,6 +114,11 @@ while [ "$#" -gt 0 ]; do
         --steamworks-bridge)
             [ "$#" -ge 2 ] || usage
             STEAMWORKS_BRIDGE=$2
+            shift 2
+            ;;
+        --gptk-steamworks-bridge)
+            [ "$#" -ge 2 ] || usage
+            GPTK_STEAMWORKS_BRIDGE=$2
             shift 2
             ;;
         *)
@@ -287,6 +295,12 @@ for executable in \
         exit 1
     }
 done
+if [ "$WITHOUT_GPTK" = false ] &&
+    [ -z "$GPTK_STEAMWORKS_BRIDGE" ] &&
+    [ ! -x "$GPTK_BRIDGE_BUILDER" ]; then
+    echo "required GPTK bridge builder is not executable: $GPTK_BRIDGE_BUILDER" >&2
+    exit 1
+fi
 
 if [ -z "$CLEAN_BACKUP" ]; then
     STAMP=$(date -u '+%Y%m%dT%H%M%SZ')
@@ -304,6 +318,11 @@ if [ -z "$STEAMWORKS_BRIDGE" ]; then
     STEAMWORKS_BRIDGE="$SUPPORT_ROOT/build/lsteamclient-proton11b5-macos2"
     "$BRIDGE_BUILDER" --output "$STEAMWORKS_BRIDGE"
 fi
+if [ "$WITHOUT_GPTK" = false ] &&
+    [ -z "$GPTK_STEAMWORKS_BRIDGE" ]; then
+    GPTK_STEAMWORKS_BRIDGE="$SUPPORT_ROOT/build/lsteamclient-proton7-gptk7.7-macos1"
+    "$GPTK_BRIDGE_BUILDER" --output "$GPTK_STEAMWORKS_BRIDGE"
+fi
 
 if [ "$WITHOUT_GPTK" = true ]; then
     "$RUNTIME_INSTALLER" \
@@ -316,6 +335,7 @@ elif [ -n "$GPTK_DMG" ]; then
     "$RUNTIME_INSTALLER" \
         --gptk-dmg "$GPTK_DMG" \
         --steamworks-bridge "$STEAMWORKS_BRIDGE" \
+        --gptk-steamworks-bridge "$GPTK_STEAMWORKS_BRIDGE" \
         --runtime-root "$RUNTIME_ROOT" \
         --support-root "$SUPPORT_ROOT" \
         --cache-dir "$CACHE_DIR"
@@ -323,6 +343,7 @@ else
     "$RUNTIME_INSTALLER" \
         --gptk-redist "$GPTK_REDIST" \
         --steamworks-bridge "$STEAMWORKS_BRIDGE" \
+        --gptk-steamworks-bridge "$GPTK_STEAMWORKS_BRIDGE" \
         --runtime-root "$RUNTIME_ROOT" \
         --support-root "$SUPPORT_ROOT" \
         --cache-dir "$CACHE_DIR"

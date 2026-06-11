@@ -13,13 +13,16 @@ GPTK_DMG=""
 GPTK_REDIST=""
 WITHOUT_GPTK=false
 STEAMWORKS_BRIDGE=""
+GPTK_STEAMWORKS_BRIDGE=""
 DXMT_WINEMAC_COMPAT="$ROOT/artifacts/dxmt-winemac-compat"
 
 FULL_PACKAGE_ID="gptk3.0-3-wine11.10-dxmt0.80-dxmtmac1-dxvkmacos1.10.3"
 OPEN_PACKAGE_ID="wine11.10-dxmt0.80-dxmtmac1-dxvkmacos1.10.3"
 PACKAGE_ID="$FULL_PACKAGE_ID"
 STEAMWORKS_PACKAGE_SUFFIX="-lsteamclient-proton11b5-macos2"
+GPTK_STEAMWORKS_PACKAGE_SUFFIX="-lsteamclient-proton7-gptk7.7-macos1"
 STEAMWORKS_PROTON_COMMIT="25880e88befb52c5aa7ff162c5b00b6b8825e494"
+GPTK_STEAMWORKS_PROTON_COMMIT="c5ad95671cecaf03c4a92500de84b542add585d1"
 DXMT_WINE_COMMIT="2cac6ccf33c0807f374dc96f5a20e35a2da86157"
 DXMT_WINE_STAGING_COMMIT="f45e84d7a01a52d379e4003f03800c13875c69e9"
 
@@ -41,8 +44,8 @@ DXVK_SHA256="810b1e5caf8ce975b784fae866a130ad23fa0ea233b0e5609cbc4a45f3ef6f00"
 
 usage() {
     cat >&2 <<EOF
-usage: $0 --gptk-dmg PATH [--dxmt-winemac-compat DIRECTORY] [--steamworks-bridge DIRECTORY] [--runtime-root DIRECTORY] [--support-root DIRECTORY] [--cache-dir DIRECTORY]
-       $0 --gptk-redist DIRECTORY [--dxmt-winemac-compat DIRECTORY] [--steamworks-bridge DIRECTORY] [--runtime-root DIRECTORY] [--support-root DIRECTORY] [--cache-dir DIRECTORY]
+usage: $0 --gptk-dmg PATH [--dxmt-winemac-compat DIRECTORY] [--steamworks-bridge DIRECTORY] [--gptk-steamworks-bridge DIRECTORY] [--runtime-root DIRECTORY] [--support-root DIRECTORY] [--cache-dir DIRECTORY]
+       $0 --gptk-redist DIRECTORY [--dxmt-winemac-compat DIRECTORY] [--steamworks-bridge DIRECTORY] [--gptk-steamworks-bridge DIRECTORY] [--runtime-root DIRECTORY] [--support-root DIRECTORY] [--cache-dir DIRECTORY]
        $0 --without-gptk [--dxmt-winemac-compat DIRECTORY] [--steamworks-bridge DIRECTORY] [--runtime-root DIRECTORY] [--support-root DIRECTORY] [--cache-dir DIRECTORY]
 EOF
     exit 2
@@ -67,6 +70,11 @@ while [ "$#" -gt 0 ]; do
         --steamworks-bridge)
             [ "$#" -ge 2 ] || usage
             STEAMWORKS_BRIDGE=$2
+            shift 2
+            ;;
+        --gptk-steamworks-bridge)
+            [ "$#" -ge 2 ] || usage
+            GPTK_STEAMWORKS_BRIDGE=$2
             shift 2
             ;;
         --dxmt-winemac-compat)
@@ -108,6 +116,7 @@ if [ "$WITHOUT_GPTK" = false ] &&
 fi
 if [ "$WITHOUT_GPTK" = true ]; then
     PACKAGE_ID="$OPEN_PACKAGE_ID"
+    [ -z "$GPTK_STEAMWORKS_BRIDGE" ] || usage
 fi
 test -f "$RUNTIME_SOURCE"
 test -f "$DEPENDENCY_CATALOG_SOURCE"
@@ -128,6 +137,15 @@ if [ -n "$STEAMWORKS_BRIDGE" ]; then
     file "$STEAMWORKS_BRIDGE/x86_64-unix/lsteamclient.so" |
         grep -q 'Mach-O 64-bit.*x86_64'
     PACKAGE_ID="${PACKAGE_ID}${STEAMWORKS_PACKAGE_SUFFIX}"
+fi
+if [ -n "$GPTK_STEAMWORKS_BRIDGE" ]; then
+    test -f "$GPTK_STEAMWORKS_BRIDGE/x86_64-windows/lsteamclient.dll"
+    test -f "$GPTK_STEAMWORKS_BRIDGE/x86_64-unix/lsteamclient.dll.so"
+    file "$GPTK_STEAMWORKS_BRIDGE/x86_64-windows/lsteamclient.dll" |
+        grep -q 'PE32+.*x86-64'
+    file "$GPTK_STEAMWORKS_BRIDGE/x86_64-unix/lsteamclient.dll.so" |
+        grep -q 'Mach-O 64-bit.*x86_64'
+    PACKAGE_ID="${PACKAGE_ID}${GPTK_STEAMWORKS_PACKAGE_SUFFIX}"
 fi
 if [ ! -f "$DXMT_WINEMAC_COMPAT/winemac.so" ] ||
     [ ! -f "$DXMT_WINEMAC_COMPAT/librealsteamonmac_dxmt_macdrv_shim.dylib" ] ||
@@ -336,18 +354,31 @@ cp "$DXMT_WINEMAC_COMPAT/build-info.json" \
 
 if [ -n "$STEAMWORKS_BRIDGE" ]; then
     mkdir -p \
-        "$PACKAGE/steamworks/x86_64-windows" \
-        "$PACKAGE/steamworks/x86_64-unix"
+        "$PACKAGE/steamworks/wine11/x86_64-windows" \
+        "$PACKAGE/steamworks/wine11/x86_64-unix"
     cp "$STEAMWORKS_BRIDGE/x86_64-windows/lsteamclient.dll" \
-        "$PACKAGE/steamworks/x86_64-windows/lsteamclient.dll"
+        "$PACKAGE/steamworks/wine11/x86_64-windows/lsteamclient.dll"
     cp "$STEAMWORKS_BRIDGE/x86_64-unix/lsteamclient.so" \
-        "$PACKAGE/steamworks/x86_64-unix/lsteamclient.so"
+        "$PACKAGE/steamworks/wine11/x86_64-unix/lsteamclient.so"
     for renderer in dxmt dxvk wined3d; do
         cp "$STEAMWORKS_BRIDGE/x86_64-windows/lsteamclient.dll" \
             "$PACKAGE/wine/$renderer/lib/wine/x86_64-windows/lsteamclient.dll"
         cp "$STEAMWORKS_BRIDGE/x86_64-unix/lsteamclient.so" \
             "$PACKAGE/wine/$renderer/lib/wine/x86_64-unix/lsteamclient.so"
     done
+fi
+if [ -n "$GPTK_STEAMWORKS_BRIDGE" ]; then
+    mkdir -p \
+        "$PACKAGE/steamworks/gptk/x86_64-windows" \
+        "$PACKAGE/steamworks/gptk/x86_64-unix"
+    cp "$GPTK_STEAMWORKS_BRIDGE/x86_64-windows/lsteamclient.dll" \
+        "$PACKAGE/steamworks/gptk/x86_64-windows/lsteamclient.dll"
+    cp "$GPTK_STEAMWORKS_BRIDGE/x86_64-unix/lsteamclient.dll.so" \
+        "$PACKAGE/steamworks/gptk/x86_64-unix/lsteamclient.dll.so"
+    cp "$GPTK_STEAMWORKS_BRIDGE/x86_64-windows/lsteamclient.dll" \
+        "$PACKAGE/wine/gptk/lib/wine/x86_64-windows/lsteamclient.dll"
+    cp "$GPTK_STEAMWORKS_BRIDGE/x86_64-unix/lsteamclient.dll.so" \
+        "$PACKAGE/wine/gptk/lib/wine/x86_64-unix/lsteamclient.dll.so"
 fi
 
 mkdir -p "$STAGING/dxmt" "$STAGING/dxvk"
@@ -403,12 +434,18 @@ if [ -n "$STEAMWORKS_BRIDGE" ]; then
         test -f "$PACKAGE/wine/$renderer/lib/wine/x86_64-unix/lsteamclient.so"
     done
 fi
+if [ -n "$GPTK_STEAMWORKS_BRIDGE" ]; then
+    test -f "$PACKAGE/wine/gptk/lib/wine/x86_64-windows/lsteamclient.dll"
+    test -f "$PACKAGE/wine/gptk/lib/wine/x86_64-unix/lsteamclient.dll.so"
+fi
 
 /usr/bin/python3 - \
     "$PACKAGE/manifest.json" \
     "$PACKAGE_ID" \
     "$STEAMWORKS_BRIDGE" \
     "$STEAMWORKS_PROTON_COMMIT" \
+    "$GPTK_STEAMWORKS_BRIDGE" \
+    "$GPTK_STEAMWORKS_PROTON_COMMIT" \
     "$WITHOUT_GPTK" \
     "$PACKAGE/dxmt-winemac-compat/build-info.json" <<'PY'
 import json
@@ -419,6 +456,8 @@ import sys
     package_id,
     steamworks_bridge,
     proton_commit,
+    gptk_steamworks_bridge,
+    gptk_proton_commit,
     without_gptk,
     dxmt_build_info_path,
 ) = sys.argv[1:]
@@ -462,16 +501,44 @@ if without_gptk != "true":
         "wine": "game-porting-toolkit-3.0-3",
         "graphics": "Apple Game Porting Toolkit 3.0",
     }
+steamworks_variants = {}
 if steamworks_bridge:
-    manifest["steamworks_bridge"] = {
+    wine11_variant = {
         "name": (
             "Valve Proton lsteamclient 11.0-1-beta5 "
             "+ RealSteamOnMac macOS compatibility 2"
         ),
         "proton_commit": proton_commit,
-        "renderers": ["dxmt", "dxvk", "wined3d"],
-        "unix_library": "steamworks/x86_64-unix/lsteamclient.so",
-        "windows_dll": "steamworks/x86_64-windows/lsteamclient.dll",
+        "unix_library": (
+            "steamworks/wine11/x86_64-unix/lsteamclient.so"
+        ),
+        "windows_dll": (
+            "steamworks/wine11/x86_64-windows/lsteamclient.dll"
+        ),
+        "unix_install_name": "lsteamclient.so",
+    }
+    for renderer in ("dxmt", "dxvk", "wined3d"):
+        steamworks_variants[renderer] = dict(wine11_variant)
+if gptk_steamworks_bridge:
+    steamworks_variants["gptk"] = {
+        "name": (
+            "Valve Proton 7 lsteamclient + GPTK Wine 7.7 "
+            "macOS compatibility 1"
+        ),
+        "proton_commit": gptk_proton_commit,
+        "wine_version": "7.7",
+        "unix_library": (
+            "steamworks/gptk/x86_64-unix/lsteamclient.dll.so"
+        ),
+        "windows_dll": (
+            "steamworks/gptk/x86_64-windows/lsteamclient.dll"
+        ),
+        "unix_install_name": "lsteamclient.dll.so",
+    }
+if steamworks_variants:
+    manifest["steamworks_bridge"] = {
+        "name": "RealSteamOnMac renderer-specific Steamworks bridges",
+        "variants": steamworks_variants,
     }
 with open(path, "w", encoding="utf-8") as stream:
     json.dump(manifest, stream, indent=2, sort_keys=True)
@@ -500,14 +567,22 @@ PY
     shasum -a 256 $CHECKSUM_FILES >SHA256SUMS
     if [ -n "$STEAMWORKS_BRIDGE" ]; then
         shasum -a 256 \
-            steamworks/x86_64-windows/lsteamclient.dll \
-            steamworks/x86_64-unix/lsteamclient.so \
+            steamworks/wine11/x86_64-windows/lsteamclient.dll \
+            steamworks/wine11/x86_64-unix/lsteamclient.so \
             wine/dxmt/lib/wine/x86_64-windows/lsteamclient.dll \
             wine/dxmt/lib/wine/x86_64-unix/lsteamclient.so \
             wine/dxvk/lib/wine/x86_64-windows/lsteamclient.dll \
             wine/dxvk/lib/wine/x86_64-unix/lsteamclient.so \
             wine/wined3d/lib/wine/x86_64-windows/lsteamclient.dll \
             wine/wined3d/lib/wine/x86_64-unix/lsteamclient.so \
+            >>SHA256SUMS
+    fi
+    if [ -n "$GPTK_STEAMWORKS_BRIDGE" ]; then
+        shasum -a 256 \
+            steamworks/gptk/x86_64-windows/lsteamclient.dll \
+            steamworks/gptk/x86_64-unix/lsteamclient.dll.so \
+            wine/gptk/lib/wine/x86_64-windows/lsteamclient.dll \
+            wine/gptk/lib/wine/x86_64-unix/lsteamclient.dll.so \
             >>SHA256SUMS
     fi
     shasum -a 256 -c SHA256SUMS

@@ -46,12 +46,16 @@ for argument in "$@"; do
     printf '\t%s' "$argument" >>'@LOG@'
 done
 printf '\n' >>'@LOG@'
-if [ '@NAME@' = bridge ]; then
+if [ '@NAME@' = bridge ] || [ '@NAME@' = gptk_bridge ]; then
     while [ "$#" -gt 0 ]; do
         if [ "$1" = --output ]; then
             mkdir -p "$2/x86_64-windows" "$2/x86_64-unix"
             : >"$2/x86_64-windows/lsteamclient.dll"
-            : >"$2/x86_64-unix/lsteamclient.so"
+            if [ '@NAME@' = gptk_bridge ]; then
+                : >"$2/x86_64-unix/lsteamclient.dll.so"
+            else
+                : >"$2/x86_64-unix/lsteamclient.so"
+            fi
             break
         fi
         shift
@@ -94,7 +98,7 @@ if [ '@NAME@' = backup ]; then
 fi
 EOF
 
-for name in hook launcher bridge runtime injection backup; do
+for name in hook launcher bridge gptk_bridge runtime injection backup; do
     make_recorder "$name"
 done
 
@@ -102,6 +106,7 @@ env \
     REALSTEAMONMAC_HOOK_BUILDER="$TMP/bin/hook" \
     REALSTEAMONMAC_LAUNCHER_BUILDER="$TMP/bin/launcher" \
     REALSTEAMONMAC_BRIDGE_BUILDER="$TMP/bin/bridge" \
+    REALSTEAMONMAC_GPTK_BRIDGE_BUILDER="$TMP/bin/gptk_bridge" \
     REALSTEAMONMAC_RUNTIME_INSTALLER="$TMP/bin/runtime" \
     REALSTEAMONMAC_INJECTION_INSTALLER="$TMP/bin/injection" \
     REALSTEAMONMAC_BACKUP_BUILDER="$TMP/bin/backup" \
@@ -116,12 +121,15 @@ env \
         --cache-dir "$CACHE"
 
 test "$(cut -f1 "$LOG" | tr '\n' ' ')" = \
-    "hook launcher bridge runtime injection "
+    "hook launcher bridge gptk_bridge runtime injection "
 grep -Fq "bridge	--output	$SUPPORT/build/lsteamclient-proton11b5-macos2" "$LOG"
+grep -Fq "gptk_bridge	--output	$SUPPORT/build/lsteamclient-proton7-gptk7.7-macos1" "$LOG"
 grep -Fq "runtime	--gptk-dmg	$GPTK" "$LOG"
 runtime_call=$(grep '^runtime	' "$LOG")
 printf '%s\n' "$runtime_call" |
     grep -Fq "	--steamworks-bridge	$SUPPORT/build/lsteamclient-proton11b5-macos2"
+printf '%s\n' "$runtime_call" |
+    grep -Fq "	--gptk-steamworks-bridge	$SUPPORT/build/lsteamclient-proton7-gptk7.7-macos1"
 printf '%s\n' "$runtime_call" |
     grep -Fq "	--runtime-root	$RUNTIME_ROOT"
 grep -Fq "injection	--clean-backup	$BACKUP" "$LOG"

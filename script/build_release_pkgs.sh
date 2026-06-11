@@ -5,6 +5,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 VERSION=$(tr -d '[:space:]' <"$ROOT/VERSION")
 OUTPUT="$ROOT/dist"
 BRIDGE=""
+GPTK_BRIDGE=""
 DXMT_WINEMAC_COMPAT=""
 SIGNING_IDENTITY=${REALSTEAMONMAC_INSTALLER_IDENTITY:-}
 RELEASE_PRIVATE_KEY=${REALSTEAMONMAC_RELEASE_PRIVATE_KEY:-"$HOME/.config/RealSteamOnMac/release-ed25519-private.pem"}
@@ -13,7 +14,7 @@ STEAM_BUILDS=${REALSTEAMONMAC_STEAM_BUILDS:-${REALSTEAMONMAC_STEAM_BUILD:-"17807
 
 usage() {
     cat >&2 <<EOF
-usage: $0 [--output DIRECTORY] [--steamworks-bridge DIRECTORY] [--dxmt-winemac-compat DIRECTORY] [--signing-identity NAME] [--release-private-key PATH]
+usage: $0 [--output DIRECTORY] [--steamworks-bridge DIRECTORY] [--gptk-steamworks-bridge DIRECTORY] [--dxmt-winemac-compat DIRECTORY] [--signing-identity NAME] [--release-private-key PATH]
 EOF
     exit 2
 }
@@ -28,6 +29,11 @@ while [ "$#" -gt 0 ]; do
         --steamworks-bridge)
             [ "$#" -ge 2 ] || usage
             BRIDGE=$2
+            shift 2
+            ;;
+        --gptk-steamworks-bridge)
+            [ "$#" -ge 2 ] || usage
+            GPTK_BRIDGE=$2
             shift 2
             ;;
         --dxmt-winemac-compat)
@@ -56,7 +62,11 @@ case "$VERSION" in
 esac
 if [ -z "$BRIDGE" ]; then
     ACTIVE_RUNTIME="$HOME/Library/Application Support/RealSteamOnMac/runtimes/current"
-    BRIDGE="$ACTIVE_RUNTIME/steamworks"
+    BRIDGE="$ACTIVE_RUNTIME/steamworks/wine11"
+fi
+if [ -z "$GPTK_BRIDGE" ]; then
+    ACTIVE_RUNTIME="$HOME/Library/Application Support/RealSteamOnMac/runtimes/current"
+    GPTK_BRIDGE="$ACTIVE_RUNTIME/steamworks/gptk"
 fi
 [ -f "$BRIDGE/x86_64-windows/lsteamclient.dll" ] || {
     echo "Steamworks bridge is missing: $BRIDGE" >&2
@@ -64,6 +74,14 @@ fi
 }
 [ -f "$BRIDGE/x86_64-unix/lsteamclient.so" ] || {
     echo "Steamworks bridge is missing: $BRIDGE" >&2
+    exit 1
+}
+[ -f "$GPTK_BRIDGE/x86_64-windows/lsteamclient.dll" ] || {
+    echo "GPTK Steamworks bridge is missing: $GPTK_BRIDGE" >&2
+    exit 1
+}
+[ -f "$GPTK_BRIDGE/x86_64-unix/lsteamclient.dll.so" ] || {
+    echo "GPTK Steamworks bridge is missing: $GPTK_BRIDGE" >&2
     exit 1
 }
 if [ -z "$DXMT_WINEMAC_COMPAT" ]; then
@@ -106,6 +124,10 @@ if [ "${REALSTEAMONMAC_ALLOW_TEST_FIXTURES:-0}" != 1 ]; then
         grep -q 'PE32+.*x86-64'
     file "$BRIDGE/x86_64-unix/lsteamclient.so" |
         grep -q 'Mach-O 64-bit.*x86_64'
+    file "$GPTK_BRIDGE/x86_64-windows/lsteamclient.dll" |
+        grep -q 'PE32+.*x86-64'
+    file "$GPTK_BRIDGE/x86_64-unix/lsteamclient.dll.so" |
+        grep -q 'Mach-O 64-bit.*x86_64'
     file "$DXMT_WINEMAC_COMPAT/winemac.so" |
         grep -q 'Mach-O 64-bit.*x86_64'
     file "$DXMT_WINEMAC_COMPAT/librealsteamonmac_dxmt_macdrv_shim.dylib" |
@@ -146,6 +168,8 @@ ditto "$ROOT/artifacts/steam-launcher" \
     "$PAYLOAD/artifacts/steam-launcher"
 ditto "$BRIDGE" \
     "$PAYLOAD/prebuilt/lsteamclient-proton11b5-macos2"
+ditto "$GPTK_BRIDGE" \
+    "$PAYLOAD/prebuilt/lsteamclient-proton7-gptk7.7-macos1"
 
 /usr/bin/swiftc -O \
     "$ROOT/script/verify_release_signature.swift" \

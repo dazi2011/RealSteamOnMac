@@ -996,6 +996,15 @@
   for `lsteamclient.dll.so` and
   `264b3fcb0624f6e9fb04642cd0433033a3c8479878f27e5798f84c9228309228`
   for `lsteamclient.dll`.
+- A full runtime package cannot use one shared Steamworks payload directory:
+  the Wine 11 and GPTK Wine 7.7 PE companions are ABI-specific even though
+  both are named `lsteamclient.dll`. They now live under
+  `steamworks/wine11` and `steamworks/gptk`, and the manifest selects the
+  correct pair for each renderer.
+- Release PKGs carry both bridge builds so one signed installer can support
+  either runtime mode. `postinstall` passes the GPTK bridge only when the
+  user's GPTK DMG exists; an open-runtime installation cannot accidentally
+  activate or package the GPTK-only bridge.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
