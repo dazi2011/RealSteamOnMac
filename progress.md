@@ -30,6 +30,12 @@
     label text, explaining failure in other Steam UI languages.
   - Confirmed current tests explicitly preserve the incorrect hidden-native-row
     behavior and must be replaced with native-control integration coverage.
+  - Read lines 1-1600 of `ui/realsteamonmac_ui.js` in full.
+  - Confirmed the runtime already merges project tools into Steam's native
+    `GetAvailableCompatTools` API, so a second hand-built selector is
+    unnecessary.
+  - Found one-time startup tool loading, indefinite per-AppID tool caching, and
+    locale-dependent compatibility-page detection.
 - Files modified:
   - `task_plan.md`
   - `findings.md`

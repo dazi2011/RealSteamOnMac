@@ -67,6 +67,25 @@
 - Tests for that behavior encode Chinese text fixtures and explicitly assert
   that the native row is hidden, so the test suite currently protects the
   incorrect design instead of detecting it.
+- The browser runtime already wraps Steam's own
+  `SteamClient.Apps.GetAvailableCompatTools` and merges project tool records
+  into that API. Therefore the native dropdown can consume project entries;
+  the separate DOM-built selector is an avoidable second implementation, not a
+  technical necessity.
+- For project tools, the current `SpecifyCompatTool` wrapper intentionally does
+  not call Steam's original API. It persists project-local state and mutates
+  cached app details instead. This must be reconciled with the native selector
+  so Steam's control remains authoritative and visibly selected without
+  introducing the macOS cloud regression previously caused by process-start
+  compatibility-tool discovery.
+- `projectCompatTools` is loaded once from generated startup configuration and
+  `getAvailableCompatTools` caches the merged result indefinitely per AppID.
+  A folder added to `compatibilitytools.d` after startup cannot appear without
+  regenerating configuration and invalidating these caches.
+- Compatibility-page detection itself is locale-dependent: it requires a page
+  heading matching only Chinese `兼容性` or English `Compatibility` and the
+  force-tool label in one of those two languages. This is a wider failure than
+  the hidden-row selector alone.
 
 ## Requirements
 
