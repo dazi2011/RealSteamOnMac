@@ -1112,3 +1112,8 @@
   - RDR2 retained `PlayRDR2.exe` with DXMT;
   - Hogwarts Legacy failed closed at its existing `repair-required` install
     state before launch resolution.
+- Added native spawn-decision RED cases for managed missing `.exe`, managed
+  `.app`, unmanaged missing targets, and an existing non-PE `.exe`.
+- Native RED verification stopped at
+  `managed missing EXE target was not redirected`; source contracts also
+  failed because the recovery predicates do not exist yet.

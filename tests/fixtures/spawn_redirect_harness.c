@@ -1,4 +1,5 @@
 #include <dlfcn.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,9 +40,35 @@ int main(int argc, char **argv) {
     fail("could not rename PE fixture");
   }
 
+  char non_pe[1024];
+  if (snprintf(non_pe, sizeof(non_pe), "%s-non-pe.exe", executable) >=
+      (int)sizeof(non_pe)) {
+    unlink(executable);
+    fail("non-PE fixture path is too long");
+  }
+  FILE *non_pe_stream = fopen(non_pe, "wb");
+  bool non_pe_written = false;
+  if (non_pe_stream != NULL) {
+    non_pe_written =
+        fwrite("plain", 5, 1, non_pe_stream) == 1;
+    if (fclose(non_pe_stream) != 0) {
+      non_pe_written = false;
+    }
+    non_pe_stream = NULL;
+  }
+  if (!non_pe_written) {
+    if (non_pe_stream != NULL) {
+      fclose(non_pe_stream);
+    }
+    unlink(executable);
+    unlink(non_pe);
+    fail("could not write non-PE fixture");
+  }
+
   void *engine = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
   if (engine == NULL) {
     unlink(executable);
+    unlink(non_pe);
     fail(dlerror());
   }
   decision_function should_redirect =
@@ -49,6 +76,7 @@ int main(int argc, char **argv) {
           engine, "realsteamonmac_should_redirect_spawn");
   if (should_redirect == NULL) {
     unlink(executable);
+    unlink(non_pe);
     fail("spawn decision export was not found");
   }
 
@@ -60,18 +88,48 @@ int main(int argc, char **argv) {
 
   if (should_redirect(executable, managed_environment) != 1) {
     unlink(executable);
+    unlink(non_pe);
     fail("managed PE target was not redirected");
+  }
+  if (should_redirect(
+          "/tmp/realsteamonmac-missing-target.exe",
+          managed_environment) != 1) {
+    unlink(executable);
+    unlink(non_pe);
+    fail("managed missing EXE target was not redirected");
+  }
+  if (should_redirect(
+          "/tmp/realsteamonmac-wrong-platform.app",
+          managed_environment) != 1) {
+    unlink(executable);
+    unlink(non_pe);
+    fail("managed macOS app target was not redirected");
   }
   if (should_redirect(executable, unmanaged_environment) != 0) {
     unlink(executable);
+    unlink(non_pe);
     fail("unmanaged PE target was redirected");
+  }
+  if (should_redirect(
+          "/tmp/realsteamonmac-unmanaged-missing.exe",
+          unmanaged_environment) != 0) {
+    unlink(executable);
+    unlink(non_pe);
+    fail("unmanaged missing target was redirected");
+  }
+  if (should_redirect(non_pe, managed_environment) != 0) {
+    unlink(executable);
+    unlink(non_pe);
+    fail("existing non-PE target was redirected");
   }
   if (should_redirect("/bin/echo", managed_environment) != 0) {
     unlink(executable);
+    unlink(non_pe);
     fail("native executable was redirected");
   }
 
   dlclose(engine);
   unlink(executable);
+  unlink(non_pe);
   return 0;
 }

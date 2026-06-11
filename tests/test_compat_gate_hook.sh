@@ -101,6 +101,8 @@ grep -q 'patch_steamclient_spawn_redirect' "$SOURCE"
 grep -q 'gOriginalPosixSpawn' "$SOURCE"
 grep -q 'is_allowlisted(appid)' "$SOURCE"
 grep -q 'is_pe_executable(path)' "$SOURCE"
+grep -q 'is_missing_launch_target(path)' "$SOURCE"
+grep -q 'has_app_suffix(path)' "$SOURCE"
 grep -q 'patch_steamclient_spawn_redirect(steamclient)' "$SOURCE"
 
 # Keep SteamUI's getter intact. The native engine uses its vtable address only
