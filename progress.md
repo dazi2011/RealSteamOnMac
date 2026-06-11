@@ -1184,3 +1184,20 @@
   temporary snapshot from the failed attempt was the only deleted artifact.
 - Verification passed all 8 recovery tests and all 44 runtime-manager tests,
   plus Python bytecode and whitespace checks.
+- Executed the guarded RDR2 recovery on the live prefix. The private 103 MB
+  snapshot and mutation report were published with restrictive permissions;
+  Social Club and Launcher installers both returned `0`, and all seven PE and
+  registry postconditions passed.
+- A second live recovery returned `state: complete` without creating a
+  snapshot, report, or installer process. Both game executable hashes remained
+  unchanged.
+- Post-recovery GPTK launch no longer reports an incomplete Rockstar install,
+  but it does not reach `RDR2.exe`. `PlayRDR2.exe` remained idle for more than
+  four minutes and the Launcher log stopped at `Creating Steam min mode
+  launch`; the AppID-scoped GPTK wineserver was then stopped cleanly.
+- CrossOver's RDR2 Steam logs contain repeated historical complete process
+  chains through `RDR2.exe`, including multi-minute D3D12 sessions. A fresh
+  2026-06-11 control could not proceed because that bottle's Windows Steam was
+  at `WaitingForCredentials`; no account tokens were copied.
+- Task 6 recovery acceptance is complete. End-to-end RDR2 launch remains open
+  at the GPTK/Steam min-mode handoff and must not be reported as fixed.

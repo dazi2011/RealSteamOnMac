@@ -162,8 +162,9 @@ Phase 8: 2026-06-11 field regression remediation and verified release
       release artifacts, publish the release, and confirm remote hashes.
 - **Status:** in progress
 - **Current checkpoint:** verified Steam launch descriptors, managed
-  missing-target redirection, and the guarded Rockstar recovery implementation
-  are complete. Live RDR2 snapshot/recovery/launch acceptance is next.
+  missing-target redirection, and guarded Rockstar recovery have passed live
+  acceptance. RDR2 now reaches Rockstar Steam min-mode but not `RDR2.exe`;
+  GPTK-safe Steam handoff and the remaining field regressions are next.
 
 ## Architecture Decision
 

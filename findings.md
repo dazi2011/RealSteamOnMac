@@ -939,6 +939,24 @@
 - Wine's `Documents` directory may point outside the prefix. Snapshot globs
   require a second real-path containment check after expansion; validating
   only the glob pattern is insufficient and can traverse host user data.
+- Live RDR2 recovery proves the interrupted-installer diagnosis was correct:
+  rerunning the exact depot Social Club and Launcher prerequisites created the
+  missing files and registry state, passed every configured postcondition, and
+  was idempotent on the next run without changing either game executable.
+- Rockstar recovery and Rockstar game launch are distinct acceptance gates.
+  After successful recovery, GPTK still stops at `Creating Steam min mode
+  launch`; `RDR2.exe` never starts and `PlayRDR2.exe` only idles in the macOS
+  event loop.
+- CrossOver's historical RDR2 process logs prove the same depot can traverse
+  `PlayRDR2.exe`, Launcher, Social Club, and `RDR2.exe` when a Windows Steam
+  client owns the launch. This makes the current native-Steam-to-GPTK handoff
+  the leading compatibility gap, but it is still a hypothesis until a bounded
+  replacement path passes live testing.
+- A fresh CrossOver comparison was not current success evidence: the RDR2
+  bottle's Windows Steam had no active login and stopped at
+  `WaitingForCredentials`. Copying tokens from another bottle would have mixed
+  account state into the compatibility experiment and was deliberately
+  rejected.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

@@ -146,3 +146,94 @@ the snapshot path.
 Rollback restores files from the timestamped snapshot while Steam and all Wine
 processes for AppID 1174180 are stopped. The mutation report must list every
 installer command, exit code, postcondition, and snapshot path.
+
+## Live Recovery Acceptance
+
+The guarded recovery was executed against the live AppID 1174180 prefix on
+2026-06-11. Before the installers ran, the runtime published a valid selective
+snapshot at:
+
+`/Volumes/990pro/games/steam/steamapps/compatdata/1174180/realsteamonmac/recovery/snapshots/20260611T113340Z`
+
+The snapshot occupied 103 MB. Its manifest was mode `0600`, the snapshot
+directories were mode `0700`, and the manifest SHA-256 was
+`343e3c97c48f37707f2c31f42cd402370a1b34e71c7e1df436b76599e0a2589a`.
+The external host Documents match was recorded in `external_skipped` and was
+not copied.
+
+Both signed depot installers returned exit code `0` in the required order:
+
+1. Social Club with `/silent`;
+2. Rockstar Games Launcher with `/s /t`.
+
+The private mutation report is:
+
+`/Volumes/990pro/games/steam/steamapps/compatdata/1174180/realsteamonmac/recovery/reports/20260611T113340Z.json`
+
+All seven substantive PE and registry postconditions passed. After recovery,
+the prefix occupied 944 MB and contained:
+
+| File | Size | SHA-256 |
+| --- | ---: | --- |
+| `Social Club/SocialClubHelper.exe` | 2417272 | `b2d3d10ce51dcd8aa1d1777a750a535df01e21a52917893ce86331c0b568a758` |
+| `Social Club/socialclub.dll` | 4829816 | `be163741daf029bdf271530dc0a2840e9e10c695c53def767048dc93ece7c2c6` |
+
+The Social Club product and uninstall keys, Launcher product and uninstall
+keys, and Steam prerequisite keys were present. A second recovery invocation
+returned `state: complete` with no snapshot, report, or installer process,
+proving idempotence.
+
+The game payload remained unchanged:
+
+| File | SHA-256 |
+| --- | --- |
+| `PlayRDR2.exe` | `028db16cbd90c7ab07358a7d6dfc981800b6fd4f1583d9b39fe5ea0441d9483d` |
+| `RDR2.exe` | `b56c9548f670654a9b73bf25def3cd73af12e269f6e47dba28a34079adaf465e` |
+
+## Post-Recovery Launch Boundary
+
+The live game launch was then tested with the AppID renderer changed from DXMT
+to GPTK. Recovery correctly classified the prefix as complete and did not run
+an installer.
+
+`PlayRDR2.exe` remained alive for more than four minutes, but `RDR2.exe` was
+never created. The current Launcher log ended immediately after:
+
+```text
+Creating Steam min mode launch
+Steam App Id 1174180
+Steam Location Z:\Volumes\990pro\games\steam\steamapps\common\Red Dead Redemption 2
+```
+
+The Launcher process exited, while `PlayRDR2.exe` remained idle in the macOS
+application event loop with no game or Launcher window and no network socket.
+The AppID-scoped GPTK wineserver was stopped cleanly after evidence collection;
+the unrelated CrossOver wineserver and Steam process remained running.
+
+This is a separate defect from the interrupted installer. Recovery is accepted;
+end-to-end game launch is not. The evidence points to the Rockstar Steam
+min-mode handoff: GPTK intentionally cannot load the package's Wine 11
+`lsteamclient` bridge, while the Launcher expects a Windows Steam context.
+That hypothesis requires implementation and regression proof before it can be
+treated as the final root cause.
+
+## CrossOver Launch Control
+
+The CrossOver RDR2 bottle's Steam `gameprocess_log.txt` contains repeated
+complete historical launch chains from 2026-01-15 through 2026-01-19:
+
+`PlayRDR2.exe` -> `Launcher.exe` -> `RockstarService.exe` ->
+`SocialClubHelper.exe` -> `RDR2.exe`.
+
+Several recorded `RDR2.exe` sessions remained tracked for minutes, including a
+session from 18:03:37 to 18:19:46 on 2026-01-19. The command included
+`-useSteam -steamAppId=1174180 -scCommerceProvider=4` and D3D12 selection.
+This proves that the installed game payload has previously crossed the
+Rockstar/Steam boundary in CrossOver.
+
+A fresh CrossOver control was attempted on 2026-06-11 with the RDR2 bottle's
+own Windows Steam. It stopped at `WaitingForCredentials` with `steamid=0`, so
+no current game process was created. No login tokens or credentials were copied
+from another bottle. Therefore the historical process log is valid positive
+control evidence, while the 2026-06-11 attempt is recorded only as an
+account-state-blocked control, not as a current successful launch.
