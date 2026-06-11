@@ -1063,6 +1063,31 @@
   module only guarantees an `800x650` minimum. On the current `1920x977`
   usable display, a native `1440x860` window plus `112%` document zoom
   produced no element overflow or clipping.
+- A raw graphics directory cannot be executed directly because it has no Wine
+  launcher, Steamworks bridge, prefix policy, or package manifest. The runtime
+  now creates a content-addressed package view: the selected immutable base
+  Wine and bridge use hardlinks, while user component files use APFS clones
+  when available and ordinary copies otherwise. This prevents runtime writes
+  from mutating the user's source directory.
+- The composition identity includes the base package, tool id, renderer,
+  source kind, canonical source path, and complete tree metadata fingerprint.
+  Editing a source component creates a new package id; an existing composed
+  view remains byte-stable and is reused only when its identity marker matches.
+  The source fingerprint is checked again after copying, so a component changed
+  during construction never becomes a published cache entry.
+- Internal symbolic links are rebased into the composed tree, including
+  absolute links whose resolved targets remain inside the source component.
+  The resulting package therefore has no runtime dependency on the original
+  user directory and still rejects every escaping or dangling link.
+- Real CrossOver Preview payloads passed the isolated composition path:
+  `lib64/apple_gptk`, `lib/dxmt`, and `lib/dxvk` all produced executable
+  runtime views. Probed component files matched by SHA-256 but had distinct
+  inodes, while each base `wine64` retained the base package inode.
+- A full raw Wine tree replaces the base Wine root rather than layering over
+  it, preventing stale base modules from surviving into a user-selected Wine.
+  The composer adds a `wine64 -> wine` alias for unified WoW64 distributions.
+  It retains the installed Steamworks bridge only when the raw and base Wine
+  major versions match; otherwise the composed manifest omits the bridge.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

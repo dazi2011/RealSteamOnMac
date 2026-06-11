@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import os
+import plistlib
 import struct
 import tempfile
 import unittest
@@ -315,6 +316,88 @@ class RuntimeManagerTests(unittest.TestCase):
             encoding="utf-8",
         )
         return directory
+
+    def write_raw_component(self, kind, name):
+        directory = self.compat_tools / name
+        directory.mkdir(parents=True, exist_ok=True)
+        if kind == "gptk":
+            resources = (
+                directory
+                / "external"
+                / "D3DMetal.framework"
+                / "Versions"
+                / "A"
+                / "Resources"
+            )
+            resources.mkdir(parents=True)
+            (resources / "Info.plist").write_bytes(
+                plistlib.dumps(
+                    {
+                        "CFBundleIdentifier": "com.apple.D3DMetal",
+                        "CFBundleShortVersionString": "3.1",
+                    }
+                )
+            )
+            external = directory / "external"
+            (external / "libd3dshared.dylib").write_bytes(
+                b"raw-gptk-shared"
+            )
+            unix = directory / "wine" / "x86_64-unix"
+            windows = directory / "wine" / "x86_64-windows"
+            unix.mkdir(parents=True)
+            windows.mkdir(parents=True)
+            (unix / "d3d11.so").symlink_to(
+                "../../external/libd3dshared.dylib"
+            )
+            (unix / "dxgi.so").symlink_to(
+                external / "libd3dshared.dylib"
+            )
+            (windows / "d3d11.dll").write_bytes(b"raw-gptk-d3d11")
+            (windows / "dxgi.dll").write_bytes(b"raw-gptk-dxgi")
+        elif kind == "dxmt":
+            unix = directory / "x86_64-unix"
+            windows = directory / "x86_64-windows"
+            unix.mkdir(parents=True)
+            windows.mkdir(parents=True)
+            (unix / "winemetal.so").write_bytes(b"raw-dxmt-metal")
+            (windows / "d3d11.dll").write_bytes(b"raw-dxmt-d3d11")
+            (windows / "dxgi.dll").write_bytes(b"raw-dxmt-dxgi")
+        elif kind == "dxvk":
+            windows = directory / "x86_64-windows"
+            windows.mkdir(parents=True)
+            (windows / "d3d9.dll").write_bytes(b"raw-dxvk-d3d9")
+            (windows / "d3d11.dll").write_bytes(b"raw-dxvk-d3d11")
+            (windows / "dxgi.dll").write_bytes(b"raw-dxvk-dxgi")
+        elif kind == "wine":
+            bin_directory = directory / "bin"
+            unix = directory / "lib" / "wine" / "x86_64-unix"
+            windows = directory / "lib" / "wine" / "x86_64-windows"
+            bin_directory.mkdir(parents=True)
+            unix.mkdir(parents=True)
+            windows.mkdir(parents=True)
+            wine = bin_directory / "wine"
+            wine.write_text(
+                "#!/bin/sh\nexit 0\n", encoding="utf-8"
+            )
+            wine.chmod(0o755)
+            wineserver = bin_directory / "wineserver"
+            wineserver.write_text(
+                "#!/bin/sh\nexit 0\n", encoding="utf-8"
+            )
+            wineserver.chmod(0o755)
+            (unix / "ntdll.so").write_bytes(b"raw-wine-ntdll-so")
+            (windows / "ntdll.dll").write_bytes(b"raw-wine-ntdll-dll")
+        else:
+            self.fail(f"unsupported raw fixture kind: {kind}")
+        return directory
+
+    def raw_tool(self, directory):
+        tools = runtime.scan_compat_tools(self.compat_tools)
+        return next(
+            tool
+            for tool in tools
+            if tool.get("componentPath") == str(directory.resolve())
+        )
 
     def test_resolves_exact_proton_prefix(self):
         context = self.context()
@@ -956,6 +1039,284 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(package, self.package.resolve())
         self.assertEqual(manifest["package_id"], "fixture")
         self.assertEqual(tool["strToolName"], "fixture-dxmt")
+
+    def test_raw_dxmt_composes_cached_immutable_runtime_view(self):
+        component = self.write_raw_component("dxmt", "DXMT-0.90")
+        tool = self.raw_tool(component)
+        config = runtime.normalize_config(
+            {
+                **runtime.DEFAULT_CONFIG,
+                "compat_tool": tool["strToolName"],
+                "renderer": "dxmt",
+            }
+        )
+
+        package, manifest, wine_root, wine64, selected = (
+            runtime.load_selected_package(self.runtime_root, config)
+        )
+        overlay = (
+            wine_root / "lib" / "wine" / "x86_64-windows" / "d3d11.dll"
+        )
+        source = component / "x86_64-windows" / "d3d11.dll"
+
+        self.assertEqual(selected["sourceKind"], "dxmt")
+        self.assertEqual(overlay.read_bytes(), b"raw-dxmt-d3d11")
+        self.assertNotEqual(os.stat(overlay).st_ino, os.stat(source).st_ino)
+        self.assertEqual(
+            os.stat(wine64).st_ino,
+            os.stat(
+                self.package / "wine" / "dxmt" / "bin" / "wine64"
+            ).st_ino,
+        )
+        self.assertEqual(
+            manifest["composition"]["component_path"],
+            str(component.resolve()),
+        )
+
+        cached, _, _, _, _ = runtime.load_selected_package(
+            self.runtime_root, config
+        )
+        self.assertEqual(cached, package)
+
+        source.write_bytes(b"raw-dxmt-d3d11-updated")
+        refreshed, _, refreshed_wine, _, _ = (
+            runtime.load_selected_package(self.runtime_root, config)
+        )
+        self.assertNotEqual(refreshed, package)
+        self.assertEqual(overlay.read_bytes(), b"raw-dxmt-d3d11")
+        self.assertEqual(
+            (
+                refreshed_wine
+                / "lib"
+                / "wine"
+                / "x86_64-windows"
+                / "d3d11.dll"
+            ).read_bytes(),
+            b"raw-dxmt-d3d11-updated",
+        )
+
+    def test_raw_composition_refuses_source_change_during_build(self):
+        component = self.write_raw_component("dxmt", "DXMT-0.91")
+        tool = self.raw_tool(component)
+
+        with mock.patch.object(
+            runtime,
+            "_tree_fingerprint",
+            side_effect=("before", "after"),
+        ):
+            with self.assertRaisesRegex(
+                runtime.RuntimeErrorWithContext,
+                "changed while composing",
+            ):
+                runtime.compose_raw_tool_package(self.runtime_root, tool)
+
+        packages = [
+            path
+            for path in (self.runtime_root / "composed").iterdir()
+            if path.is_dir()
+        ]
+        self.assertEqual(packages, [])
+
+    def test_raw_gptk_maps_standard_cross_directory_symlinks(self):
+        component = self.write_raw_component("gptk", "GPTK-3.1")
+        tool = self.raw_tool(component)
+        config = runtime.normalize_config(
+            {
+                **runtime.DEFAULT_CONFIG,
+                "compat_tool": tool["strToolName"],
+                "renderer": "gptk",
+            }
+        )
+
+        _, manifest, wine_root, _, _ = runtime.load_selected_package(
+            self.runtime_root, config
+        )
+        unix_module = (
+            wine_root / "lib" / "wine" / "x86_64-unix" / "d3d11.so"
+        )
+        absolute_source_link = (
+            wine_root / "lib" / "wine" / "x86_64-unix" / "dxgi.so"
+        )
+        external = wine_root / "lib" / "external" / "libd3dshared.dylib"
+
+        self.assertTrue(unix_module.is_symlink())
+        self.assertEqual(unix_module.resolve(), external.resolve())
+        self.assertTrue(absolute_source_link.is_symlink())
+        self.assertFalse(os.path.isabs(os.readlink(absolute_source_link)))
+        self.assertEqual(absolute_source_link.resolve(), external.resolve())
+        self.assertNotIn(
+            str(component.resolve()), os.readlink(absolute_source_link)
+        )
+        self.assertEqual(external.read_bytes(), b"raw-gptk-shared")
+        self.assertEqual(
+            manifest["renderers"]["gptk"]["graphics"],
+            tool["strDisplayName"],
+        )
+
+    def test_raw_dxvk_maps_windows_modules_over_base_wine(self):
+        component = self.write_raw_component("dxvk", "DXVK-2.6.1")
+        tool = self.raw_tool(component)
+        config = runtime.normalize_config(
+            {
+                **runtime.DEFAULT_CONFIG,
+                "compat_tool": tool["strToolName"],
+                "renderer": "dxvk",
+            }
+        )
+
+        _, _, wine_root, wine64, _ = runtime.load_selected_package(
+            self.runtime_root, config
+        )
+
+        self.assertEqual(
+            (
+                wine_root
+                / "lib"
+                / "wine"
+                / "x86_64-windows"
+                / "d3d9.dll"
+            ).read_bytes(),
+            b"raw-dxvk-d3d9",
+        )
+        self.assertEqual(
+            os.stat(wine64).st_ino,
+            os.stat(
+                self.package / "wine" / "dxvk" / "bin" / "wine64"
+            ).st_ino,
+        )
+
+    def test_raw_wine_uses_complete_tree_and_adds_wine64_alias(self):
+        component = self.write_raw_component("wine", "Wine-11.1.2")
+        tool = self.raw_tool(component)
+        config = runtime.normalize_config(
+            {
+                **runtime.DEFAULT_CONFIG,
+                "compat_tool": tool["strToolName"],
+                "renderer": "wined3d",
+                "msync": False,
+            }
+        )
+
+        _, manifest, wine_root, wine64, _ = runtime.load_selected_package(
+            self.runtime_root, config
+        )
+
+        self.assertTrue(wine64.is_symlink())
+        self.assertEqual(os.readlink(wine64), "wine")
+        self.assertEqual(
+            (wine_root / "lib" / "wine" / "x86_64-unix" / "ntdll.so")
+            .read_bytes(),
+            b"raw-wine-ntdll-so",
+        )
+        self.assertEqual(
+            manifest["renderers"]["wined3d"]["wine"],
+            tool["strDisplayName"],
+        )
+        self.assertNotIn("steamworks_bridge", manifest)
+
+    def test_raw_wine_11_preserves_matching_steamworks_bridge(self):
+        component = self.write_raw_component("wine", "Wine-11.1.2")
+        windows_bridge = (
+            self.package
+            / "steamworks"
+            / "wine11"
+            / "x86_64-windows"
+            / "lsteamclient.dll"
+        )
+        unix_bridge = (
+            self.package
+            / "steamworks"
+            / "wine11"
+            / "x86_64-unix"
+            / "lsteamclient.so"
+        )
+        windows_bridge.parent.mkdir(parents=True)
+        unix_bridge.parent.mkdir(parents=True)
+        windows_bridge.write_bytes(b"raw-wine-steamworks-windows")
+        unix_bridge.write_bytes(b"raw-wine-steamworks-unix")
+        for relative, source in (
+            (
+                "lib/wine/x86_64-windows/lsteamclient.dll",
+                windows_bridge,
+            ),
+            (
+                "lib/wine/x86_64-unix/lsteamclient.so",
+                unix_bridge,
+            ),
+        ):
+            destination = self.package / "wine" / "wined3d" / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(source.read_bytes())
+        manifest_path = self.package / "manifest.json"
+        base_manifest = json.loads(
+            manifest_path.read_text(encoding="utf-8")
+        )
+        base_manifest["renderers"]["wined3d"] = {
+            "wine": "wine-staging-11.10",
+            "graphics": "WineD3D",
+        }
+        base_manifest["steamworks_bridge"] = {
+            "name": "fixture Wine 11 bridge",
+            "variants": {
+                "wined3d": {
+                    "windows_dll": (
+                        "steamworks/wine11/x86_64-windows/"
+                        "lsteamclient.dll"
+                    ),
+                    "unix_library": (
+                        "steamworks/wine11/x86_64-unix/lsteamclient.so"
+                    ),
+                    "unix_install_name": "lsteamclient.so",
+                }
+            },
+        }
+        manifest_path.write_text(
+            json.dumps(base_manifest), encoding="utf-8"
+        )
+        tool = self.raw_tool(component)
+        config = runtime.normalize_config(
+            {
+                **runtime.DEFAULT_CONFIG,
+                "compat_tool": tool["strToolName"],
+                "renderer": "wined3d",
+                "msync": False,
+            }
+        )
+
+        package, manifest, wine_root, _, _ = (
+            runtime.load_selected_package(self.runtime_root, config)
+        )
+
+        self.assertIn("steamworks_bridge", manifest)
+        self.assertEqual(
+            (
+                wine_root
+                / "lib"
+                / "wine"
+                / "x86_64-windows"
+                / "lsteamclient.dll"
+            ).read_bytes(),
+            windows_bridge.read_bytes(),
+        )
+        self.assertEqual(
+            os.stat(
+                wine_root
+                / "lib"
+                / "wine"
+                / "x86_64-unix"
+                / "lsteamclient.so"
+            ).st_ino,
+            os.stat(
+                self.package
+                / "wine"
+                / "wined3d"
+                / "lib"
+                / "wine"
+                / "x86_64-unix"
+                / "lsteamclient.so"
+            ).st_ino,
+        )
+        self.assertTrue((package / "steamworks").is_dir())
 
     def test_environment_maps_controls(self):
         context = self.context()

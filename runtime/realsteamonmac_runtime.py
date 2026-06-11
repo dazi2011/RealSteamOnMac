@@ -1,12 +1,15 @@
 #!/usr/bin/python3
 
 import argparse
+import ctypes
+import errno
 import fcntl
 import hashlib
 import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -113,6 +116,25 @@ DEFAULT_CONFIG = {
     "dxr": False,
     "avx": False,
 }
+RAW_COMPONENT_KINDS = frozenset(("gptk", "dxmt", "dxvk", "wine"))
+RAW_COMPONENT_OVERLAYS = {
+    "gptk": (
+        ("external", "lib/external"),
+        ("wine", "lib/wine"),
+    ),
+    "dxmt": (
+        ("x86_64-unix", "lib/wine/x86_64-unix"),
+        ("x86_64-windows", "lib/wine/x86_64-windows"),
+        ("i386-windows", "lib/wine/i386-windows"),
+    ),
+    "dxvk": (
+        ("x86_64-windows", "lib/wine/x86_64-windows"),
+        ("i386-windows", "lib/wine/i386-windows"),
+    ),
+}
+COMPOSITION_SCHEMA = 1
+_CLONEFILE = None
+_CLONEFILE_LOADED = False
 
 
 class RuntimeErrorWithContext(RuntimeError):
@@ -628,21 +650,12 @@ def validate_tool_capabilities(config, tool):
             )
 
 
-def load_package(runtime_root, renderer, runtime_package=None):
-    if runtime_package:
-        package = runtime_root / "packages" / runtime_package
-        if not package.is_dir():
-            raise RuntimeErrorWithContext(
-                f"runtime package is unavailable: {package}"
-            )
-        package = package.resolve()
-    else:
-        current = runtime_root / "current"
-        if not current.exists():
-            raise RuntimeErrorWithContext(
-                f"no active runtime package: {current}"
-            )
-        package = current.resolve()
+def _load_package_path(package, renderer, expected_package_id=None):
+    package = Path(package).resolve()
+    if not package.is_dir():
+        raise RuntimeErrorWithContext(
+            f"runtime package is unavailable: {package}"
+        )
     manifest_path = package / "manifest.json"
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -655,8 +668,8 @@ def load_package(runtime_root, renderer, runtime_package=None):
             f"unsupported runtime manifest: {manifest_path}"
         )
     if (
-        runtime_package
-        and manifest["package_id"] != runtime_package
+        expected_package_id
+        and manifest["package_id"] != expected_package_id
     ):
         raise RuntimeErrorWithContext(
             f"runtime package identity mismatch: {manifest_path}"
@@ -670,14 +683,508 @@ def load_package(runtime_root, renderer, runtime_package=None):
     return package, manifest, wine_root, wine64
 
 
+def load_package(runtime_root, renderer, runtime_package=None):
+    if runtime_package:
+        package = runtime_root / "packages" / runtime_package
+        expected_package_id = runtime_package
+    else:
+        current = runtime_root / "current"
+        if not current.exists():
+            raise RuntimeErrorWithContext(
+                f"no active runtime package: {current}"
+            )
+        package = current
+        expected_package_id = None
+    return _load_package_path(package, renderer, expected_package_id)
+
+
+def _safe_tree_entries(root):
+    try:
+        with os.scandir(root) as entries:
+            return sorted(entries, key=lambda entry: entry.name)
+    except OSError as error:
+        raise RuntimeErrorWithContext(
+            f"cannot scan runtime payload tree: {root}"
+        ) from error
+
+
+def _validate_internal_symlink(path, root):
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as error:
+        raise RuntimeErrorWithContext(
+            f"runtime payload symlink is invalid: {path}"
+        ) from error
+    try:
+        resolved.relative_to(root)
+    except ValueError as error:
+        raise RuntimeErrorWithContext(
+            f"runtime payload symlink escapes its source tree: {path}"
+        ) from error
+    return resolved
+
+
+def _mapped_symlink_target(
+    source_path,
+    source_root,
+    destination_path,
+    destination_root,
+):
+    resolved = _validate_internal_symlink(source_path, source_root)
+    mapped = destination_root / resolved.relative_to(source_root)
+    return os.path.relpath(mapped, start=destination_path.parent)
+
+
+def _tree_fingerprint(root):
+    root = Path(root).resolve(strict=True)
+    digest = hashlib.sha256()
+
+    def visit(directory):
+        for entry in _safe_tree_entries(directory):
+            path = Path(entry.path)
+            relative = path.relative_to(root).as_posix()
+            try:
+                metadata = path.lstat()
+            except OSError as error:
+                raise RuntimeErrorWithContext(
+                    f"cannot inspect runtime payload: {path}"
+                ) from error
+            digest.update(relative.encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(str(metadata.st_mode).encode("ascii"))
+            digest.update(b"\0")
+            if entry.is_symlink():
+                _validate_internal_symlink(path, root)
+                digest.update(b"link\0")
+                digest.update(os.readlink(path).encode("utf-8"))
+            elif entry.is_dir(follow_symlinks=False):
+                digest.update(b"directory\0")
+                visit(path)
+            elif entry.is_file(follow_symlinks=False):
+                digest.update(b"file\0")
+                digest.update(str(metadata.st_size).encode("ascii"))
+                digest.update(b"\0")
+                digest.update(str(metadata.st_mtime_ns).encode("ascii"))
+            else:
+                raise RuntimeErrorWithContext(
+                    f"runtime payload contains an unsupported entry: {path}"
+                )
+            digest.update(b"\0")
+
+    visit(root)
+    return digest.hexdigest()
+
+
+def _make_directory(path, mode):
+    path.mkdir(parents=True, exist_ok=True)
+    path.chmod(mode & 0o777)
+
+
+def _remove_overlay_file(path):
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+        return
+    if path.exists():
+        raise RuntimeErrorWithContext(
+            f"runtime payload directory conflicts with a file: {path}"
+        )
+
+
+def _hardlink_tree(source, destination):
+    source = Path(source).resolve(strict=True)
+    destination = Path(destination)
+    _make_directory(destination, source.stat().st_mode)
+
+    def visit(source_directory, destination_directory):
+        for entry in _safe_tree_entries(source_directory):
+            source_path = Path(entry.path)
+            destination_path = destination_directory / entry.name
+            if entry.is_symlink():
+                _remove_overlay_file(destination_path)
+                destination_path.symlink_to(
+                    _mapped_symlink_target(
+                        source_path,
+                        source,
+                        destination_path,
+                        destination,
+                    )
+                )
+            elif entry.is_dir(follow_symlinks=False):
+                if destination_path.exists() and not destination_path.is_dir():
+                    raise RuntimeErrorWithContext(
+                        "runtime payload directory conflicts with a file: "
+                        f"{destination_path}"
+                    )
+                _make_directory(
+                    destination_path, source_path.stat().st_mode
+                )
+                visit(source_path, destination_path)
+            elif entry.is_file(follow_symlinks=False):
+                _remove_overlay_file(destination_path)
+                try:
+                    os.link(source_path, destination_path)
+                except OSError as error:
+                    raise RuntimeErrorWithContext(
+                        "cannot hardlink immutable runtime payload: "
+                        f"{source_path}"
+                    ) from error
+            else:
+                raise RuntimeErrorWithContext(
+                    "runtime payload contains an unsupported entry: "
+                    f"{source_path}"
+                )
+
+    visit(source, destination)
+
+
+def _load_clonefile():
+    global _CLONEFILE, _CLONEFILE_LOADED
+    if _CLONEFILE_LOADED:
+        return _CLONEFILE
+    _CLONEFILE_LOADED = True
+    if sys.platform != "darwin":
+        return None
+    try:
+        clonefile = ctypes.CDLL(None, use_errno=True).clonefile
+    except (AttributeError, OSError):
+        return None
+    clonefile.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int)
+    clonefile.restype = ctypes.c_int
+    _CLONEFILE = clonefile
+    return _CLONEFILE
+
+
+def _clone_or_copy_file(source, destination):
+    clonefile = _load_clonefile()
+    if clonefile is not None:
+        result = clonefile(
+            os.fsencode(source), os.fsencode(destination), 0
+        )
+        if result == 0:
+            return
+        clone_error = ctypes.get_errno()
+        if clone_error not in {
+            errno.EINVAL,
+            errno.ENOSYS,
+            errno.ENOTSUP,
+            errno.EPERM,
+            errno.EXDEV,
+        }:
+            raise OSError(
+                clone_error,
+                os.strerror(clone_error),
+                str(source),
+            )
+        if destination.is_symlink() or destination.exists():
+            destination.unlink()
+    shutil.copy2(source, destination)
+
+
+def _copy_component_tree(
+    source,
+    destination,
+    component_root,
+    component_destination_root,
+):
+    source = Path(source)
+    destination = Path(destination)
+    component_root = Path(component_root).resolve(strict=True)
+    component_destination_root = Path(component_destination_root)
+    if not source.exists():
+        return
+    _make_directory(destination, source.stat().st_mode)
+
+    def visit(source_directory, destination_directory):
+        for entry in _safe_tree_entries(source_directory):
+            source_path = Path(entry.path)
+            destination_path = destination_directory / entry.name
+            if entry.is_symlink():
+                _remove_overlay_file(destination_path)
+                destination_path.symlink_to(
+                    _mapped_symlink_target(
+                        source_path,
+                        component_root,
+                        destination_path,
+                        component_destination_root,
+                    )
+                )
+            elif entry.is_dir(follow_symlinks=False):
+                if destination_path.exists() and not destination_path.is_dir():
+                    raise RuntimeErrorWithContext(
+                        "runtime component directory conflicts with a file: "
+                        f"{destination_path}"
+                    )
+                _make_directory(
+                    destination_path, source_path.stat().st_mode
+                )
+                visit(source_path, destination_path)
+            elif entry.is_file(follow_symlinks=False):
+                _remove_overlay_file(destination_path)
+                destination_path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    _clone_or_copy_file(source_path, destination_path)
+                except OSError as error:
+                    raise RuntimeErrorWithContext(
+                        f"cannot copy runtime component: {source_path}"
+                    ) from error
+            else:
+                raise RuntimeErrorWithContext(
+                    "runtime component contains an unsupported entry: "
+                    f"{source_path}"
+                )
+
+    visit(source, destination)
+
+
+def _version_major(value):
+    if not isinstance(value, str):
+        return None
+    match = re.search(r"(?<![0-9])([0-9]+)(?:\.[0-9]+)+", value)
+    return int(match.group(1)) if match else None
+
+
+def _selected_bridge_variant(manifest, renderer):
+    bridge = manifest.get("steamworks_bridge")
+    if not isinstance(bridge, dict):
+        return None
+    variants = bridge.get("variants")
+    if isinstance(variants, dict):
+        selected = variants.get(renderer)
+        return selected if isinstance(selected, dict) else None
+    renderers = bridge.get("renderers")
+    if isinstance(renderers, list) and renderer in renderers:
+        return bridge
+    return None
+
+
+def _raw_wine_supports_base_bridge(tool, manifest, renderer):
+    renderers = manifest.get("renderers")
+    if not isinstance(renderers, dict):
+        return False
+    renderer_metadata = renderers.get(renderer)
+    if not isinstance(renderer_metadata, dict):
+        return False
+    return (
+        _version_major(tool.get("version")) is not None
+        and _version_major(tool.get("version"))
+        == _version_major(renderer_metadata.get("wine"))
+    )
+
+
+def _limit_manifest_to_renderer(manifest, renderer, keep_bridge):
+    result = json.loads(json.dumps(manifest))
+    renderer_metadata = result.get("renderers", {}).get(renderer, {})
+    result["renderers"] = {renderer: renderer_metadata}
+    if renderer != "dxmt":
+        result.pop("dxmt_winemac_compat", None)
+    bridge = result.get("steamworks_bridge")
+    if not keep_bridge or not isinstance(bridge, dict):
+        result.pop("steamworks_bridge", None)
+    elif isinstance(bridge.get("variants"), dict):
+        selected = bridge["variants"].get(renderer)
+        if isinstance(selected, dict):
+            bridge["variants"] = {renderer: selected}
+        else:
+            result.pop("steamworks_bridge", None)
+    elif isinstance(bridge.get("renderers"), list):
+        if renderer in bridge["renderers"]:
+            bridge["renderers"] = [renderer]
+        else:
+            result.pop("steamworks_bridge", None)
+    return result
+
+
+def _install_base_bridge_in_raw_wine(
+    base_wine_root, destination_wine_root, manifest, renderer
+):
+    variant = _selected_bridge_variant(manifest, renderer)
+    if variant is None:
+        return
+    unix_name = variant.get("unix_install_name", "lsteamclient.so")
+    for relative in (
+        Path("lib/wine/x86_64-windows/lsteamclient.dll"),
+        Path("lib/wine/x86_64-unix") / unix_name,
+    ):
+        source = base_wine_root / relative
+        destination = destination_wine_root / relative
+        if not source.is_file():
+            raise RuntimeErrorWithContext(
+                f"base Steamworks bridge payload is missing: {source}"
+            )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        _remove_overlay_file(destination)
+        os.link(source, destination)
+
+
+def _build_composed_package(
+    staging,
+    base_package,
+    base_manifest,
+    base_wine_root,
+    tool,
+    composition,
+):
+    renderer = tool["renderer"]
+    source_kind = tool["sourceKind"]
+    component = Path(tool["componentPath"]).resolve(strict=True)
+    destination_wine_root = staging / "wine" / renderer
+    keep_bridge = source_kind != "wine" or _raw_wine_supports_base_bridge(
+        tool, base_manifest, renderer
+    )
+
+    if source_kind == "wine":
+        _copy_component_tree(
+            component,
+            destination_wine_root,
+            component,
+            destination_wine_root,
+        )
+        wine64 = destination_wine_root / "bin" / "wine64"
+        if not wine64.exists():
+            wine = destination_wine_root / "bin" / "wine"
+            if not wine.is_file() or not os.access(wine, os.X_OK):
+                raise RuntimeErrorWithContext(
+                    f"raw Wine launcher is unavailable: {wine}"
+                )
+            wine64.symlink_to("wine")
+        if keep_bridge:
+            _install_base_bridge_in_raw_wine(
+                base_wine_root,
+                destination_wine_root,
+                base_manifest,
+                renderer,
+            )
+    else:
+        _hardlink_tree(base_wine_root, destination_wine_root)
+        component_destination_root = (
+            destination_wine_root / "lib"
+            if source_kind == "gptk"
+            else destination_wine_root / "lib" / "wine"
+        )
+        for source_relative, destination_relative in RAW_COMPONENT_OVERLAYS[
+            source_kind
+        ]:
+            source = component / source_relative
+            if source.exists():
+                _copy_component_tree(
+                    source,
+                    destination_wine_root / destination_relative,
+                    component,
+                    component_destination_root,
+                )
+
+    steamworks = base_package / "steamworks"
+    if keep_bridge and steamworks.is_dir():
+        _hardlink_tree(steamworks, staging / "steamworks")
+
+    manifest = _limit_manifest_to_renderer(
+        base_manifest, renderer, keep_bridge
+    )
+    manifest["package_id"] = composition["package_id"]
+    renderer_metadata = manifest["renderers"].setdefault(renderer, {})
+    renderer_metadata["user_component"] = tool["strDisplayName"]
+    if source_kind == "wine":
+        renderer_metadata["wine"] = tool["strDisplayName"]
+    else:
+        renderer_metadata["graphics"] = tool["strDisplayName"]
+    manifest["composition"] = composition
+    atomic_write_json(staging / "manifest.json", manifest)
+    atomic_write_json(
+        staging / ".realsteamonmac-composition.json", composition
+    )
+
+
+def compose_raw_tool_package(runtime_root, tool):
+    source_kind = tool.get("sourceKind")
+    if source_kind not in RAW_COMPONENT_KINDS:
+        raise RuntimeErrorWithContext(
+            f"raw compatibility tool kind is unsupported: {source_kind}"
+        )
+    component = Path(tool.get("componentPath", "")).resolve(strict=True)
+    base_package, base_manifest, base_wine_root, _ = load_package(
+        runtime_root, tool["renderer"]
+    )
+    source_fingerprint = _tree_fingerprint(component)
+    identity = {
+        "schema": COMPOSITION_SCHEMA,
+        "base_package_id": base_manifest["package_id"],
+        "tool": tool["strToolName"],
+        "renderer": tool["renderer"],
+        "source_kind": source_kind,
+        "component_path": str(component),
+        "source_fingerprint": source_fingerprint,
+    }
+    digest = hashlib.sha256(
+        json.dumps(
+            identity, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    package_id = f"composed-{digest[:32]}"
+    composition = {**identity, "package_id": package_id}
+    composed_root = Path(runtime_root) / "composed"
+    composed_root.mkdir(parents=True, exist_ok=True)
+    composed_root.chmod(0o700)
+    destination = composed_root / package_id
+    lock_path = composed_root / ".compose.lock"
+    with lock_path.open("a+", encoding="utf-8") as lock:
+        lock_path.chmod(0o600)
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        if destination.exists():
+            marker_path = (
+                destination / ".realsteamonmac-composition.json"
+            )
+            try:
+                marker = json.loads(marker_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as error:
+                raise RuntimeErrorWithContext(
+                    f"composed runtime cache is invalid: {destination}"
+                ) from error
+            if marker != composition:
+                raise RuntimeErrorWithContext(
+                    f"composed runtime cache identity changed: {destination}"
+                )
+            return _load_package_path(
+                destination, tool["renderer"], package_id
+            )
+
+        staging = Path(
+            tempfile.mkdtemp(prefix=".compose-", dir=str(composed_root))
+        )
+        try:
+            _build_composed_package(
+                staging,
+                base_package,
+                base_manifest,
+                base_wine_root,
+                tool,
+                composition,
+            )
+            if _tree_fingerprint(component) != source_fingerprint:
+                raise RuntimeErrorWithContext(
+                    "runtime component changed while composing: "
+                    f"{component}"
+                )
+            _load_package_path(staging, tool["renderer"], package_id)
+            os.replace(staging, destination)
+        except Exception:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+    return _load_package_path(destination, tool["renderer"], package_id)
+
+
 def load_selected_package(runtime_root, config):
     tool = load_compat_tool(config["compat_tool"])
     validate_tool_capabilities(config, tool)
-    package, manifest, wine_root, wine64 = load_package(
-        runtime_root,
-        config["renderer"],
-        tool["runtimePackage"] if tool is not None else None,
-    )
+    if tool is not None and tool.get("sourceKind") is not None:
+        package, manifest, wine_root, wine64 = compose_raw_tool_package(
+            runtime_root, tool
+        )
+    else:
+        package, manifest, wine_root, wine64 = load_package(
+            runtime_root,
+            config["renderer"],
+            tool["runtimePackage"] if tool is not None else None,
+        )
     return package, manifest, wine_root, wine64, tool
 
 

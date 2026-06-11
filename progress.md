@@ -1443,3 +1443,36 @@
   CrossOver Preview control PIDs `19863`, `19885`, and `73736` remained alive,
   and the current helper logs contained no new TypeError, navigator failure,
   browser-frame disconnect, or patch verification error.
+
+## 2026-06-11 Standard Tool Runtime Composition
+
+- Extended the runtime manager so raw GPTK, DXMT, DXVK, and complete Wine
+  directories are executable selections rather than catalog-only entries.
+- Each raw selection creates a content-addressed package below the runtime
+  composition cache. The selected immutable base Wine and Steamworks payload
+  are hardlinked; user graphics files are APFS-cloned or copied into their
+  expected Wine module paths, so neither the base package nor the user's
+  source directory is modified.
+- GPTK maps `external` and `wine` into the base GPTK `lib` tree while
+  preserving internal framework and `../../external` symlinks. DXMT and DXVK
+  map their Unix and Windows architecture directories into Wine's builtin
+  module directories.
+- A complete raw Wine directory becomes the entire renderer Wine root. Unified
+  WoW64 layouts receive a local `wine64 -> wine` alias. A base Steamworks
+  bridge is retained only when its Wine major matches the raw Wine major.
+- Added six end-to-end runtime tests covering all four source kinds, base
+  hardlink reuse, user-source inode isolation, cache reuse, cache invalidation,
+  source changes during construction, relative and absolute GPTK symlink
+  rebasing, complete-Wine replacement, and matching Wine 11 Steamworks
+  injection. The complete runtime manager suite passed 53 tests;
+  the companion catalog, patcher, app-state, launch-descriptor, and recovery
+  suites passed 51 tests.
+- Performed an isolated real-payload acceptance using CrossOver Preview's
+  `lib64/apple_gptk`, `lib/dxmt`, and `lib/dxvk`. All three produced executable
+  composed packages in 5.4 seconds. Each probed component matched its source
+  hash with a distinct inode, and each package reused the selected base
+  `wine64` inode. The temporary acceptance tree was removed automatically and
+  the running CrossOver Preview instance was not touched.
+- Final repository verification passed 109 Python tests, 84 JavaScript tests,
+  all 24 shell contract tests, JavaScript syntax, Python bytecode compilation,
+  and whitespace checks.

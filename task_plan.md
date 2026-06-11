@@ -136,9 +136,9 @@ Phase 8: 2026-06-11 field regression remediation and verified release
       controls and populate Steam's existing selector without overlays.
 - [ ] Re-expose runtime options, Run Command, dependencies, and container
       actions through Steam-owned controls without reviving the legacy panel.
-- [ ] Discover side-by-side user-supplied GPTK, DXMT, DXVK, and Wine trees in
+- [x] Discover side-by-side user-supplied GPTK, DXMT, DXVK, and Wine trees in
       standard CrossOver-like layouts under `compatibilitytools.d`.
-- [ ] Derive renderer capabilities from the discovered payload and disable
+- [x] Derive renderer capabilities from the discovered payload and disable
       unsupported DXR, MetalFX/DLSS, MSync, and related settings.
 - [ ] Repair stable/beta Steam discovery, language-independent actions,
       restart readiness, Windows-only labeling, download reconciliation, and
@@ -243,6 +243,8 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Disable `winemenubuilder.exe` in the independent runtime | Migrated CrossOver prefixes otherwise recreate or launch old CrossOver menu applications. |
 | Scope forced Wine cleanup to People Playground | Its .NET helper confuses Wine PID 312 with persistent macOS PID 312; a global cleanup policy could break launcher-style games. |
 | Treat raw GPTK/DXMT/DXVK/Wine directories as validated catalog inputs | Users can install standard vendor layouts directly; the runtime manager will compose them with an immutable base package instead of requiring project-private wrapper files or mutating the source tree. |
+| Compose raw tools into content-addressed runtime views | Hardlink the immutable selected base Wine, clone or copy user component files into an isolated overlay, and key the cache by base package plus source-tree fingerprint so source edits create a new view without changing old launches. |
+| Reuse a Steamworks bridge for raw Wine only across the same Wine major | A matching Wine 11 bridge retains Steam ownership integration for Wine 11.x; an unknown ABI combination must launch without that bridge instead of injecting an incompatible helper. |
 | Keep native compatibility selection stable through macOS detail refreshes | Steam remains the control owner; a data-only fallback stabilizes checkbox/dropdown state. Do not call native persistence for project tools until the macOS backend actually registers them, because the current API ignores them and can break startup. |
 | Resize and scale only Steam's native controller configurator | Identify the locale-independent `SP Controller Configurator_*` popup, use `SteamClient.Window` for native sizing, and apply bounded document zoom without adding or replacing UI. |
 
