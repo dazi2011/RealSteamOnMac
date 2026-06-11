@@ -55,6 +55,12 @@
   - Confirmed beta-manifest/build hard-coding, a fixed 30-second activation
     delay, and strict project-only tool metadata as direct causes of three
     field reports.
+  - Read the SteamUI patcher, steamclient patcher, runtime package installer,
+    and dependency catalog in full.
+  - Confirmed fixed Steam resource hashes/anchors and Mach-O profiles prevent
+    unprofiled stable/new builds from being patched safely.
+  - Confirmed the current catalog has only three dependency entries and the
+    runtime package duplicates full Wine trees per renderer.
 - Files modified:
   - `task_plan.md`
   - `findings.md`

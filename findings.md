@@ -173,6 +173,30 @@
   synthesize Steam API records plus a launch adapter outside the user's tool
   directory. User folders then remain vendor-standard and do not need generated
   `run` or manifest files.
+- SteamUI patching is also build-specific: it accepts one index hash, two
+  compatibility chunk hashes, a fixed chunk filename, and exact minified source
+  anchors. A stable or updated Steam build can fail even after installer
+  manifest detection is fixed.
+- The standalone steamclient patcher likewise supports exactly the same two
+  builds through fixed Mach-O UUID, full SHA-256, instruction bytes, and
+  offsets. Removing these checks would be unsafe; stable/beta support requires
+  independently verified build profiles or a narrower structural symbol/pattern
+  discovery with byte-level validation.
+- `patch_steamui.py` rescans compatibility tools only while installing/verifying
+  the UI asset at Steam launch. The generated `config.js` remains static for
+  the life of that Steam process, confirming there is no in-session hot-add.
+- `script/install_runtime_package.sh` assembles one large immutable package by
+  copying Wine four times and injecting GPTK, DXMT, DXVK, Steamworks, and
+  project shims. This explains why RealSteamOnMac containers/runtimes consume
+  far more space than a CrossOver bottle, which primarily stores per-bottle
+  mutable state while sharing application-level engines and components.
+- The bundled dependency catalog contains only VC++ 2015-2022 x64, VC++
+  2015-2022 x86, and .NET Framework 4.8. The complaint that the component
+  installer offers very little is accurate.
+- Dependency download security is strong but currently limited to four
+  Microsoft hosts and fixed installer receipts. Expanding the catalog needs
+  reviewed official sources and checksums; blindly copying CrossOver metadata
+  or proprietary payloads is neither technically robust nor license-safe.
 
 ## Requirements
 
