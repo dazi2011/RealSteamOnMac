@@ -390,6 +390,64 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertFalse(context["prefix"].exists())
         self.assertTrue(Path(result["recovery_path"]).is_dir())
 
+    def test_open_c_drive_scrubs_wine_environment(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        wine_root = wine64.parent.parent
+        context["prefix"].mkdir(parents=True)
+        (context["prefix"] / "drive_c").mkdir()
+        prepared_environment = {
+            "HOME": str(self.root),
+            "PATH": "/usr/bin:/bin",
+            "WINEPREFIX": str(context["prefix"]),
+            "WINEMSYNC": "1",
+            "STEAM_COMPAT_APP_ID": "1118200",
+            "DYLD_INSERT_LIBRARIES": "/tmp/x86_64-shim.dylib",
+            "REALSTEAMONMAC_RENDERER": "dxmt",
+        }
+
+        with mock.patch.object(
+            runtime,
+            "prepare",
+            return_value=(
+                self.package,
+                {"package_id": "fixture"},
+                wine_root,
+                wine64,
+                prepared_environment,
+            ),
+        ), mock.patch.object(
+            runtime,
+            "run_job_process",
+            return_value=mock.Mock(returncode=0),
+        ) as run:
+            exit_code, _ = runtime.execute_container_action(
+                context,
+                self.runtime_root,
+                {"operation": "open-c-drive"},
+                self.root / "open-c-drive.log",
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            run.call_args.args[1],
+            ["/usr/bin/open", context["prefix"] / "drive_c"],
+        )
+        native_environment = run.call_args.args[2]
+        self.assertEqual(native_environment["HOME"], str(self.root))
+        self.assertEqual(native_environment["PATH"], "/usr/bin:/bin")
+        for name in (
+            "WINEPREFIX",
+            "WINEMSYNC",
+            "STEAM_COMPAT_APP_ID",
+            "DYLD_INSERT_LIBRARIES",
+            "REALSTEAMONMAC_RENDERER",
+        ):
+            with self.subTest(name=name):
+                self.assertNotIn(name, native_environment)
+
     def test_run_command_target_cannot_escape_game_or_prefix(self):
         context = self.context()
         self.assertEqual(
@@ -498,6 +556,39 @@ class RuntimeManagerTests(unittest.TestCase):
             / "action.lock"
         )
         self.assertEqual(action_lock.stat().st_mode & 0o777, 0o600)
+
+    def test_container_nonzero_exit_fails_job(self):
+        arguments = SimpleNamespace(
+            appid="1118200",
+            job_id="abcdef0123456789abcdef0123456789",
+            payload="action=container&operation=open-c-drive",
+            runtime_root=str(self.runtime_root),
+        )
+        context = self.context()
+        with mock.patch.object(
+            runtime,
+            "resolve_app_context",
+            return_value=context,
+        ), mock.patch.object(
+            runtime,
+            "execute_container_action",
+            return_value=(
+                -6,
+                {
+                    "operation": "open-c-drive",
+                    "renderer": "dxmt",
+                },
+            ),
+        ):
+            self.assertEqual(runtime.action_job(arguments), 1)
+
+        status_path = runtime.job_paths(
+            1118200, arguments.job_id
+        )["status"]
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+        self.assertEqual(status["state"], "failed")
+        self.assertEqual(status["exit_code"], 1)
+        self.assertIn("container operation exited with -6", status["message"])
 
     def test_run_command_executes_an_argv_vector_without_a_shell(self):
         context = self.context()
