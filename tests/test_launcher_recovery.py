@@ -296,6 +296,48 @@ class LauncherRecoveryTests(unittest.TestCase):
         self.assertEqual(self.game_file.read_bytes(), b"MZgame")
         self.assertEqual(self.user_data.read_bytes(), b"user-save")
 
+    def test_repository_catalog_pins_rdr2_depot_prerequisites(self):
+        catalog = recovery.load_launcher_recovery_catalog(
+            ROOT / "config" / "dependencies.json"
+        )
+
+        recipe = catalog[1174180]
+        self.assertEqual(recipe["id"], "rdr2-rockstar")
+        self.assertEqual(
+            [
+                (
+                    step["id"],
+                    step["installer"],
+                    step["arguments"],
+                    step["size"],
+                    step["sha256"],
+                )
+                for step in recipe["steps"]
+            ],
+            [
+                (
+                    "social-club",
+                    "Redistributables/Social-Club-Setup.exe",
+                    ["/silent"],
+                    127419512,
+                    "8c057d4199ded0bd70e2f769548dd97bec9e0e89a27109d"
+                    "61026b286d79c7cb5",
+                ),
+                (
+                    "rockstar-launcher",
+                    "Redistributables/Rockstar-Games-Launcher.exe",
+                    ["/s", "/t"],
+                    112102008,
+                    "51afae4b364112286fda8abeeda64867830792d6134ab6cf"
+                    "2d54bfbb8d21ece7",
+                ),
+            ],
+        )
+        postconditions = json.dumps(recipe["steps"])
+        self.assertIn("SocialClubHelper.exe", postconditions)
+        self.assertIn("Launcher.exe", postconditions)
+        self.assertIn("registry_key", postconditions)
+
 
 if __name__ == "__main__":
     unittest.main()

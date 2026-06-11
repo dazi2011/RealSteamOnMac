@@ -1556,6 +1556,92 @@ class RuntimeManagerTests(unittest.TestCase):
         )
         self.assertEqual(value["arguments"], ["-release", "two words"])
 
+    def test_launch_recovers_configured_launcher_before_game_process(self):
+        context = runtime.resolve_app_context("1118200")
+        _, _, wine_root, wine64 = runtime.load_package(
+            self.runtime_root, "dxmt"
+        )
+        arguments = SimpleNamespace(
+            appid="1118200",
+            compat_data=None,
+            runtime_root=str(self.runtime_root),
+            executable=str(self.executable),
+            dry_run=False,
+            arguments=[],
+        )
+        order = []
+        with mock.patch.object(
+            runtime,
+            "resolve_app_context",
+            return_value=context,
+        ), mock.patch.object(
+            runtime,
+            "prepare",
+            return_value=(
+                self.package,
+                {"package_id": "fixture"},
+                wine_root,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+            ),
+        ), mock.patch.object(
+            runtime,
+            "execute_configured_launcher_recovery",
+            side_effect=lambda *_args: order.append("recovery"),
+        ), mock.patch.object(
+            runtime,
+            "run_game_process",
+            side_effect=lambda *_args: order.append("game") or 0,
+        ):
+            self.assertEqual(runtime.launch(arguments), 0)
+
+        self.assertEqual(order, ["recovery", "game"])
+
+    def test_launcher_recovery_failure_blocks_game_process(self):
+        context = runtime.resolve_app_context("1118200")
+        _, _, wine_root, wine64 = runtime.load_package(
+            self.runtime_root, "dxmt"
+        )
+        arguments = SimpleNamespace(
+            appid="1118200",
+            compat_data=None,
+            runtime_root=str(self.runtime_root),
+            executable=str(self.executable),
+            dry_run=False,
+            arguments=[],
+        )
+        with mock.patch.object(
+            runtime,
+            "resolve_app_context",
+            return_value=context,
+        ), mock.patch.object(
+            runtime,
+            "prepare",
+            return_value=(
+                self.package,
+                {"package_id": "fixture"},
+                wine_root,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+            ),
+        ), mock.patch.object(
+            runtime,
+            "execute_configured_launcher_recovery",
+            side_effect=runtime.RuntimeErrorWithContext(
+                "launcher recovery failed"
+            ),
+        ), mock.patch.object(
+            runtime,
+            "run_game_process",
+        ) as run:
+            with self.assertRaisesRegex(
+                runtime.RuntimeErrorWithContext,
+                "launcher recovery failed",
+            ):
+                runtime.launch(arguments)
+
+        run.assert_not_called()
+
     def test_people_playground_cleans_prefix_after_game_exit(self):
         context = self.context()
         working_directory = self.game / "bin"

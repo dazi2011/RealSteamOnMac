@@ -1153,3 +1153,7 @@
   path instead of deleting or replacing the prefix.
 - The focused recovery suite now passes all 6 tests plus Python bytecode and
   whitespace validation.
+- Added integration RED coverage for the repository RDR2 recipe, recovery
+  ordering before the game process, and launch blocking on recovery failure.
+  RED failed only because AppID `1174180` is absent from the catalog and the
+  runtime has no `execute_configured_launcher_recovery` entry point yet.
