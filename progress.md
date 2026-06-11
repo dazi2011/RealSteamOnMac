@@ -1040,3 +1040,8 @@
   update-failure states remain unchanged.
 - SteamUI policy/runtime regression passed 76 tests plus JavaScript syntax and
   whitespace validation.
+- Added RED contracts for a managed-only native repair dispatcher that selects
+  exactly one of `VerifyApp`, `ResumeAppUpdate`, or `OpenInstallWizard`, while
+  treating active install/download/validation states as no-ops.
+- The focused suite failed only because `chooseNativeRepairAction` and
+  `requestNativeRepair` do not exist yet; the other 72 policy tests passed.

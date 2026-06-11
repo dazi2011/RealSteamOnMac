@@ -15,6 +15,7 @@ const {
   buildRunCommandPayload,
   buildControlPanelMarkup,
   applyToolCapabilities,
+  chooseNativeRepairAction,
   compatToolForRenderer,
   decideOverviewPatch,
   discoverManagedApps,
@@ -31,6 +32,7 @@ const {
   refreshAppActionComponents,
   reconcileCompatDetails,
   reconcileAppState,
+  requestNativeRepair,
   rendererForCompatTool,
   DETAILS_REFRESH_INTERVAL_MS,
 } = require("../ui/realsteamonmac_ui.js");
@@ -738,6 +740,128 @@ test("rejects undefined or out-of-range native display states", () => {
       null,
     );
   }
+});
+
+test("chooses bounded Steam-owned repair actions", () => {
+  assert.equal(
+    chooseNativeRepairAction({
+      detailsStatus: 11,
+      hasAnyLocalContent: true,
+      installed: false,
+      sizeOnDisk: "0",
+    }),
+    "resume",
+  );
+  assert.equal(
+    chooseNativeRepairAction({
+      detailsStatus: 20,
+      hasAnyLocalContent: true,
+      installed: true,
+      sizeOnDisk: "4096",
+    }),
+    "verify",
+  );
+  assert.equal(
+    chooseNativeRepairAction({
+      detailsStatus: 9,
+      hasAnyLocalContent: false,
+      installed: false,
+      sizeOnDisk: "0",
+    }),
+    "install",
+  );
+  for (const detailsStatus of [3, 5, 6, 7, 8]) {
+    assert.equal(
+      chooseNativeRepairAction({
+        detailsStatus,
+        hasAnyLocalContent: true,
+        installed: true,
+        sizeOnDisk: "4096",
+      }),
+      "active",
+    );
+  }
+});
+
+test("executes repair through fixed SteamClient methods", async () => {
+  const calls = [];
+  const steamClient = {
+    Apps: {
+      async VerifyApp(appid) {
+        calls.push(["verify", appid]);
+        return { nGameActionID: 17 };
+      },
+    },
+    Downloads: {
+      async ResumeAppUpdate(appid, clientid) {
+        calls.push(["resume", appid, clientid]);
+      },
+    },
+    Installs: {
+      async OpenInstallWizard(appids) {
+        calls.push(["install", [...appids]]);
+      },
+    },
+  };
+
+  assert.equal(
+    await requestNativeRepair({
+      steamClient,
+      appid: 2358720,
+      allowlisted: true,
+      detailsStatus: 11,
+      hasAnyLocalContent: true,
+      installed: false,
+      sizeOnDisk: "0",
+      clientid: "0",
+    }),
+    "resume",
+  );
+  assert.equal(
+    await requestNativeRepair({
+      steamClient,
+      appid: 990080,
+      allowlisted: true,
+      detailsStatus: 20,
+      hasAnyLocalContent: true,
+      installed: true,
+      sizeOnDisk: "74056715310",
+      clientid: "0",
+    }),
+    "verify",
+  );
+  assert.equal(
+    await requestNativeRepair({
+      steamClient,
+      appid: 714010,
+      allowlisted: true,
+      detailsStatus: 9,
+      hasAnyLocalContent: false,
+      installed: false,
+      sizeOnDisk: "0",
+      clientid: "0",
+    }),
+    "install",
+  );
+  assert.deepEqual(calls, [
+    ["resume", 2358720, "0"],
+    ["verify", 990080],
+    ["install", [714010]],
+  ]);
+
+  await assert.rejects(
+    requestNativeRepair({
+      steamClient,
+      appid: 42,
+      allowlisted: false,
+      detailsStatus: 9,
+      hasAnyLocalContent: false,
+      installed: false,
+      sizeOnDisk: "0",
+      clientid: "0",
+    }),
+    /not managed/,
+  );
 });
 
 for (const detailsStatus of [3, 7, 9, 11, 19, 35]) {
