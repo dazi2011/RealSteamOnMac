@@ -1078,3 +1078,13 @@
   `-cef-enable-debugging`; CDP became ready. The first launch-options probe
   reached the API but all four calls returned opaque bridge error objects, so
   the probe now preserves enumerable and own error fields for diagnosis.
+- A second live probe showed `GetLaunchOptionsForApp` exposes only UI metadata:
+  Aimlabs returned index, description, name, type, and VR flags; RDR2,
+  Hogwarts Legacy, and People Playground returned empty arrays. It does not
+  expose executable paths, working directories, or arguments.
+- A read-only v41 appinfo prototype decoded all four target records and matched
+  each binary VDF SHA-1. Added RED contracts for verified v41 decoding,
+  case-insensitive requested-target matching, and hash-corruption rejection.
+- The corrected v41 fixture reached the intended RED boundary: the existing
+  six JSON descriptor tests passed, while exactly three appinfo tests failed
+  because `build_launch_descriptor_from_appinfo` is not implemented.

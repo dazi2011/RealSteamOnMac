@@ -902,8 +902,20 @@
   directory for a plausible executable.
 - SteamUI's own launch workflow calls
   `SteamClient.Apps.GetLaunchOptionsForApp(appid)`. This is the preferred
-  decoded launch-option source; the community `AppInfoStore` module is for
-  display metadata and is not evidence of executable launch records.
+  source for UI option indexes, but live testing proves its result omits the
+  executable, working directory, and arguments. The community `AppInfoStore`
+  module is for display metadata and is also not evidence of executable launch
+  records.
+- The installed `appcache/appinfo.vdf` uses format v41 (`0x07564429`), contains
+  a global string table, and supplies a per-record binary VDF SHA-1. A bounded
+  read-only decoder can therefore verify the exact `appinfo/config/launch`
+  records before using them.
+- Verified live launch records:
+  - Aimlabs: Windows `aimlab_tb.exe` entry `0`, macOS `AimLab.app` entry `1`;
+  - Hogwarts Legacy: unbranched default `HogwartsLegacy.exe` entry `13`, with
+    stale `Phoenix-Win64-Test.exe` entries scoped to named beta branches;
+  - RDR2: `PlayRDR2.exe` entry `0`;
+  - People Playground: `People Playground.exe` entry `0`.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
