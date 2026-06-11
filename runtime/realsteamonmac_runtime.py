@@ -2388,6 +2388,53 @@ def load_dependency_catalog(path=None):
     return normalized
 
 
+def curl_dependency_download(dependency, destination):
+    result = subprocess.run(
+        [
+            "/usr/bin/curl",
+            "--fail",
+            "--location",
+            "--silent",
+            "--show-error",
+            "--proto",
+            "=https",
+            "--proto-redir",
+            "=https",
+            "--max-redirs",
+            "5",
+            "--connect-timeout",
+            "30",
+            "--max-time",
+            "600",
+            "--max-filesize",
+            str(dependency["size"]),
+            "--user-agent",
+            "RealSteamOnMac/1",
+            "--output",
+            str(destination),
+            "--write-out",
+            "%{url_effective}",
+            dependency["url"],
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=620,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or "curl failed"
+        raise RuntimeErrorWithContext(
+            f"dependency download failed: {dependency['id']}: {detail}"
+        )
+    final_url = result.stdout.strip()
+    if not final_url:
+        raise RuntimeErrorWithContext(
+            f"dependency download returned no final URL: {dependency['id']}"
+        )
+    return final_url
+
+
 def download_dependency(dependency, cache_root=None):
     cache = (
         Path(cache_root).expanduser()
@@ -2416,44 +2463,23 @@ def download_dependency(dependency, cache_root=None):
     )
     temporary = Path(temporary_name)
     try:
-        request = urllib.request.Request(
-            dependency["url"],
-            headers={"User-Agent": "RealSteamOnMac/1"},
-        )
-        total = 0
-        digest = hashlib.sha256()
-        with urllib.request.urlopen(request, timeout=30) as response:
-            final_url = (
-                response.geturl()
-                if callable(getattr(response, "geturl", None))
-                else dependency["url"]
+        os.close(descriptor)
+        descriptor = -1
+        final_url = curl_dependency_download(dependency, temporary)
+        parsed_final_url = urllib.parse.urlparse(final_url)
+        if (
+            parsed_final_url.scheme != "https"
+            or parsed_final_url.hostname
+            not in DEPENDENCY_DOWNLOAD_HOSTS
+        ):
+            raise RuntimeErrorWithContext(
+                "dependency download redirected to an untrusted host"
             )
-            parsed_final_url = urllib.parse.urlparse(final_url)
-            if (
-                parsed_final_url.scheme != "https"
-                or parsed_final_url.hostname
-                not in DEPENDENCY_DOWNLOAD_HOSTS
-            ):
-                raise RuntimeErrorWithContext(
-                    "dependency download redirected to an untrusted host"
-                )
-            with os.fdopen(descriptor, "wb") as output:
-                descriptor = -1
-                for chunk in iter(
-                    lambda: response.read(1024 * 1024), b""
-                ):
-                    total += len(chunk)
-                    if total > dependency["size"]:
-                        raise RuntimeErrorWithContext(
-                            "dependency download exceeded its expected size"
-                        )
-                    digest.update(chunk)
-                    output.write(chunk)
-                output.flush()
-                os.fsync(output.fileno())
+        total = temporary.stat().st_size
+        digest = file_sha256(temporary)
         if (
             total != dependency["size"]
-            or digest.hexdigest() != dependency["sha256"]
+            or digest != dependency["sha256"]
         ):
             raise RuntimeErrorWithContext(
                 "dependency download did not match its manifest"

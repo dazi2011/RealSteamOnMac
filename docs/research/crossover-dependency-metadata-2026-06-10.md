@@ -69,6 +69,15 @@ x86 and x64 bundle uninstall keys below Wine's `Wow6432Node` view. The 2012
 and 2013 x64 recipes therefore query that actual Wine registry location rather
 than assuming the native Windows x64 uninstall view.
 
+The .NET Framework 4.8 recipe uses Microsoft's final
+`download.microsoft.com` URL rather than the `go.microsoft.com` redirector.
+The final payload was independently re-downloaded and matched the existing
+121,346,568-byte size and SHA-256 pin exactly. This avoids redirect-time TLS
+chain differences. Downloads use macOS's fixed `/usr/bin/curl` with
+SecureTransport, HTTPS-only protocols, bounded redirects, and a maximum file
+size. The runtime still validates the final host, exact size, and SHA-256
+before publishing the private cache file.
+
 Chinese fonts were also not imported from CrossOver. A public release needs a
 legally reviewed source and explicit font licensing before offering automated
 installation.

@@ -1622,3 +1622,23 @@
   regression assertions.
 - Rollback snapshot:
   `~/Library/Application Support/RealSteamOnMac/backups/people-playground-dependencies-20260611T160058Z`.
+
+## 2026-06-11 .NET 4.8 Download Pin Correction
+
+- Created an APFS-cloned acceptance prefix at
+  `/Volumes/990pro/games/mac/steamapps/compatdata/rsom-acceptance-xna-20260611T160614Z`
+  so .NET/XNA testing does not modify the active People Playground prefix.
+- The first isolated XNA attempt failed before installation because the
+  `.NET 4.8` recipe used a `go.microsoft.com` redirect and Homebrew Python's
+  TLS trust store rejected the redirected certificate chain.
+- Resolved Microsoft's current final URL, downloaded it independently, and
+  confirmed it is byte-identical to the existing manifest pin:
+  121,346,568 bytes and SHA-256
+  `0a3a390c47e639d0f7fc65b21195fee6b7f65b066f80f70c60fab191d14b7e40`.
+- Replaced the redirect URL with the fixed official `download.microsoft.com`
+  URL and added a production-catalog regression assertion.
+- A direct retry proved the fixed URL alone was insufficient because Homebrew
+  Python still used its own CA bundle. Replaced Python `urllib` transport with
+  fixed `/usr/bin/curl` using SecureTransport, HTTPS-only protocols, bounded
+  redirects, and a maximum file size. Final-host, exact-size, and SHA-256
+  verification remain mandatory; no certificate bypass is permitted.

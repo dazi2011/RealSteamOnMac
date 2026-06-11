@@ -1167,6 +1167,15 @@
   `HKLM\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall`.
   Querying the native x64 uninstall view produces a false failure after the
   DLLs have already installed.
+- A checksum pin does not remove redirect fragility. The .NET 4.8
+  `go.microsoft.com` link redirected to an official payload with the expected
+  bytes, but Homebrew Python rejected the redirected TLS chain while curl and
+  system Python accepted it. Pinning the final `download.microsoft.com` URL
+  removes one environment-dependent step without changing payload identity,
+  but transport must also avoid whichever Python happens to appear first in
+  `PATH` choosing a different trust store. Fixed system curl with
+  SecureTransport keeps TLS verification strict, while final-host, size, and
+  checksum validation preserve the existing supply-chain boundary.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

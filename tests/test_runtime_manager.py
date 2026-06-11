@@ -813,10 +813,18 @@ class RuntimeManagerTests(unittest.TestCase):
         dependency = runtime.load_dependency_catalog()[
             "fixture-redist"
         ]
+
+        def download(payload):
+            def write(dependency, destination):
+                destination.write_bytes(payload)
+                return dependency["url"]
+
+            return write
+
         with mock.patch.object(
-            runtime.urllib.request,
-            "urlopen",
-            return_value=io.BytesIO(self.dependency_bytes),
+            runtime,
+            "curl_dependency_download",
+            side_effect=download(self.dependency_bytes),
         ):
             downloaded = runtime.download_dependency(dependency)
         self.assertEqual(
@@ -826,9 +834,9 @@ class RuntimeManagerTests(unittest.TestCase):
 
         downloaded.unlink()
         with mock.patch.object(
-            runtime.urllib.request,
-            "urlopen",
-            return_value=io.BytesIO(b"MZwrong"),
+            runtime,
+            "curl_dependency_download",
+            side_effect=download(b"MZwrong"),
         ):
             with self.assertRaisesRegex(
                 runtime.RuntimeErrorWithContext,
@@ -840,18 +848,49 @@ class RuntimeManagerTests(unittest.TestCase):
         dependency = runtime.load_dependency_catalog()[
             "fixture-redist"
         ]
-        response = io.BytesIO(self.dependency_bytes)
-        response.geturl = lambda: "https://example.invalid/fixture.exe"
+
+        def download(_dependency, destination):
+            destination.write_bytes(self.dependency_bytes)
+            return "https://example.invalid/fixture.exe"
+
         with mock.patch.object(
-            runtime.urllib.request,
-            "urlopen",
-            return_value=response,
+            runtime,
+            "curl_dependency_download",
+            side_effect=download,
         ):
             with self.assertRaisesRegex(
                 runtime.RuntimeErrorWithContext,
                 "untrusted host",
             ):
                 runtime.download_dependency(dependency)
+
+    def test_dependency_download_uses_bounded_system_curl(self):
+        dependency = runtime.load_dependency_catalog()[
+            "fixture-redist"
+        ]
+        destination = self.root / "fixture.exe"
+        completed = SimpleNamespace(
+            returncode=0,
+            stdout=dependency["url"],
+            stderr="",
+        )
+        with mock.patch.object(
+            runtime.subprocess,
+            "run",
+            return_value=completed,
+        ) as run:
+            final_url = runtime.curl_dependency_download(
+                dependency, destination
+            )
+
+        command = run.call_args.args[0]
+        self.assertEqual(final_url, dependency["url"])
+        self.assertEqual(command[0], "/usr/bin/curl")
+        self.assertIn("=https", command)
+        self.assertIn("--proto-redir", command)
+        self.assertIn("--max-redirs", command)
+        self.assertIn("--max-filesize", command)
+        self.assertNotIn("--insecure", command)
 
     def test_dependency_catalog_accepts_reviewed_installer_recipes(self):
         catalog_path = self.root / "recipe-dependencies.json"
@@ -1684,6 +1723,14 @@ class RuntimeManagerTests(unittest.TestCase):
                 "HKLM\\Software\\Wow6432Node\\Microsoft\\Windows\\"
                 "CurrentVersion\\Uninstall\\"
                 "{ca67548a-5ebe-413a-b50c-4b9ceb6d66c6}"
+            ),
+        )
+        self.assertEqual(
+            catalog["dotnet48"]["url"],
+            (
+                "https://download.microsoft.com/download/f/3/a/"
+                "f3a6af84-da23-40a5-8d1c-49cc10c8e76f/"
+                "NDP48-x86-x64-AllOS-ENU.exe"
             ),
         )
         self.assertEqual(
