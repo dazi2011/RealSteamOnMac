@@ -1014,6 +1014,22 @@
   `PlayRDR2.exe` starts the current Launcher, which logs the correct AppID and
   install path, then stops at `Creating Steam min mode launch` without ever
   starting `RDR2.exe`. The remaining gap is above bridge ABI compatibility.
+- Steam's native compatibility component already obtains its checkbox,
+  dropdown, and options from `bCompatEnabled`,
+  `GetAvailableCompatTools`, and `SpecifyCompatTool`. The macOS blocker was
+  only the global `bCompatEnabled` predicate; enabling that predicate for a
+  managed AppID preserves Steam's own React controls and requires no overlay.
+- Live React evidence for AppID `1118200` shows the Steam checkbox has
+  `disabled=false`, `checked=true`, and a real `onChange` handler. Its native
+  `DialogDropDown` exposes four `role=option` entries: DXMT 0.80, DXVK macOS
+  1.10.3, GPTK 3.0, and WineD3D 11.10. No project panel, modal layer, hidden
+  native row, or replacement selector exists in the rendered properties page.
+- Steam can update the UI resource bundle independently during a restart.
+  Build `1781139754` changed `chunk~2dcc5aaf7.js` to SHA-256
+  `387e1b1aacdcbddd5b1fbf65b64c9f5222cfe60d917568999c2c7ddedfdf6b0a`
+  while retaining the two page anchors and one native-control anchor. A
+  supported clean new chunk must atomically replace a stale clean backup;
+  unknown hashes or changed anchor counts must still fail closed.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

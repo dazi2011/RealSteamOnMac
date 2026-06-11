@@ -1293,3 +1293,38 @@
   `Creating Steam min mode launch`; no `RDR2.exe` process appeared after
   88 seconds. The AppID-specific GPTK wineserver was stopped cleanly, and the
   running CrossOver Steam control PIDs were unchanged.
+
+## 2026-06-11 Steam-Native Compatibility Control Acceptance
+
+- Added a third guarded SteamUI patch anchor for the native compatibility
+  component. For managed AppIDs only, Steam's effective `bCompatEnabled`
+  predicate now evaluates true; the existing Steam checkbox, dropdown,
+  `GetAvailableCompatTools`, and `SpecifyCompatTool` paths remain intact.
+- Disabled the runtime call that hid Steam's native row and mounted the
+  project replacement panel. The legacy panel helpers are no longer exported
+  and are unreachable while their actions await migration to Steam-owned
+  controls.
+- Added migration coverage for the previous static gate, the previous
+  dynamic-page-only gate, and clean Steam build changes with stale backups.
+  Unknown resource hashes and altered anchor counts still fail closed.
+- During live restart testing, Steam updated the compatibility chunk to
+  build `1781139754`, SHA-256
+  `387e1b1aacdcbddd5b1fbf65b64c9f5222cfe60d917568999c2c7ddedfdf6b0a`.
+  The new source retained exactly two page anchors and one control anchor, so
+  it was added as a separately verified profile and its clean file replaced
+  the old-build rollback backup.
+- The installed support patcher and UI source were atomically refreshed.
+  Launcher startup then logged `Steam UI patch verified`; installed resource
+  verification reported two managed page gates, one managed native-control
+  gate, and one index injection.
+- Live Steam properties acceptance for People Playground passed:
+  the native checkbox was visible with `disabled=false`, `checked=true`, and
+  a React `onChange` function; the native `DialogDropDown` rendered DXMT 0.80,
+  DXVK macOS 1.10.3, GPTK 3.0, and WineD3D 11.10 as four `role=option` items.
+  The page contained zero `.realsteamonmac-controls`, zero project modal
+  layers, and zero hidden native rows.
+- CrossOver Preview control PIDs `19863`, `19885`, `20242`, `20269`, and
+  `73736` were unchanged across both Steam restarts.
+- Automated verification passed 14 Python patcher tests, the shell install /
+  verify / restore contract, 77 JavaScript runtime/policy tests, JavaScript
+  syntax, Python bytecode, and whitespace checks.

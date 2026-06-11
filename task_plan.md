@@ -132,8 +132,10 @@ Phase 8: 2026-06-11 field regression remediation and verified release
 
 - [ ] Reproduce and map every 2026-06-11 field report to a concrete code path,
       Steam state transition, or external dependency.
-- [ ] Replace simulated compatibility controls with Steam-owned controls and
-      populate Steam's existing compatibility-tool selector without overlays.
+- [x] Replace the simulated force-tool checkbox/dropdown with Steam-owned
+      controls and populate Steam's existing selector without overlays.
+- [ ] Re-expose runtime options, Run Command, dependencies, and container
+      actions through Steam-owned controls without reviving the legacy panel.
 - [ ] Discover side-by-side user-supplied GPTK, DXMT, DXVK, and Wine trees in
       standard CrossOver-like layouts under `compatibilitytools.d`.
 - [ ] Derive renderer capabilities from the discovered payload and disable
