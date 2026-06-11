@@ -666,6 +666,48 @@ test("maps staged-only local content back to Steam ready-to-install", () => {
   );
 });
 
+test("derives launch readiness after the native platform gate is synchronized", () => {
+  assert.equal(
+    getManagedTargetStatus({
+      allowlisted: true,
+      detailsStatus: 14,
+      hasAnyLocalContent: true,
+      installed: true,
+      sizeOnDisk: "455945761",
+    }),
+    11,
+  );
+});
+
+test("derives install readiness for missing or empty local content", () => {
+  for (const state of [
+    {
+      hasAnyLocalContent: false,
+      installed: false,
+      sizeOnDisk: "0",
+    },
+    {
+      hasAnyLocalContent: true,
+      installed: true,
+      sizeOnDisk: "0",
+    },
+    {
+      hasAnyLocalContent: true,
+      installed: false,
+      sizeOnDisk: "149800000000",
+    },
+  ]) {
+    assert.equal(
+      getManagedTargetStatus({
+        allowlisted: true,
+        detailsStatus: 14,
+        ...state,
+      }),
+      9,
+    );
+  }
+});
+
 for (const detailsStatus of [5, 7, 19, 20, 23, 24, 35, 38, 39]) {
   test(`preserves native non-ready status ${detailsStatus}`, () => {
     assert.equal(
@@ -682,7 +724,7 @@ for (const detailsStatus of [5, 7, 19, 20, 23, 24, 35, 38, 39]) {
 }
 
 test("rejects undefined or out-of-range native display states", () => {
-  for (const detailsStatus of [0, 14, 15, 40, 999]) {
+  for (const detailsStatus of [0, 15, 40, 999]) {
     assert.equal(
       getManagedTargetStatus({
         allowlisted: true,
@@ -832,15 +874,17 @@ for (const detailsStatus of [3, 7, 9, 11, 19, 35]) {
   });
 }
 
-test("fails closed while the native backend is still invalid", () => {
+test("derives install state once the native backend registry is synchronized", () => {
   assert.deepEqual(
     decideOverviewPatch({
       allowlisted: true,
       detailsStatus: 14,
       overviewStatus: 14,
       hasAnyLocalContent: false,
+      installed: false,
+      sizeOnDisk: "0",
     }),
-    { normalize: false },
+    { normalize: true },
   );
 });
 
@@ -981,7 +1025,7 @@ test("does not expose launch for a staged-only shell", () => {
   assert.equal(selected.is_invalid_os_type, false);
 });
 
-test("restores a state normalized by the shared store patch if backend readiness is lost", () => {
+test("restores a normalized state if native registry membership is lost", () => {
   const selected = {
     display_status: 14,
     is_available_on_current_platform: false,
@@ -1004,12 +1048,11 @@ test("restores a state normalized by the shared store patch if backend readiness
     originalStates: originals,
   });
 
-  details.eDisplayStatus = 14;
   assert.equal(
     reconcileAppState({
       overview,
       details,
-      allowlist: new Set([1118200]),
+      allowlist: new Set(),
       originalStates: originals,
     }),
     "restored",
@@ -1077,7 +1120,7 @@ test("does not repeatedly normalize an already synchronized overview", () => {
   assert.equal(reconcileAppState(state), "unchanged");
 });
 
-test("retains the original state through an active install and restores if backend readiness is lost", () => {
+test("retains the original state through an active install and restores if registry membership is lost", () => {
   const selected = {
     display_status: 14,
     is_available_on_current_platform: false,
@@ -1102,7 +1145,7 @@ test("retains the original state through an active install and restores if backe
   assert.equal(reconcileAppState(state), "unchanged");
 
   selected.display_status = 9;
-  state.details.eDisplayStatus = 14;
+  state.allowlist = new Set();
   assert.equal(reconcileAppState(state), "restored");
   assert.equal(selected.display_status, 14);
   assert.equal(selected.is_available_on_current_platform, false);

@@ -425,11 +425,34 @@
     return merged;
   }
 
+  function hasPositiveSize(value) {
+    if (typeof value === "bigint") {
+      return value > 0n;
+    }
+    if (typeof value === "number") {
+      return Number.isFinite(value) && value > 0;
+    }
+    return (
+      typeof value === "string" &&
+      /^[0-9]+$/.test(value) &&
+      !/^0+$/.test(value)
+    );
+  }
+
   function getManagedTargetStatus(state) {
-    if (
-      state.allowlisted !== true ||
-      !VALID_DISPLAY_STATUSES.has(state.detailsStatus)
-    ) {
+    if (state.allowlisted !== true) {
+      return null;
+    }
+    if (state.detailsStatus === INVALID_PLATFORM) {
+      return (
+        state.hasAnyLocalContent === true &&
+        state.installed === true &&
+        hasPositiveSize(state.sizeOnDisk)
+      )
+        ? READY_TO_LAUNCH
+        : READY_TO_INSTALL;
+    }
+    if (!VALID_DISPLAY_STATUSES.has(state.detailsStatus)) {
       return null;
     }
     if (

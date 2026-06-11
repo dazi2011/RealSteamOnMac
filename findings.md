@@ -1197,6 +1197,20 @@
   The matching `.installed` marker plus Steam's `package/beta` file is required
   to identify the active channel and variant; choosing the highest manifest
   version would report the wrong running build.
+- Steam's native registry hook can successfully authorize Windows-only AppIDs
+  while the browser-side app details cache remains at platform-invalid status
+  `14`. Treating `14` as unconditional failure leaves the library action
+  disabled after every restart even though the native gate is ready.
+- A safe status-14 fallback must be gated by successful authenticated registry
+  synchronization, not by translated button text. Within that boundary,
+  `installed=true`, local content, and a positive `size_on_disk` are sufficient
+  for native ready-to-launch status `11`; every incomplete or zero-byte case
+  must remain ready-to-install status `9`.
+- Steam's native action components render correctly from the normalized
+  overview even when the details cache still reports `14`. Live Simplified
+  Chinese and English tests produced clickable `开始游戏`/`PLAY` and
+  `安装`/`INSTALL` controls with no handcrafted action UI and no language
+  matching in production code.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

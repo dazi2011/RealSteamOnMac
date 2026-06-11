@@ -1715,3 +1715,32 @@
   manifest `steam_client_publicbeta_signed-2_osx.manifest`, and running build
   `1780965181`. Shell syntax, whitespace validation, and the full one-click
   installer contract passed.
+
+## 2026-06-11 Language-Independent Native Action Readiness
+
+- Reproduced the post-restart failure across all 34 dynamically managed
+  Windows-only games. The authenticated native registry synchronized
+  successfully, but Steam details remained at platform-invalid status `14`,
+  so the previous browser policy refused to update any native action.
+- Added a fail-closed readiness derivation that activates only after native
+  registry synchronization. Installed games with local content and positive
+  `size_on_disk` become native status `11`; missing, never-installed, and
+  zero-byte staged games become native status `9`.
+- Added policy tests for installed, uninstalled, and zero-byte states and
+  retained exact restoration when an AppID leaves the synchronized registry.
+  All 81 focused SteamUI, runtime, and CDP tests pass.
+- Backed up the deployed UI to
+  `~/Library/Application Support/RealSteamOnMac/backups/readiness-fallback-20260611T163357Z`,
+  refreshed it through the guarded patcher, and restarted only native Steam.
+  CrossOver Preview PIDs `19863`, `19885`, and `73736` remained alive.
+- Live registry acceptance normalized 34/34 managed overviews, with zero
+  remaining platform-invalid overviews. People Playground, Hogwarts Legacy,
+  Aimlabs, and Red Dead Redemption 2 resolved to status `11`; FOR HONOR and
+  Black Myth: Wukong's zero-byte staged directory resolved to status `9`.
+- Added a read-only native-window action probe. Simplified Chinese acceptance
+  found clickable `开始游戏` and `安装` buttons. A temporary English launch
+  found clickable `PLAY` and `INSTALL` buttons for the same states, proving
+  the implementation does not depend on translated labels.
+- Restored Steam to Simplified Chinese and verified that a subsequent launch
+  without a language override still reported `LANGUAGE=schinese`. Native
+  Steam resumed as PID `50579`; CrossOver Preview remained untouched.

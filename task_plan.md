@@ -198,6 +198,15 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   marker exists, records `stable` or the beta channel in installation state,
   and refuses a channel change against a clean backup. Stable and public-beta
   fixtures pass, including a newer downloaded but inactive manifest.
+- **Restart/language checkpoint:** after authenticated native registry sync,
+  the browser policy now derives Steam's native ready-to-launch or
+  ready-to-install state from installed, local-content, and positive-size
+  fields when the details cache remains platform-invalid. Live acceptance
+  normalized all 34 managed Windows-only games, removed every invalid-platform
+  overview, and produced clickable native actions in Simplified Chinese and
+  English. Steam was restored to Simplified Chinese and retained it across a
+  later launch without a language override. Stale depot-manifest repair remains
+  open and is not covered by this checkpoint.
 - **Current checkpoint:** verified Steam launch descriptors, managed
   missing-target redirection, and guarded Rockstar recovery have passed live
   acceptance. RDR2 now reaches Rockstar Steam min-mode but not `RDR2.exe`.
