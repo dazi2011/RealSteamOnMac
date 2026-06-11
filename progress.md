@@ -1270,3 +1270,16 @@
   The release test built and inspected temporary install/uninstall PKGs,
   verified both package hashes, and validated the signed release manifest.
   All 47 runtime-manager tests and whitespace/shell syntax checks also passed.
+- Built and activated the full immutable dual-bridge runtime package. Every
+  staged and installed checksum passed twice, all four manifest variants
+  resolved to the expected ABI-specific payloads, no staging directory
+  remained, and the previous package was retained for one-link rollback.
+- Post-activation CLI acceptance found that the installer had not deployed
+  `launcher_recovery.py`, `steam_app_state.py`, or
+  `steam_launch_descriptor.py`. The package and bridge payloads were valid,
+  but the runtime entry point failed before argument parsing; module
+  deployment is now part of the activation transaction.
+- A real temporary `activate_package` run deployed all four imported modules
+  and the resulting CLI completed `--help`. Verification also passed 69
+  related Python tests, the one-click installer contract, and a fresh pair of
+  temporary release PKGs with signed-manifest validation.

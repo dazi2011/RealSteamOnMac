@@ -1005,6 +1005,10 @@
   either runtime mode. `postinstall` passes the GPTK bridge only when the
   user's GPTK DMG exists; an open-runtime installation cannot accidentally
   activate or package the GPTK-only bridge.
+- Runtime activation must deploy the complete Python import closure before
+  switching `current`. Deploying only `realsteamonmac_runtime.py` and
+  `compat_tool_catalog.py` leaves the CLI unusable once launcher recovery and
+  Steam launch descriptors are imported.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

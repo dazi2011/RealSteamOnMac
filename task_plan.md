@@ -168,7 +168,9 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   real `SteamClient020` interface smoke test against native macOS Steam. Its
   pinned cold-build script, renderer-specific runtime schema, immutable
   package installer, top-level installer, and release-PKG propagation now
-  pass. Building and activating the new live runtime package is next.
+  pass. The new live package was built and activated, and its activation
+  exposed a missing Python-module deployment fault that is being corrected
+  before game launch acceptance resumes.
 
 ## Architecture Decision
 
