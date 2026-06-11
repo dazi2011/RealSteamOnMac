@@ -1088,3 +1088,13 @@
 - The corrected v41 fixture reached the intended RED boundary: the existing
   six JSON descriptor tests passed, while exactly three appinfo tests failed
   because `build_launch_descriptor_from_appinfo` is not implemented.
+- Implemented bounded Steam appinfo v40/v41 decoding with universe, record
+  length, string-table, KeyValues type/depth/node, duplicate-key, and binary
+  SHA-1 validation. Generated launch records pass through the same descriptor
+  validator as JSON inputs.
+- All 9 descriptor tests passed. Read-only validation against the live v41
+  cache resolved:
+  - Aimlabs requested entry `1` to Windows entry `0` / `AimLab_tb.exe`;
+  - Hogwarts requested entry `0` to default entry `13` /
+    `HogwartsLegacy.exe`;
+  - People Playground and RDR2 remained on entry `0`.
