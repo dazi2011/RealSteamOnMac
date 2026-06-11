@@ -205,13 +205,13 @@ git push
 - Modify: `hook/compat_gate_hook.c`
 - Modify: `tests/test_native_registry_server.sh`
 
-- [ ] **Step 1: Add failing Black Myth state tests**
+- [x] **Step 1: Add failing Black Myth state tests**
 
 Model details/overview data for staged-only status, update error, validating,
 downloading, and ready states. Assert that reconciliation never maps staged or
 errored content to ready-to-launch status 11.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 

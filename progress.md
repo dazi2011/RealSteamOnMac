@@ -1024,3 +1024,11 @@
   - Python bytecode compilation and `git diff --check`.
 - Read-only live classification matched the reported field state for RDR2,
   Hogwarts Legacy, Black Myth: Wukong, and Aimlabs.
+- Recovered the current Steam `EDisplayStatus` enum directly from the installed
+  `steamui` module: statuses span `0..39`, `14` is InvalidPlatform, `15` is
+  undefined, and `38/39` are download/update failures.
+- Added RED policy coverage for a staged-only Black Myth shell reported as
+  backend status `11`, exact preservation of validation/download/update/error
+  states, and rejection of undefined or out-of-range display statuses.
+- The focused policy run failed in exactly three places: staged-only target
+  selection, undefined status `15`, and full staged-shell reconciliation.

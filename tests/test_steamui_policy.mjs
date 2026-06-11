@@ -21,6 +21,7 @@ const {
   findAppActionComponents,
   findCompatControlAnchor,
   findManagedAppidForControls,
+  getManagedTargetStatus,
   getSteamUIDocuments,
   isCompatibilityPropertiesDocument,
   isOwnedWindowsOnlyGame,
@@ -696,6 +697,49 @@ test("normalizes an installed backend-ready app to ready-to-launch", () => {
   );
 });
 
+test("maps staged-only local content back to Steam ready-to-install", () => {
+  assert.equal(
+    getManagedTargetStatus({
+      allowlisted: true,
+      detailsStatus: 11,
+      hasAnyLocalContent: true,
+      installed: false,
+      sizeOnDisk: "0",
+    }),
+    9,
+  );
+});
+
+for (const detailsStatus of [5, 7, 19, 20, 23, 24, 35, 38, 39]) {
+  test(`preserves native non-ready status ${detailsStatus}`, () => {
+    assert.equal(
+      getManagedTargetStatus({
+        allowlisted: true,
+        detailsStatus,
+        hasAnyLocalContent: detailsStatus !== 24,
+        installed: detailsStatus !== 24,
+        sizeOnDisk: detailsStatus === 24 ? "0" : "4096",
+      }),
+      detailsStatus,
+    );
+  });
+}
+
+test("rejects undefined or out-of-range native display states", () => {
+  for (const detailsStatus of [0, 14, 15, 40, 999]) {
+    assert.equal(
+      getManagedTargetStatus({
+        allowlisted: true,
+        detailsStatus,
+        hasAnyLocalContent: false,
+        installed: false,
+        sizeOnDisk: "0",
+      }),
+      null,
+    );
+  }
+});
+
 for (const detailsStatus of [3, 7, 9, 11, 19, 35]) {
   test(`mirrors authoritative native status ${detailsStatus}`, () => {
     assert.deepEqual(
@@ -798,11 +842,13 @@ test("normalizes the shared app store object when backend details are ready", ()
 test("normalizes an installed shared app store object to ready-to-launch", () => {
   const selected = {
     display_status: 14,
+    installed: true,
     is_available_on_current_platform: false,
     is_invalid_os_type: true,
   };
   const overview = {
     appid: 1118200,
+    size_on_disk: "4096",
     selected_per_client_data: selected,
   };
   const details = {
@@ -821,6 +867,38 @@ test("normalizes an installed shared app store object to ready-to-launch", () =>
     "normalized",
   );
   assert.equal(selected.display_status, 11);
+  assert.equal(selected.is_available_on_current_platform, true);
+  assert.equal(selected.is_invalid_os_type, false);
+});
+
+test("does not expose launch for a staged-only shell", () => {
+  const selected = {
+    display_status: 14,
+    installed: false,
+    is_available_on_current_platform: false,
+    is_invalid_os_type: true,
+  };
+  const overview = {
+    appid: 2358720,
+    size_on_disk: "0",
+    selected_per_client_data: selected,
+  };
+  const details = {
+    unAppID: 2358720,
+    eDisplayStatus: 11,
+    bHasAnyLocalContent: true,
+  };
+
+  assert.equal(
+    reconcileAppState({
+      overview,
+      details,
+      allowlist: new Set([2358720]),
+      originalStates: new WeakMap(),
+    }),
+    "normalized",
+  );
+  assert.equal(selected.display_status, 9);
   assert.equal(selected.is_available_on_current_platform, true);
   assert.equal(selected.is_invalid_os_type, false);
 });
