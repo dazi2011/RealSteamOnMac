@@ -1201,3 +1201,21 @@
   at `WaitingForCredentials`; no account tokens were copied.
 - Task 6 recovery acceptance is complete. End-to-end RDR2 launch remains open
   at the GPTK/Steam min-mode handoff and must not be reported as fixed.
+- Built an isolated Proton 7 `lsteamclient` candidate for GPTK/Wine 7.7 from
+  pinned Proton commit `c5ad95671cecaf03c4a92500de84b542add585d1` and the
+  locally cached CodeWeavers 22.1.1 Wine 7.7 source.
+- Replaced Proton 7's unsupported macOS input compile guard with the newer
+  pure Carbon key-code map and used a dedicated x86_64 system-clang C++
+  `wineg++` wrapper to avoid clang 8/current-libc++ incompatibility.
+- Diagnosed the first DLL-load failure (`symbol not found in flat namespace
+  '_CloseHandle'`) as missing Wine import libraries caused by
+  `winegcc --wine-objdir`. Relinking with explicit `advapi32`, `user32`,
+  `winecrt0`, `kernel32`, and `ntdll` removed every unresolved Win32 API
+  symbol from the Mach-O bundle.
+- Added a cache-only diagnostic export and invoked it through GPTK's own
+  `rundll32.exe` in an independent prefix. The bridge successfully loaded the
+  native `steamclient.dylib` and returned `SteamClient020` with
+  `iface=0x373b70` and `return_code=0`; no Wine assertion occurred.
+- The cache-only diagnostic export is not a release artifact. The next build
+  step removes it, regenerates the clean PE/Mach-O pair, and packages the
+  result as a GPTK-specific renderer variant using `lsteamclient.dll.so`.

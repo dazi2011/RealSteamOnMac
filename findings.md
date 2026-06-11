@@ -957,6 +957,27 @@
   `WaitingForCredentials`. Copying tokens from another bottle would have mixed
   account state into the compatibility experiment and was deliberately
   rejected.
+- GPTK 3.0-3 reports Wine 7.7 and cannot load the existing Proton 11/Wine 11
+  `lsteamclient.so`; the latter reaches a Wine-internal assertion and must
+  remain limited to the Wine 11 DXMT, DXVK, and WineD3D renderers.
+- Proton 7 commit `c5ad95671cecaf03c4a92500de84b542add585d1` can be built as
+  an old-style Wine 7 Winelib bridge against the CodeWeavers 22.1.1 Wine
+  sources. The macOS build requires the pure Carbon key-code map already used
+  by the newer project bridge and a system-clang C++ wrapper because the GPTK
+  compiler's clang 8 cannot consume the current libc++ headers.
+- Wine 7 `winegcc --wine-objdir` does not add its normal default import
+  libraries. Omitting them produces a Mach-O bundle with raw undefined Win32
+  symbols such as `_CloseHandle`; the correct link explicitly includes
+  `advapi32`, `user32`, `winecrt0`, `kernel32`, and `ntdll`.
+- The corrected GPTK bridge loaded through GPTK's own `rundll32.exe`, opened
+  native macOS Steam's `steamclient.dylib`, and returned a non-null
+  `SteamClient020` wrapper (`iface=0x373b70`, `return_code=0`) in an isolated
+  prefix. This validates the actual native Steam interface path rather than
+  only checking file formats or DLL load success.
+- Wine 7 uses the Unix companion name `lsteamclient.dll.so`, whereas the
+  Wine 11 bridge uses `lsteamclient.so`. A single global bridge descriptor is
+  therefore structurally wrong; runtime manifests must select bridge paths and
+  installed filenames per renderer while retaining backward compatibility.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
