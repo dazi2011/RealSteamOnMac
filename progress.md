@@ -1045,3 +1045,13 @@
   treating active install/download/validation states as no-ops.
 - The focused suite failed only because `chooseNativeRepairAction` and
   `requestNativeRepair` do not exist yet; the other 72 policy tests passed.
+- Implemented a managed-only repair dispatcher and exposed it to the injected
+  Steam context as `__REALSTEAMONMAC_REQUEST_REPAIR__`. It accepts only an
+  AppID, reads current Steam state, and calls one fixed Valve API without
+  arbitrary arguments or filesystem mutation.
+- Full VM coverage proved install and verify dispatch, active-state no-op
+  behavior, transient-empty-store refusal, and rejection of unmanaged AppIDs.
+- Final Task 4 verification passed 78 Node tests, JavaScript syntax,
+  `git diff --check`, and the native authenticated registry-server harness.
+- A real Black Myth resume was intentionally deferred to the controlled game
+  matrix because it would immediately mutate the 149.8 GB download queue.

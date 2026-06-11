@@ -60,6 +60,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   const nativeDetailRegistrations = [];
   const nativeDetailUnregistrations = [];
   const nativeDetailCallbacks = new Map();
+  const nativeRepairCalls = [];
   const registryRequests = [];
   const controlRequests = [];
   const intervalCallbacks = new Map();
@@ -149,6 +150,20 @@ test("installs the predicate before dynamically replacing the bootstrap registry
               nativeDetailUnregistrations.push(appid);
             },
           };
+        },
+        async VerifyApp(appid) {
+          nativeRepairCalls.push(["verify", appid]);
+          return { nGameActionID: 17 };
+        },
+      },
+      Downloads: {
+        async ResumeAppUpdate(appid, clientid) {
+          nativeRepairCalls.push(["resume", appid, clientid]);
+        },
+      },
+      Installs: {
+        async OpenInstallWizard(appids) {
+          nativeRepairCalls.push(["install", [...appids]]);
         },
       },
     },
@@ -279,6 +294,26 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   assert.equal(registryRequests[1].options.method, "POST");
   assert.equal(registryRequests[1].options.mode, "no-cors");
   assert.equal(registryRequests[1].options.body, "990080,1118200");
+  assert.equal(
+    typeof context.__REALSTEAMONMAC_REQUEST_REPAIR__,
+    "function",
+  );
+  assert.equal(
+    await context.__REALSTEAMONMAC_REQUEST_REPAIR__(990080),
+    "install",
+  );
+  assert.equal(
+    await context.__REALSTEAMONMAC_REQUEST_REPAIR__(1118200),
+    "verify",
+  );
+  assert.deepEqual(nativeRepairCalls, [
+    ["install", [990080]],
+    ["verify", 1118200],
+  ]);
+  await assert.rejects(
+    context.__REALSTEAMONMAC_REQUEST_REPAIR__(4000),
+    /not managed/,
+  );
 
   const tools =
     await context.SteamClient.Apps.GetAvailableCompatTools(990080);

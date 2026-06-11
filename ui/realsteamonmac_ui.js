@@ -15,6 +15,8 @@
   const CONFIG_KEY = "__REALSTEAMONMAC_CONFIG__";
   const MANAGED_PREDICATE_KEY =
     "__REALSTEAMONMAC_IS_MANAGED_APP__";
+  const REPAIR_ACTION_KEY =
+    "__REALSTEAMONMAC_REQUEST_REPAIR__";
   const COMPAT_SELECTIONS_KEY =
     "__REALSTEAMONMAC_COMPAT_SELECTIONS_V1__";
   const CONTROL_CONFIGS_KEY =
@@ -407,6 +409,108 @@
     };
   }
 
+  function chooseNativeRepairAction(state) {
+    if (!VALID_DISPLAY_STATUSES.has(state.detailsStatus)) {
+      return null;
+    }
+    if (
+      new Set([1, 2, 3, 4, 5, 6, 7, 8, 36]).has(
+        state.detailsStatus,
+      )
+    ) {
+      return "active";
+    }
+    if (
+      state.detailsStatus === READY_TO_LAUNCH &&
+      getManagedTargetStatus({
+        ...state,
+        allowlisted: true,
+      }) === READY_TO_INSTALL
+    ) {
+      return "resume";
+    }
+    if (
+      new Set([18, 19, 22, 23, 24, 25, 38]).has(
+        state.detailsStatus,
+      )
+    ) {
+      return "resume";
+    }
+    if (state.detailsStatus === READY_TO_INSTALL) {
+      return "install";
+    }
+    if (
+      state.installed === true ||
+      state.hasAnyLocalContent === true ||
+      state.detailsStatus === 20 ||
+      state.detailsStatus === 39
+    ) {
+      return "verify";
+    }
+    return "install";
+  }
+
+  async function requestNativeRepair({
+    steamClient,
+    appid,
+    allowlisted,
+    detailsStatus,
+    hasAnyLocalContent,
+    installed,
+    sizeOnDisk,
+    clientid,
+  }) {
+    if (
+      allowlisted !== true ||
+      !Number.isSafeInteger(appid) ||
+      appid <= 0
+    ) {
+      throw new Error(`AppID ${appid} is not managed`);
+    }
+    const action = chooseNativeRepairAction({
+      detailsStatus,
+      hasAnyLocalContent,
+      installed,
+      sizeOnDisk,
+    });
+    if (!action) {
+      throw new Error(
+        `Steam repair state ${detailsStatus} is unsupported`,
+      );
+    }
+    if (action === "active") {
+      return action;
+    }
+    if (action === "resume") {
+      if (
+        typeof steamClient?.Downloads?.ResumeAppUpdate !==
+        "function"
+      ) {
+        throw new Error("Steam resume-update API is unavailable");
+      }
+      await steamClient.Downloads.ResumeAppUpdate(
+        appid,
+        clientid ?? "0",
+      );
+      return action;
+    }
+    if (action === "verify") {
+      if (typeof steamClient?.Apps?.VerifyApp !== "function") {
+        throw new Error("Steam verify API is unavailable");
+      }
+      await steamClient.Apps.VerifyApp(appid);
+      return action;
+    }
+    if (
+      typeof steamClient?.Installs?.OpenInstallWizard !==
+      "function"
+    ) {
+      throw new Error("Steam install API is unavailable");
+    }
+    await steamClient.Installs.OpenInstallWizard([appid]);
+    return action;
+  }
+
   function getSelectedData(overview) {
     return (
       overview?.GetPerClientData?.("selected") ??
@@ -700,6 +804,7 @@
       buildJobUrl,
       buildRunCommandPayload,
       applyToolCapabilities,
+      chooseNativeRepairAction,
       compatToolRecord,
       compatToolForRenderer,
       mergeCompatTools,
@@ -708,6 +813,7 @@
       refreshAppActionComponents,
       reconcileCompatDetails,
       reconcileAppState,
+      requestNativeRepair,
       rendererForCompatTool,
       restoreNativeCompatAnchors,
       CONTROL_DEFAULTS,
@@ -1416,6 +1522,27 @@
     }
     return result?.details ?? result ?? null;
   }
+
+  globalObject[REPAIR_ACTION_KEY] = async (requestedAppid) => {
+    const appid = Number(requestedAppid);
+    const overview =
+      globalObject.appStore?.GetAppOverviewByAppID?.(appid) ?? null;
+    const details = await loadAppDetails(appid);
+    const selected = getSelectedData(overview);
+    if (!overview || !details || !selected) {
+      throw new Error(`Steam app state is unavailable for AppID ${appid}`);
+    }
+    return requestNativeRepair({
+      steamClient: globalObject.SteamClient,
+      appid,
+      allowlisted: managedAppids.has(appid),
+      detailsStatus: details.eDisplayStatus,
+      hasAnyLocalContent: details.bHasAnyLocalContent,
+      installed: selected.installed,
+      sizeOnDisk: overview.size_on_disk,
+      clientid: overview.selected_clientid ?? selected.clientid ?? "0",
+    });
+  };
 
   async function restoreRemovedApp(appid) {
     const overview =

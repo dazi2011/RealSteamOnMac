@@ -885,6 +885,11 @@
   data supplies `installed`. These Steam-owned fields are sufficient to reject
   the specific contradictory state where details report ReadyToLaunch (`11`)
   but the client reports zero bytes or not installed.
+- The current Steam client exposes all required repair primitives without
+  manifest editing: `Apps.VerifyApp`, `Downloads.ResumeAppUpdate`, and
+  `Installs.OpenInstallWizard`. A managed-only dispatcher can therefore route
+  complete-but-damaged content to verification, staged/paused/failed downloads
+  to resume, and truly absent content to Steam's install wizard.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

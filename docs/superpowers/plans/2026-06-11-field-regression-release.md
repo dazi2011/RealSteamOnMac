@@ -226,13 +226,13 @@ detail status when that status is a valid install/play/update state. Preserve
 active update and error states. Do not infer status 11 merely from an existing
 directory.
 
-- [ ] **Step 4: Add a native repair request boundary**
+- [x] **Step 4: Add a native repair request boundary**
 
 Expose a bounded action that asks Steam's existing install manager to validate
 or resume the selected AppID. It must not rewrite ACF files or delete staged
 depots.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run the focused Node and native harness suites, then commit and push:
 
