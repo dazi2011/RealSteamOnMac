@@ -61,6 +61,12 @@
     unprofiled stable/new builds from being patched safely.
   - Confirmed the current catalog has only three dependency entries and the
     runtime package duplicates full Wine trees per renderer.
+  - Read `hook/compat_gate_hook.c` in full.
+  - Confirmed spawn redirection cannot handle missing/wrong paths or `.app`
+    targets, and that platform/install patches do not validate manifests or
+    depots.
+  - Identified overlapping 250 ms native polling, periodic full memory scans,
+    and one-second JavaScript reconciliation as a performance concern.
 - Files modified:
   - `task_plan.md`
   - `findings.md`

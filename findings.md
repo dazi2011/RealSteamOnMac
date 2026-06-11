@@ -197,6 +197,32 @@
   Microsoft hosts and fixed installer receipts. Expanding the catalog needs
   reviewed official sources and checksums; blindly copying CrossOver metadata
   or proprietary payloads is neither technically robust nor license-safe.
+- The native spawn hook redirects only when Steam supplies a path ending in
+  `.exe`, the file already exists, its first bytes are `MZ`, and the AppID is
+  managed. A nonexistent launch target, wrong test executable, or `.app` path
+  fails before the compatibility runtime is invoked.
+- Normal Steam launches use the executable path supplied by steamclient; the
+  runtime's heuristic `discover_default_executable` is used by action/container
+  workflows. Both sources therefore need correction: Steam launch metadata for
+  Play and deterministic executable resolution for auxiliary actions.
+- The Hook changes platform availability objects and the
+  `GetAppForInstallation` platform veto, but it does not validate appmanifest
+  state, installed depot files, bytes-on-disk, or the selected launch record.
+  A stale manifest plus an empty directory can remain visually normalized as
+  installed/launchable.
+- The Aimlabs `.app` report is consistent with the hook boundary: `.app` can
+  never pass `realsteamonmac_should_redirect_spawn`, even for a managed
+  Windows-only AppID. Live app-details/launch-option inspection is required to
+  determine why Steam selected that path.
+- The native worker polls tracked Steam objects every 250 ms and performs a
+  full writable-memory scan every 15 seconds once objects are tracked, or every
+  2 seconds while none are tracked. Combined with the JavaScript one-second
+  React/DOM reconciliation, this is a substantial polling architecture that
+  should be reduced after event sources are identified.
+- The install-gate trampoline is narrowly allowlist-scoped and preserves the
+  original invalid-platform branch for all other AppIDs. Its safety boundary
+  is sound; stale installation repair should be added outside this gate rather
+  than broadening the patch.
 
 ## Requirements
 
