@@ -72,6 +72,12 @@
   - Confirmed wrapper `run` files are logging stubs, capabilities are static,
     and the updater reuses the install package rather than producing a tested
     `update.pkg`.
+  - Read the shell test suite and native harnesses in source batches.
+  - Found extensive source-grep tests that preserve the hidden custom UI and
+    beta-only assumptions rather than validating user-visible behavior.
+  - Confirmed native process-start tool discovery must remain disabled to avoid
+    the proven Cloud regression; the native selector must be restored through
+    Steam's UI/API layer instead.
 - Files modified:
   - `task_plan.md`
   - `findings.md`

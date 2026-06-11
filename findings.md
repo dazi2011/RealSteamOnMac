@@ -245,6 +245,26 @@
   mutable container state. Further size reduction should deduplicate renderer
   trees in the shared package, not collapse per-game prefixes that provide
   isolation.
+- Many shell tests are source-text contracts built from `grep`; they can pass
+  while runtime behavior is broken. The language bug, hidden native row, inert
+  log checkbox, and incorrect executable selection all survived this style of
+  test.
+- `test_steam_launcher.sh` explicitly forbids setting
+  `STEAM_EXTRA_COMPAT_TOOLS_PATHS`, preserving the prior finding that native
+  process-start tool discovery breaks Steam Cloud on the profiled macOS build.
+  Native UI requirements must be met without reintroducing that environment
+  variable.
+- The existing API bridge offers a safer path: keep cloud-safe startup, make
+  Steam's own compatibility React row render for managed apps, and supply
+  discovered tools through the wrapped Apps API. This needs live interaction
+  tests, not a replacement DOM panel.
+- Existing compatibility-page probes explicitly search for
+  `realsteamonmac-controls`, custom `input[data-control]`, and the hand-built
+  combobox. They must be inverted to reject overlays and assert Steam-owned
+  component/fiber identities.
+- Current install tests construct only the public-beta manifest and explicitly
+  expect unknown builds to fail. No fixture covers stable-channel manifest
+  discovery or a profile-selection diagnostic.
 
 ## Requirements
 
