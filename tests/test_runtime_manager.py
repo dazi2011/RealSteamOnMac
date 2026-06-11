@@ -511,7 +511,10 @@ class RuntimeManagerTests(unittest.TestCase):
         sibling.write_bytes(b"MZredist")
         self.assertEqual(
             runtime.resolve_command_target(context, "Redist.exe"),
-            sibling.resolve(),
+            {
+                "kind": "pe",
+                "target": sibling.resolve(),
+            },
         )
 
     def test_stale_steam_target_falls_back_to_verified_default(self):
@@ -696,7 +699,12 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(
             run.call_args.args[1],
-            ["/usr/bin/open", context["prefix"] / "drive_c"],
+            [
+                "/usr/bin/open",
+                "-a",
+                "Finder",
+                context["prefix"] / "drive_c",
+            ],
         )
         native_environment = run.call_args.args[2]
         self.assertEqual(native_environment["HOME"], str(self.root))
@@ -711,18 +719,53 @@ class RuntimeManagerTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertNotIn(name, native_environment)
 
-    def test_run_command_target_cannot_escape_game_or_prefix(self):
+    def test_run_command_resolves_external_files_and_windows_paths(self):
         context = self.context()
-        self.assertEqual(
-            runtime.resolve_command_target(context, "Fixture.exe"),
-            self.executable.resolve(),
-        )
         outside = self.root / "outside.exe"
         outside.write_bytes(b"MZoutside")
+        windows_target = context["prefix"] / "drive_c" / "Tools" / "tool.exe"
+        windows_target.parent.mkdir(parents=True)
+        windows_target.write_bytes(b"MZwindows")
+
+        self.assertEqual(
+            runtime.resolve_command_target(context, "Fixture.exe"),
+            {
+                "kind": "pe",
+                "target": self.executable.resolve(),
+            },
+        )
+        self.assertEqual(
+            runtime.resolve_command_target(context, str(outside)),
+            {
+                "kind": "pe",
+                "target": outside.resolve(),
+            },
+        )
+        self.assertEqual(
+            runtime.resolve_command_target(
+                context, r"C:\Tools\tool.exe"
+            ),
+            {
+                "kind": "pe",
+                "target": windows_target.resolve(),
+            },
+        )
+
+    def test_run_command_parses_windows_arguments(self):
+        self.assertEqual(
+            runtime.parse_command_arguments(
+                r'--flag;touch "two words" C:\Games\Test'
+            ),
+            ["--flag;touch", "two words", r"C:\Games\Test"],
+        )
+        self.assertEqual(
+            runtime.parse_command_arguments(r'"literal\"quote"'),
+            ['literal"quote'],
+        )
         with self.assertRaisesRegex(
-            runtime.RuntimeErrorWithContext, "must stay inside"
+            runtime.RuntimeErrorWithContext, "malformed"
         ):
-            runtime.resolve_command_target(context, str(outside))
+            runtime.parse_command_arguments('"unterminated')
 
     def test_run_command_environment_rejects_reserved_variables(self):
         self.assertEqual(
@@ -853,7 +896,7 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(status["exit_code"], 1)
         self.assertIn("container operation exited with -6", status["message"])
 
-    def test_run_command_executes_an_argv_vector_without_a_shell(self):
+    def test_run_command_executes_a_windows_argv_vector_without_a_shell(self):
         context = self.context()
         wine64 = (
             self.package / "wine" / "dxmt" / "bin" / "wine64"
@@ -878,7 +921,7 @@ class RuntimeManagerTests(unittest.TestCase):
                 self.runtime_root,
                 {
                     "target": "Fixture.exe",
-                    "arguments": "--flag;touch 'two words'",
+                    "arguments": '--flag;touch "two words"',
                     "environment": "CUSTOM_FLAG=value",
                 },
                 self.root / "run-command.log",
@@ -899,6 +942,156 @@ class RuntimeManagerTests(unittest.TestCase):
             run.call_args.args[2]["CUSTOM_FLAG"],
             "value",
         )
+
+    def test_run_command_builds_builtin_batch_and_association_plans(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        batch = self.root / "setup.cmd"
+        batch.write_text("@echo off\r\n", encoding="utf-8")
+        document = self.root / "read me.txt"
+        document.write_text("fixture", encoding="utf-8")
+
+        self.assertEqual(
+            runtime.build_run_command_plan(
+                context, wine64, "cmd", '/c echo "two words"'
+            ),
+            {
+                "kind": "builtin",
+                "target": "cmd.exe",
+                "command": [
+                    wine64,
+                    "cmd.exe",
+                    "/c",
+                    "echo",
+                    "two words",
+                ],
+            },
+        )
+        self.assertEqual(
+            runtime.build_run_command_plan(
+                context, wine64, "desk.cpl", ""
+            ),
+            {
+                "kind": "control-panel",
+                "target": "desk.cpl",
+                "command": [wine64, "control.exe", "desk.cpl"],
+            },
+        )
+        for requested, executable in (
+            ("regedit", "regedit.exe"),
+            ("control", "control.exe"),
+            ("winecfg", "winecfg"),
+            ("explorer", "explorer.exe"),
+        ):
+            with self.subTest(requested=requested):
+                self.assertEqual(
+                    runtime.build_run_command_plan(
+                        context, wine64, requested, ""
+                    ),
+                    {
+                        "kind": "builtin",
+                        "target": executable,
+                        "command": [wine64, executable],
+                    },
+                )
+        self.assertEqual(
+            runtime.build_run_command_plan(
+                context, wine64, str(batch), '"quiet mode"'
+            ),
+            {
+                "kind": "batch",
+                "target": str(batch.resolve()),
+                "command": [
+                    wine64,
+                    "start.exe",
+                    "/unix",
+                    batch.resolve(),
+                    "quiet mode",
+                ],
+            },
+        )
+        self.assertEqual(
+            runtime.build_run_command_plan(
+                context, wine64, str(document), ""
+            ),
+            {
+                "kind": "association",
+                "target": str(document.resolve()),
+                "command": [
+                    wine64,
+                    "start.exe",
+                    "/unix",
+                    document.resolve(),
+                ],
+            },
+        )
+        self.assertEqual(
+            runtime.build_run_command_plan(
+                context,
+                wine64,
+                "https://example.invalid/help",
+                "",
+            ),
+            {
+                "kind": "association",
+                "target": "https://example.invalid/help",
+                "command": [
+                    wine64,
+                    "start.exe",
+                    "https://example.invalid/help",
+                ],
+            },
+        )
+        self.assertEqual(
+            runtime.build_run_command_plan(
+                context, wine64, 'cmd /c echo "inline value"', ""
+            ),
+            {
+                "kind": "builtin",
+                "target": "cmd.exe",
+                "command": [
+                    wine64,
+                    "cmd.exe",
+                    "/c",
+                    "echo",
+                    "inline value",
+                ],
+            },
+        )
+
+    def test_choose_file_accepts_an_external_windows_executable(self):
+        context = self.context()
+        outside = self.root / "external.exe"
+        outside.write_bytes(b"MZexternal")
+        with mock.patch.object(
+            runtime,
+            "choose_executable_file",
+            return_value=outside.resolve(),
+        ):
+            self.assertEqual(
+                runtime.execute_choose_file_action(context),
+                (0, {"target": str(outside.resolve())}),
+            )
+
+    def test_install_application_routes_to_the_reviewed_catalog(self):
+        context = self.context()
+        with mock.patch.object(runtime, "prepare") as prepare, mock.patch.object(
+            runtime, "choose_executable_file"
+        ) as choose:
+            with self.assertRaisesRegex(
+                runtime.RuntimeErrorWithContext,
+                "reviewed component catalog",
+            ):
+                runtime.execute_container_action(
+                    context,
+                    self.runtime_root,
+                    {"operation": "install-application"},
+                    self.root / "install-application.log",
+                )
+        prepare.assert_not_called()
+        choose.assert_not_called()
 
     def test_dependency_action_writes_a_private_prefix_receipt(self):
         context = self.context()

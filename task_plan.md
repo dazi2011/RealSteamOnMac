@@ -163,6 +163,14 @@ Phase 8: 2026-06-11 field regression remediation and verified release
 - [ ] Update bilingual README and research/handoff evidence, build signed
       release artifacts, publish the release, and confirm remote hashes.
 - **Status:** in progress
+- **Run/Container checkpoint:** the runtime now has Windows-style argument
+  parsing and typed plans for built-ins, PE files, batch files, control-panel
+  applets, documents, URLs, and external installers. Steam's native
+  `OpenFileDialog` is wired for EXE/BAT/CMD selection, Finder receives the
+  exact prefix `drive_c`, and Install Application routes to the reviewed
+  catalog. Exposing these actions through Steam-owned controls and expanding
+  the catalog remain open, so the two checklist items above are not yet
+  complete.
 - **Current checkpoint:** verified Steam launch descriptors, managed
   missing-target redirection, and guarded Rockstar recovery have passed live
   acceptance. RDR2 now reaches Rockstar Steam min-mode but not `RDR2.exe`.

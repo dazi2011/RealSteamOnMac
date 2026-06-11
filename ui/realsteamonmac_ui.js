@@ -261,6 +261,39 @@
     return encodeActionPayload([["action", "choose-file"]]);
   }
 
+  async function chooseWindowsExecutableWithSteam(
+    steamGlobal,
+    initialFile = "",
+  ) {
+    const system = steamGlobal?.SteamClient?.System;
+    if (typeof system?.OpenFileDialog !== "function") {
+      return undefined;
+    }
+    try {
+      const selected = await system.OpenFileDialog({
+        strTitle: "选择 Windows 可执行文件或批处理文件",
+        strInitialFile:
+          typeof initialFile === "string" ? initialFile : "",
+        rgFilters: [
+          {
+            strFileTypeName: "Windows 可执行文件",
+            rFilePatterns: ["*.exe", "*.bat", "*.cmd"],
+            bUseAsDefault: true,
+          },
+          {
+            strFileTypeName: "所有文件",
+            rFilePatterns: ["*.*"],
+          },
+        ],
+      });
+      return typeof selected === "string" && selected
+        ? selected
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
   function normalizeDependencyCatalog(value) {
     if (!Array.isArray(value)) {
       return [];
@@ -957,6 +990,7 @@
       buildDependencyPayload,
       buildJobUrl,
       buildRunCommandPayload,
+      chooseWindowsExecutableWithSteam,
       applyToolCapabilities,
       chooseNativeRepairAction,
       compatToolRecord,
@@ -1010,7 +1044,7 @@
     config.dependencies,
   );
   const status = {
-    version: 13,
+    version: 14,
     mode: "dynamic-owned-windows-only-registry",
     enabled: true,
     appids: [...managedAppids],
@@ -2861,10 +2895,6 @@
                   ${running || !compatEnabled ? "disabled" : ""}>运行命令</button>
           <button type="button"
                   class="realsteamonmac-native-button"
-                  data-open-dialog="dependencies"
-                  ${running || !compatEnabled ? "disabled" : ""}>安装 Windows 组件</button>
-          <button type="button"
-                  class="realsteamonmac-native-button"
                   data-open-dialog="container"
                   ${running || !compatEnabled ? "disabled" : ""}>容器操作</button>
         </div>
@@ -2918,7 +2948,7 @@
     }
     if (kind === "dependencies") {
       return `
-        <div class="realsteamonmac-modal__title">安装 Windows 组件</div>
+        <div class="realsteamonmac-modal__title">安装应用程序到容器</div>
         <div class="realsteamonmac-modal__body">
           <input type="search"
                  class="realsteamonmac-modal__search"
@@ -3014,15 +3044,28 @@
         .querySelector("[data-browse-target]")
         ?.addEventListener("click", () => {
           void (async () => {
+            const input = layer.querySelector("[data-run-target]");
+            const selected =
+              await chooseWindowsExecutableWithSteam(
+                globalObject,
+                input?.value ?? "",
+              );
+            if (typeof selected === "string" && selected) {
+              if (input) {
+                input.value = selected;
+              }
+              return;
+            }
+            if (selected !== undefined) {
+              return;
+            }
             const result = await runNativeAction(
               appid,
               buildChooseFilePayload(),
               "选择可执行文件",
-              panel,
             );
             const target = result?.result?.target;
             if (typeof target === "string" && target) {
-              const input = layer.querySelector("[data-run-target]");
               if (input) {
                 input.value = target;
               }
@@ -3096,6 +3139,15 @@
       button.addEventListener("click", () => {
         const operation = button.dataset.containerAction;
         close();
+        if (operation === "install-application") {
+          openActionDialog(
+            documentObject,
+            panel,
+            appid,
+            "dependencies",
+          );
+          return;
+        }
         void runNativeAction(
           appid,
           buildContainerActionPayload(operation),

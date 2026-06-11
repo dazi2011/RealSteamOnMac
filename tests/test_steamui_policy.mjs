@@ -14,6 +14,7 @@ const {
   buildControlPayload,
   buildControlUrl,
   buildRunCommandPayload,
+  chooseWindowsExecutableWithSteam,
   controllerReadabilityTarget,
   controllerReadabilityZoom,
   applyToolCapabilities,
@@ -543,6 +544,44 @@ test("encodes only the supported action payload fields", () => {
   assert.throws(
     () => buildDependencyPayload("../custom-installer"),
     /dependency ID is invalid/,
+  );
+});
+
+test("uses Steam's native file dialog for Windows command targets", async () => {
+  let request = null;
+  const selected = await chooseWindowsExecutableWithSteam(
+    {
+      SteamClient: {
+        System: {
+          async OpenFileDialog(value) {
+            request = value;
+            return "/Volumes/Games/setup.exe";
+          },
+        },
+      },
+    },
+    "/Volumes/Games",
+  );
+
+  assert.equal(selected, "/Volumes/Games/setup.exe");
+  assert.deepEqual(request, {
+    strTitle: "选择 Windows 可执行文件或批处理文件",
+    strInitialFile: "/Volumes/Games",
+    rgFilters: [
+      {
+        strFileTypeName: "Windows 可执行文件",
+        rFilePatterns: ["*.exe", "*.bat", "*.cmd"],
+        bUseAsDefault: true,
+      },
+      {
+        strFileTypeName: "所有文件",
+        rFilePatterns: ["*.*"],
+      },
+    ],
+  });
+  assert.equal(
+    await chooseWindowsExecutableWithSteam({}, ""),
+    undefined,
   );
 });
 

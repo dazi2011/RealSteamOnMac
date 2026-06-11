@@ -1088,6 +1088,25 @@
   The composer adds a `wine64 -> wine` alias for unified WoW64 distributions.
   It retains the installed Steamworks bridge only when the raw and base Wine
   major versions match; otherwise the composed manifest omits the bridge.
+- Windows Run semantics cannot use POSIX `shlex`: it strips unquoted
+  backslashes from paths such as `C:\Games\Test` and treats single quotes as
+  syntax even though Windows does not. The runtime now uses a bounded
+  Windows-style parser and constructs fixed Wine argv vectors without a host
+  shell.
+- Existing PE files can safely run from outside the game and prefix when the
+  user selected them through Steam's native file picker. PE files are still
+  checked for the `MZ` signature; batch files and associated documents use
+  Wine `start /unix`; built-ins and control-panel applets use explicit Wine
+  executables.
+- Steam's current `SteamClient.System.OpenFileDialog` resolves directly to one
+  selected path string. Its native request supports `rgFilters` with
+  `*.exe`, `*.bat`, and `*.cmd`, so the browser-side chooser does not need an
+  AppleScript overlay or a project-owned file picker.
+- “Install Application To Container” is a catalog entry point, not an
+  arbitrary installer chooser. The old backend operation now fails closed and
+  instructs callers to use the reviewed component catalog; the UI routes the
+  container action to that catalog and removes the separate Windows Components
+  button.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

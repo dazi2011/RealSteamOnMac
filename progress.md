@@ -1476,3 +1476,35 @@
 - Final repository verification passed 109 Python tests, 84 JavaScript tests,
   all 24 shell contract tests, JavaScript syntax, Python bytecode compilation,
   and whitespace checks.
+
+## 2026-06-11 Run Command And Container Semantics
+
+- Replaced POSIX argument parsing with bounded Windows command-line parsing,
+  preserving backslashes and double-quoted arguments without invoking a host
+  shell.
+- Added typed Wine launch plans for `cmd`, `regedit`, `control`, `winecfg`,
+  `explorer`, PE files, batch files, control-panel applets, associated
+  documents, URLs, and inline Windows Run commands.
+- External selected EXE files are now accepted after their PE signature is
+  verified. Steam's native `OpenFileDialog` supplies EXE/BAT/CMD filters and
+  returns the chosen absolute path directly to the command field.
+- Changed Open C Drive to invoke `/usr/bin/open -a Finder` with the exact
+  prefix path and a scrubbed native environment.
+- Removed the separate Windows Components button from the dormant legacy
+  markup. Install Application To Container now routes to the reviewed catalog,
+  while a direct obsolete backend request fails closed without opening a file
+  chooser.
+- Live AppID `1118200` acceptance ran `cmd.exe /c echo
+  REALSTEAMONMAC_RUN_OK` through the installed DXMT runtime. Job
+  `a14c9e7f4b9d4b4a8b807d3c11e95001` completed with exit code 0, emitted the
+  expected marker, and stored its JSON and log at mode `0600`.
+- Live Open C Drive job `a14c9e7f4b9d4b4a8b807d3c11e95002` completed with
+  exit code 0 and logged Finder opening
+  `/Volumes/990pro/games/mac/steamapps/compatdata/1118200/pfx/drive_c`.
+  A separate read-only Finder AppleScript probe waited on macOS automation
+  permission and was terminated; no Steam, Finder, prefix, or CrossOver
+  process was terminated.
+- The focused runtime suite passed 57 tests and the focused Steam UI
+  policy/runtime suites passed 79 tests. Final repository verification passed
+  113 Python tests, 85 JavaScript tests, all 28 shell contract tests, Python
+  bytecode compilation, JavaScript syntax checks, and whitespace checks.

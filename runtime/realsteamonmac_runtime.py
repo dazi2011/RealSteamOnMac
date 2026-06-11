@@ -61,6 +61,22 @@ CONTAINER_OPERATIONS = frozenset(
         "delete-container",
     )
 )
+WINDOWS_RUN_BUILTINS = {
+    "cmd": "cmd.exe",
+    "cmd.exe": "cmd.exe",
+    "control": "control.exe",
+    "control.exe": "control.exe",
+    "explorer": "explorer.exe",
+    "explorer.exe": "explorer.exe",
+    "notepad": "notepad.exe",
+    "notepad.exe": "notepad.exe",
+    "regedit": "regedit.exe",
+    "regedit.exe": "regedit.exe",
+    "taskmgr": "taskmgr.exe",
+    "taskmgr.exe": "taskmgr.exe",
+    "winecfg": "winecfg",
+    "winecfg.exe": "winecfg",
+}
 ENVIRONMENT_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 COMPAT_TOOL_PATTERN = re.compile(r"[a-z0-9][a-z0-9._-]{1,63}")
 RESERVED_ENVIRONMENT_NAMES = frozenset(
@@ -1912,12 +1928,15 @@ def resolve_command_target(context, target):
     if not raw:
         candidate = context["executable"]
     elif re.match(r"^[A-Za-z]:[\\/]", raw):
-        if raw[0].lower() != "c":
-            raise RuntimeErrorWithContext(
-                "only the Wine C: drive is available"
-            )
+        drive = raw[0].lower()
         relative = raw[3:].replace("\\", "/")
-        candidate = context["prefix"] / "drive_c" / relative
+        if drive == "c":
+            drive_root = context["prefix"] / "drive_c"
+        else:
+            drive_root = context["prefix"] / "dosdevices" / f"{drive}:"
+            if not drive_root.exists() and not drive_root.is_symlink():
+                return {"kind": "association", "target": raw}
+        candidate = drive_root / relative
     elif raw.startswith("prefix:"):
         candidate = context["prefix"] / raw[len("prefix:") :].lstrip(
             "/\\"
@@ -1934,34 +1953,41 @@ def resolve_command_target(context, target):
             else context["install_path"] / raw_path
         )
 
+    if not candidate.exists():
+        normalized = raw.casefold()
+        builtin = WINDOWS_RUN_BUILTINS.get(normalized)
+        if builtin is not None:
+            return {"kind": "builtin", "target": builtin}
+        if normalized.endswith(".cpl"):
+            return {"kind": "control-panel", "target": raw}
+        return {"kind": "association", "target": raw}
+
     resolved = candidate.resolve()
-    allowed_roots = (
-        context["install_path"].resolve(),
-        context["prefix"].resolve(),
-    )
-    if not any(
-        resolved == root or resolved.is_relative_to(root)
-        for root in allowed_roots
-    ):
-        raise RuntimeErrorWithContext(
-            "run-command target must stay inside the game or its prefix"
-        )
+    if resolved.is_dir():
+        return {"kind": "association", "target": resolved}
     if not resolved.is_file():
         raise RuntimeErrorWithContext(
-            f"run-command target does not exist: {resolved}"
+            f"run-command target is not a file or directory: {resolved}"
         )
-    try:
-        with resolved.open("rb") as stream:
-            magic = stream.read(2)
-    except OSError as error:
-        raise RuntimeErrorWithContext(
-            f"could not inspect run-command target: {resolved}"
-        ) from error
-    if magic != b"MZ":
-        raise RuntimeErrorWithContext(
-            f"run-command target is not a PE executable: {resolved}"
-        )
-    return resolved
+    suffix = resolved.suffix.casefold()
+    if suffix == ".exe":
+        try:
+            with resolved.open("rb") as stream:
+                magic = stream.read(2)
+        except OSError as error:
+            raise RuntimeErrorWithContext(
+                f"could not inspect run-command target: {resolved}"
+            ) from error
+        if magic != b"MZ":
+            raise RuntimeErrorWithContext(
+                f"run-command target is not a PE executable: {resolved}"
+            )
+        return {"kind": "pe", "target": resolved}
+    if suffix in {".bat", ".cmd"}:
+        return {"kind": "batch", "target": resolved}
+    if suffix == ".cpl":
+        return {"kind": "control-panel", "target": resolved}
+    return {"kind": "association", "target": resolved}
 
 
 def parse_command_arguments(value):
@@ -1969,12 +1995,55 @@ def parse_command_arguments(value):
         raise RuntimeErrorWithContext(
             "run-command arguments are too long"
         )
-    try:
-        arguments = shlex.split(value, posix=True)
-    except ValueError as error:
-        raise RuntimeErrorWithContext(
-            "run-command arguments are malformed"
-        ) from error
+    arguments = []
+    index = 0
+    while index < len(value):
+        while index < len(value) and value[index].isspace():
+            index += 1
+        if index >= len(value):
+            break
+        argument = []
+        quoted = False
+        while index < len(value):
+            character = value[index]
+            if character.isspace() and not quoted:
+                break
+            if character == "\\":
+                slash_count = 0
+                while index < len(value) and value[index] == "\\":
+                    slash_count += 1
+                    index += 1
+                if index < len(value) and value[index] == '"':
+                    argument.extend("\\" * (slash_count // 2))
+                    if slash_count % 2:
+                        argument.append('"')
+                    else:
+                        quoted = not quoted
+                    index += 1
+                else:
+                    argument.extend("\\" * slash_count)
+                continue
+            if character == '"':
+                if (
+                    quoted
+                    and index + 1 < len(value)
+                    and value[index + 1] == '"'
+                ):
+                    argument.append('"')
+                    index += 2
+                    continue
+                quoted = not quoted
+                index += 1
+                continue
+            argument.append(character)
+            index += 1
+        if quoted:
+            raise RuntimeErrorWithContext(
+                "run-command arguments are malformed"
+            )
+        arguments.append("".join(argument))
+        while index < len(value) and value[index].isspace():
+            index += 1
     if len(arguments) > 128 or any(
         len(argument) > 4096 for argument in arguments
     ):
@@ -1982,6 +2051,48 @@ def parse_command_arguments(value):
             "run-command argument vector is too large"
         )
     return arguments
+
+
+def build_run_command_plan(context, wine64, target, argument_text):
+    arguments = parse_command_arguments(argument_text)
+    resolved = resolve_command_target(context, target)
+    if (
+        resolved["kind"] == "association"
+        and isinstance(resolved["target"], str)
+        and not re.match(
+            r"^[A-Za-z][A-Za-z0-9+.-]*:",
+            resolved["target"],
+        )
+        and any(
+            character.isspace() for character in resolved["target"]
+        )
+    ):
+        inline = parse_command_arguments(resolved["target"])
+        if len(inline) > 1:
+            resolved = resolve_command_target(context, inline[0])
+            arguments = [*inline[1:], *arguments]
+
+    kind = resolved["kind"]
+    command_target = resolved["target"]
+    if kind in {"pe", "builtin"}:
+        command = [wine64, command_target, *arguments]
+    elif kind == "control-panel":
+        command = [wine64, "control.exe", command_target, *arguments]
+    elif isinstance(command_target, Path):
+        command = [
+            wine64,
+            "start.exe",
+            "/unix",
+            command_target,
+            *arguments,
+        ]
+    else:
+        command = [wine64, "start.exe", command_target, *arguments]
+    return {
+        "kind": kind,
+        "target": str(command_target),
+        "command": command,
+    }
 
 
 def parse_command_environment(value):
@@ -2244,29 +2355,37 @@ def execute_run_command_action(context, runtime_root, fields, log_path):
     _, _, _, wine64, environment = prepare(
         context, runtime_root, config
     )
-    target = resolve_command_target(context, fields["target"])
-    arguments = parse_command_arguments(fields["arguments"])
+    plan = build_run_command_plan(
+        context,
+        wine64,
+        fields["target"],
+        fields["arguments"],
+    )
     environment.update(
         parse_command_environment(fields["environment"])
     )
-    command = [wine64, target, *arguments]
     log_event(
         context,
         {
             "event": "run-command",
-            "target": str(target),
-            "arguments": arguments,
+            "kind": plan["kind"],
+            "target": plan["target"],
+            "command": [
+                str(part) for part in plan["command"][1:]
+            ],
+            "arguments_text": fields["arguments"],
         },
     )
     result = run_job_process(
         context,
-        command,
+        plan["command"],
         environment,
         log_path,
         "run command",
     )
     return result.returncode, {
-        "target": str(target),
+        "kind": plan["kind"],
+        "target": plan["target"],
         "renderer": config["renderer"],
     }
 
@@ -2407,22 +2526,15 @@ def choose_executable_file():
 
 def execute_choose_file_action(context):
     selected = choose_executable_file()
-    allowed_roots = (
-        context["install_path"].resolve(),
-        context["prefix"].resolve(),
-    )
-    if not any(
-        selected == root or selected.is_relative_to(root)
-        for root in allowed_roots
-    ):
-        raise RuntimeErrorWithContext(
-            "run-command file selection must stay inside the game or prefix"
-        )
     return 0, {"target": str(selected)}
 
 
 def execute_container_action(context, runtime_root, fields, log_path):
     operation = fields["operation"]
+    if operation == "install-application":
+        raise RuntimeErrorWithContext(
+            "install application must use the reviewed component catalog"
+        )
     config = load_config(context)
     if operation == "delete-container":
         package, manifest, wine_root, wine64, _ = load_selected_package(
@@ -2469,15 +2581,13 @@ def execute_container_action(context, runtime_root, fields, log_path):
         context, runtime_root, config
     )
     if operation == "open-c-drive":
-        command = ["/usr/bin/open", context["prefix"] / "drive_c"]
+        command = [
+            "/usr/bin/open",
+            "-a",
+            "Finder",
+            context["prefix"] / "drive_c",
+        ]
         environment = build_native_helper_environment(environment)
-    elif operation == "install-application":
-        selected = choose_executable_file()
-        command = (
-            [wine64, "cmd", "/c", selected]
-            if selected.suffix.lower() in {".bat", ".cmd"}
-            else [wine64, selected]
-        )
     elif operation == "wine-configuration":
         command = [wine64, "winecfg"]
     elif operation == "controllers":
