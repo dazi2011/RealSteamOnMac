@@ -1172,3 +1172,10 @@
 - Automated verification passed 7 launcher-recovery tests, 44 runtime-manager
   tests, and 22 launch-descriptor/app-state/tool-catalog tests, plus JSON,
   Python bytecode, and whitespace checks.
+- The first live snapshot exposed a Wine path-boundary bug: the prefix
+  `Documents` link points at host `~/Documents`, so a snapshot glob began
+  reading host Rockstar cache data. The process was interrupted before any
+  installer ran, and its single incomplete temporary snapshot was removed.
+- Added RED coverage requiring glob matches whose resolved path escapes the
+  prefix to be skipped and recorded as `external_skipped`. RED failed because
+  the manifest and containment guard do not exist yet.

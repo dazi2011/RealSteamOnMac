@@ -251,6 +251,44 @@ class LauncherRecoveryTests(unittest.TestCase):
             )
         )
 
+    def test_snapshot_glob_does_not_follow_a_parent_symlink_outside_prefix(
+        self,
+    ):
+        host_documents = self.root / "host-documents"
+        external = host_documents / "Rockstar Games" / "cache.bin"
+        external.parent.mkdir(parents=True)
+        external.write_bytes(b"host-data")
+        linked_user = self.prefix / "drive_c" / "users" / "linked"
+        linked_user.mkdir(parents=True)
+        (linked_user / "Documents").symlink_to(
+            host_documents, target_is_directory=True
+        )
+        self.recipe["snapshot_globs"] = [
+            "drive_c/users/*/Documents/Rockstar Games"
+        ]
+
+        plan = recovery.plan_launcher_recovery(
+            self.context(),
+            self.recipe,
+            timestamp="20260611T111706Z",
+        )
+
+        manifest = json.loads(
+            (
+                Path(plan["snapshot_path"]) / "manifest.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertFalse(
+            any(
+                record["source"] == str(external)
+                for record in manifest["files"]
+            )
+        )
+        self.assertIn(
+            str(linked_user / "Documents" / "Rockstar Games"),
+            manifest["external_skipped"],
+        )
+
     def test_execute_runs_only_pinned_installers_and_writes_report(self):
         commands = []
 
