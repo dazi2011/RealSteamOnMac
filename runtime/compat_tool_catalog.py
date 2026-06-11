@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 
 import argparse
+import hashlib
 import json
 import os
+import plistlib
 import re
 import stat
 import sys
@@ -35,6 +37,7 @@ METADATA_KEYS = frozenset(
     )
 )
 MAX_METADATA_BYTES = 64 * 1024
+MAX_PLIST_BYTES = 64 * 1024
 MAX_VDF_BYTES = 256 * 1024
 MAX_VDF_TOKENS = 4096
 MAX_VDF_DEPTH = 32
@@ -303,6 +306,371 @@ def _require_regular_file(path, label, executable=False):
         raise CatalogError(f"{label} must be executable: {path}")
 
 
+def _resolve_internal_path(path, root, label, *, directory=False):
+    try:
+        resolved = path.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise CatalogError(f"{label} is missing: {path}") from exc
+    except OSError as exc:
+        raise CatalogError(f"cannot resolve {label}: {path}") from exc
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise CatalogError(f"{label} escapes its tool directory: {path}") from exc
+    try:
+        mode = resolved.stat().st_mode
+    except OSError as exc:
+        raise CatalogError(f"cannot inspect {label}: {path}") from exc
+    expected = stat.S_ISDIR(mode) if directory else stat.S_ISREG(mode)
+    if not expected:
+        kind = "directory" if directory else "regular file"
+        raise CatalogError(f"{label} must resolve to a {kind}: {path}")
+    return resolved
+
+
+def _require_internal_file(path, root, label, *, executable=False):
+    resolved = _resolve_internal_path(path, root, label)
+    if executable and not os.access(resolved, os.X_OK):
+        raise CatalogError(f"{label} must be executable: {path}")
+    return resolved
+
+
+def _internal_file_exists(path, root, label):
+    if not path.exists() and not path.is_symlink():
+        return False
+    _require_internal_file(path, root, label)
+    return True
+
+
+def _validate_raw_display_name(name, directory):
+    if (
+        not name
+        or len(name) > 128
+        or any(unicodedata.category(character) == "Cc" for character in name)
+    ):
+        raise CatalogError(
+            f"raw compatibility tool directory name is invalid: {directory}"
+        )
+
+
+def _raw_identifier(kind, directory_name):
+    normalized = unicodedata.normalize("NFKD", directory_name)
+    ascii_name = normalized.encode("ascii", "ignore").decode("ascii").lower()
+    slug = re.sub(r"[^a-z0-9._-]+", "-", ascii_name).strip("._-")
+    if not slug:
+        slug = hashlib.sha256(directory_name.encode("utf-8")).hexdigest()[:12]
+    prefix = f"realsteamonmac-user-{kind}-"
+    identifier = prefix + slug
+    if len(identifier) > 64:
+        digest = hashlib.sha256(
+            directory_name.encode("utf-8")
+        ).hexdigest()[:10]
+        slug = slug[: 64 - len(prefix) - len(digest) - 1].rstrip("._-")
+        identifier = f"{prefix}{slug}-{digest}"
+    if not IDENTIFIER_PATTERN.fullmatch(identifier):
+        raise CatalogError(
+            f"cannot derive a safe tool identifier from: {directory_name}"
+        )
+    return identifier
+
+
+def _version_from_name(name, label, directory):
+    matches = re.findall(r"(?<![0-9])([0-9]+(?:\.[0-9]+)+)", name)
+    if not matches:
+        raise CatalogError(f"{label} version is missing from: {directory}")
+    return matches[-1]
+
+
+def _raw_capabilities(**updates):
+    capabilities = {
+        "msync": True,
+        "retina": True,
+        "metal_hud": True,
+        "metalfx": False,
+        "dxr": False,
+        "avx": True,
+    }
+    capabilities.update(updates)
+    return capabilities
+
+
+def _raw_tool_record(
+    directory,
+    *,
+    kind,
+    label,
+    renderer,
+    version,
+    capabilities,
+):
+    _validate_raw_display_name(directory.name, directory)
+    resolved = directory.resolve(strict=True)
+    return {
+        "strToolName": _raw_identifier(kind, directory.name),
+        "strDisplayName": f"{label} {version} - {directory.name}",
+        "renderer": renderer,
+        "version": version,
+        "runtimePackage": "current",
+        "capabilities": capabilities,
+        "installPath": str(resolved),
+        "sourceKind": kind,
+        "componentPath": str(resolved),
+    }
+
+
+def _load_gptk_version(directory):
+    framework = directory / "external" / "D3DMetal.framework"
+    candidates = (
+        framework / "Versions" / "Current" / "Resources" / "Info.plist",
+        framework / "Versions" / "A" / "Resources" / "Info.plist",
+        framework / "Resources" / "Info.plist",
+    )
+    plist_path = next(
+        (
+            path
+            for path in candidates
+            if path.exists() or path.is_symlink()
+        ),
+        None,
+    )
+    if plist_path is None:
+        raise CatalogError(f"GPTK D3DMetal Info.plist is missing: {directory}")
+    resolved = _require_internal_file(
+        plist_path,
+        directory,
+        "GPTK D3DMetal Info.plist",
+    )
+    try:
+        data = resolved.read_bytes()
+    except OSError as exc:
+        raise CatalogError(
+            f"cannot read GPTK D3DMetal Info.plist: {plist_path}"
+        ) from exc
+    if len(data) > MAX_PLIST_BYTES:
+        raise CatalogError(
+            f"GPTK D3DMetal Info.plist is too large: {plist_path}"
+        )
+    try:
+        values = plistlib.loads(data)
+    except plistlib.InvalidFileException as exc:
+        raise CatalogError(
+            f"GPTK D3DMetal Info.plist is invalid: {plist_path}"
+        ) from exc
+    if (
+        not isinstance(values, dict)
+        or values.get("CFBundleIdentifier") != "com.apple.D3DMetal"
+    ):
+        raise CatalogError(
+            f"GPTK D3DMetal bundle identifier is invalid: {plist_path}"
+        )
+    version = values.get("CFBundleShortVersionString")
+    if (
+        not isinstance(version, str)
+        or not re.fullmatch(r"[0-9]+(?:\.[0-9]+)+", version)
+    ):
+        raise CatalogError(
+            f"GPTK D3DMetal version is invalid: {plist_path}"
+        )
+    return version
+
+
+def _scan_raw_gptk(directory):
+    marker_paths = (
+        directory / "external" / "D3DMetal.framework",
+        directory / "external" / "libd3dshared.dylib",
+        directory / "wine" / "x86_64-unix",
+    )
+    if not any(path.exists() or path.is_symlink() for path in marker_paths):
+        if not directory.name.lower().startswith("gptk"):
+            return None
+    version = _load_gptk_version(directory)
+    required = (
+        ("external/libd3dshared.dylib", "GPTK shared D3D library"),
+        ("wine/x86_64-unix/d3d11.so", "GPTK Unix D3D11 module"),
+        ("wine/x86_64-unix/dxgi.so", "GPTK Unix DXGI module"),
+        ("wine/x86_64-windows/d3d11.dll", "GPTK Windows D3D11 module"),
+        ("wine/x86_64-windows/dxgi.dll", "GPTK Windows DXGI module"),
+    )
+    try:
+        for relative, label in required:
+            _require_internal_file(directory / relative, directory, label)
+    except CatalogError as exc:
+        raise CatalogError(
+            f"GPTK payload is incomplete: {directory}: {exc}"
+        ) from exc
+    windows = directory / "wine" / "x86_64-windows"
+    unix = directory / "wine" / "x86_64-unix"
+    has_dxr = _internal_file_exists(
+        windows / "d3d12.dll", directory, "GPTK Windows D3D12 module"
+    ) and _internal_file_exists(
+        unix / "d3d12.so", directory, "GPTK Unix D3D12 module"
+    )
+    has_metalfx = _internal_file_exists(
+        windows / "nvapi64.dll", directory, "GPTK NVAPI module"
+    ) and any(
+        _internal_file_exists(windows / name, directory, f"GPTK {name} module")
+        for name in ("nvngx-on-metalfx.dll", "nvngx.dll")
+    )
+    return _raw_tool_record(
+        directory,
+        kind="gptk",
+        label="GPTK",
+        renderer="gptk",
+        version=version,
+        capabilities=_raw_capabilities(
+            metalfx=has_metalfx,
+            dxr=has_dxr,
+        ),
+    )
+
+
+def _scan_raw_dxmt(directory):
+    unix = directory / "x86_64-unix"
+    windows = directory / "x86_64-windows"
+    markers = (
+        unix / "winemetal.so",
+        windows / "nvngx.dll",
+        windows / "nvngx-on-metalfx.dll",
+    )
+    if not directory.name.lower().startswith("dxmt") and not any(
+        path.exists() or path.is_symlink() for path in markers
+    ):
+        return None
+    required = (
+        (unix / "winemetal.so", "DXMT Wine Metal module"),
+        (windows / "d3d11.dll", "DXMT D3D11 module"),
+        (windows / "dxgi.dll", "DXMT DXGI module"),
+    )
+    try:
+        for path, label in required:
+            _require_internal_file(path, directory, label)
+    except CatalogError as exc:
+        raise CatalogError(
+            f"DXMT payload is incomplete: {directory}: {exc}"
+        ) from exc
+    version = _version_from_name(directory.name, "DXMT", directory)
+    has_metalfx = _internal_file_exists(
+        windows / "nvapi64.dll", directory, "DXMT NVAPI module"
+    ) and any(
+        _internal_file_exists(windows / name, directory, f"DXMT {name} module")
+        for name in ("nvngx.dll", "nvngx-on-metalfx.dll")
+    )
+    return _raw_tool_record(
+        directory,
+        kind="dxmt",
+        label="DXMT",
+        renderer="dxmt",
+        version=version,
+        capabilities=_raw_capabilities(metalfx=has_metalfx),
+    )
+
+
+def _scan_raw_dxvk(directory):
+    windows = directory / "x86_64-windows"
+    markers = (
+        windows / "d3d9.dll",
+        windows / "d3d10.dll",
+        windows / "d3d10_1.dll",
+        windows / "d3d10core.dll",
+    )
+    if not directory.name.lower().startswith("dxvk") and not any(
+        path.exists() or path.is_symlink() for path in markers
+    ):
+        return None
+    try:
+        _require_internal_file(
+            windows / "d3d9.dll", directory, "DXVK D3D9 module"
+        )
+        _require_internal_file(
+            windows / "d3d11.dll", directory, "DXVK D3D11 module"
+        )
+    except CatalogError as exc:
+        raise CatalogError(
+            f"DXVK payload is incomplete: {directory}: {exc}"
+        ) from exc
+    version = _version_from_name(directory.name, "DXVK", directory)
+    return _raw_tool_record(
+        directory,
+        kind="dxvk",
+        label="DXVK",
+        renderer="dxvk",
+        version=version,
+        capabilities=_raw_capabilities(),
+    )
+
+
+def _scan_raw_wine(directory):
+    bin_directory = directory / "bin"
+    wine_candidates = (bin_directory / "wine64", bin_directory / "wine")
+    markers = (*wine_candidates, bin_directory / "wineserver")
+    if not directory.name.lower().startswith("wine") and not any(
+        path.exists() or path.is_symlink() for path in markers
+    ):
+        return None
+    wine = next(
+        (
+            path
+            for path in wine_candidates
+            if path.exists() or path.is_symlink()
+        ),
+        None,
+    )
+    if wine is None:
+        raise CatalogError(f"Wine payload is incomplete: {directory}: wine is missing")
+    required = (
+        (wine, "Wine launcher", True),
+        (bin_directory / "wineserver", "Wine server", True),
+        (
+            directory / "lib" / "wine" / "x86_64-unix" / "ntdll.so",
+            "Wine Unix NTDLL module",
+            False,
+        ),
+        (
+            directory / "lib" / "wine" / "x86_64-windows" / "ntdll.dll",
+            "Wine Windows NTDLL module",
+            False,
+        ),
+    )
+    try:
+        for path, label, executable in required:
+            _require_internal_file(
+                path,
+                directory,
+                label,
+                executable=executable,
+            )
+    except CatalogError as exc:
+        raise CatalogError(
+            f"Wine payload is incomplete: {directory}: {exc}"
+        ) from exc
+    version = _version_from_name(directory.name, "Wine", directory)
+    return _raw_tool_record(
+        directory,
+        kind="wine",
+        label="Wine",
+        renderer="wined3d",
+        version=version,
+        capabilities=_raw_capabilities(
+            msync=False,
+            retina=False,
+            metal_hud=False,
+        ),
+    )
+
+
+def _scan_raw_tool(directory):
+    for scanner in (
+        _scan_raw_gptk,
+        _scan_raw_dxmt,
+        _scan_raw_dxvk,
+        _scan_raw_wine,
+    ):
+        tool = scanner(directory)
+        if tool is not None:
+            return tool
+    return None
+
+
 def _validate_root(root):
     path = Path(root).expanduser()
     try:
@@ -368,6 +736,16 @@ def scan_compat_tools(root):
         metadata_path = directory / "realsteamonmac.json"
         candidate_files = (run, vdf, manifest, metadata_path)
         if not any(path.exists() for path in candidate_files):
+            tool = _scan_raw_tool(resolved_directory)
+            if tool is None:
+                continue
+            if tool["strToolName"] in seen:
+                raise CatalogError(
+                    "duplicate compatibility tool identifier: "
+                    f"{tool['strToolName']}"
+                )
+            seen.add(tool["strToolName"])
+            tools.append(tool)
             continue
         _require_regular_file(run, "run", executable=True)
         _require_regular_file(vdf, "compatibilitytool.vdf")

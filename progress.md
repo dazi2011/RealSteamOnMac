@@ -1328,3 +1328,37 @@
 - Automated verification passed 14 Python patcher tests, the shell install /
   verify / restore contract, 77 JavaScript runtime/policy tests, JavaScript
   syntax, Python bytecode, and whitespace checks.
+
+## 2026-06-11 Raw Compatibility Payload Discovery
+
+- Read the user-authored `codex LOOKLOOK ITTTTT!!!!!!!.rtf`. It adds two
+  mandatory live acceptance defects: the native compatibility checkbox must
+  stop toggling about once per second, and Steam's native controller page must
+  be made readable without replacing it with a project-owned fake page.
+- Extended `runtime/compat_tool_catalog.py` without changing the existing
+  managed-wrapper contract. A child containing any managed file still requires
+  `run`, both VDF files, and `realsteamonmac.json`.
+- A user can now place a complete raw GPTK, DXMT, DXVK, or Wine directory
+  directly below Steam's `compatibilitytools.d`. The scanner derives a stable
+  tool id, display name, renderer, version, current base package reference, and
+  conservative capability map from the payload itself.
+- GPTK validation reads the bounded D3DMetal `Info.plist` and requires the
+  shared D3D library plus matching D3D11/DXGI Unix and Windows modules. DXR is
+  enabled only when both D3D12 modules exist; MetalFX requires NVAPI plus an
+  NVNGX-to-MetalFX module.
+- DXMT requires `winemetal.so`, D3D11, and DXGI. DXVK requires D3D9 and D3D11.
+  A full raw Wine requires executable Wine and wineserver launchers plus both
+  NTDLL architecture modules, and starts with conservative optional
+  capabilities disabled.
+- Required raw files may use internal symlinks, matching official GPTK and
+  CrossOver layouts, but every resolved target must remain within the same
+  compatibility-tool directory. Suspected but incomplete payloads fail closed
+  instead of disappearing from the catalog.
+- Fourteen catalog tests and fourteen SteamUI patch tests passed, including
+  raw-tree discovery, incomplete-tree refusal, symlink-escape refusal, and
+  capability gating. A read-only scan of the live directory retained the
+  current four managed entries unchanged.
+- The full Python discovery suite passed 102 tests. It exposed stale
+  native-control fixtures in the install and launcher shell contracts; both
+  fixtures now contain the real control anchor and expect all three managed
+  gates.

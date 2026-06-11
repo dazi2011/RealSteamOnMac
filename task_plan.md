@@ -218,6 +218,10 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
    64-bit Windows games on this machine?
 5. What minimal launch-dispatch patch is needed for Steam to invoke wrappers
    with the same AppID and command contract used by Steam Play on Linux?
+6. Which native observable is changing once per second and causing the
+   compatibility checkbox to oscillate between enabled and disabled?
+7. Which Steam-owned controller dialog sizing and typography rules can be
+   adjusted without mounting a replacement or overlay UI?
 
 ## Decisions Made
 
@@ -238,6 +242,7 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Build the Steamworks bridge from pinned Proton and Valve Wine commits | It preserves real ownership, callbacks, Workshop, and Cloud behavior and is reproducible; fake Steam API shims are rejected. |
 | Disable `winemenubuilder.exe` in the independent runtime | Migrated CrossOver prefixes otherwise recreate or launch old CrossOver menu applications. |
 | Scope forced Wine cleanup to People Playground | Its .NET helper confuses Wine PID 312 with persistent macOS PID 312; a global cleanup policy could break launcher-style games. |
+| Treat raw GPTK/DXMT/DXVK/Wine directories as validated catalog inputs | Users can install standard vendor layouts directly; the runtime manager will compose them with an immutable base package instead of requiring project-private wrapper files or mutating the source tree. |
 
 ## Errors Encountered
 

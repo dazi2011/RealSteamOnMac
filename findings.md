@@ -1030,6 +1030,19 @@
   while retaining the two page anchors and one native-control anchor. A
   supported clean new chunk must atomically replace a stale clean backup;
   unknown hashes or changed anchor counts must still fail closed.
+- Raw CrossOver-style component directories are not standalone Steam Play
+  launchers, but they can be first-class catalog inputs. The safe boundary is
+  to validate their native payload structure and advertise them through
+  Steam's own compatibility-tool list while the runtime manager composes them
+  with the current immutable base package.
+- Capability flags must come from paired payload evidence. In particular,
+  GPTK DXR requires both Unix and Windows D3D12 modules, and GPTK/DXMT MetalFX
+  requires both NVAPI and an NVNGX conversion module. A directory name alone
+  is not evidence of feature support.
+- Official GPTK uses internal framework and Wine-module symlinks, so rejecting
+  every raw symlink would reject the real product. Resolving each required
+  path and enforcing that its final target remains under the same top-level
+  tool directory permits the standard layout without accepting path escapes.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

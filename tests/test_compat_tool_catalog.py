@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import plistlib
 import subprocess
 import sys
 import tempfile
@@ -259,6 +260,190 @@ class CompatToolCatalogTests(unittest.TestCase):
 
         with self.assertRaisesRegex(catalog.CatalogError, "executable"):
             catalog.scan_compat_tools(self.root)
+
+    def test_discovers_a_raw_gptk_component_tree(self):
+        directory = self.root / "GPTK3.0"
+        resources = (
+            directory
+            / "external"
+            / "D3DMetal.framework"
+            / "Versions"
+            / "A"
+            / "Resources"
+        )
+        resources.mkdir(parents=True)
+        (resources / "Info.plist").write_bytes(
+            plistlib.dumps(
+                {
+                    "CFBundleShortVersionString": "3.0",
+                    "CFBundleIdentifier": "com.apple.D3DMetal",
+                }
+            )
+        )
+        (directory / "external" / "libd3dshared.dylib").write_bytes(
+            b"Mach-O"
+        )
+        windows = directory / "wine" / "x86_64-windows"
+        windows.mkdir(parents=True)
+        for name in (
+            "d3d11.dll",
+            "d3d12.dll",
+            "dxgi.dll",
+            "nvapi64.dll",
+            "nvngx-on-metalfx.dll",
+        ):
+            (windows / name).write_bytes(b"MZ")
+        unix = directory / "wine" / "x86_64-unix"
+        unix.mkdir()
+        for name in ("d3d11.so", "d3d12.so", "dxgi.so"):
+            (unix / name).symlink_to(
+                "../../external/libd3dshared.dylib"
+            )
+
+        self.assertEqual(
+            catalog.scan_compat_tools(self.root),
+            [
+                {
+                    "strToolName": "realsteamonmac-user-gptk-gptk3.0",
+                    "strDisplayName": "GPTK 3.0 - GPTK3.0",
+                    "renderer": "gptk",
+                    "version": "3.0",
+                    "runtimePackage": "current",
+                    "capabilities": {
+                        **CAPABILITIES,
+                        "metalfx": True,
+                        "dxr": True,
+                    },
+                    "installPath": str(directory.resolve()),
+                    "sourceKind": "gptk",
+                    "componentPath": str(directory.resolve()),
+                }
+            ],
+        )
+
+    def test_discovers_raw_dxmt_and_dxvk_component_trees(self):
+        dxmt = self.root / "DXMT-0.90"
+        (dxmt / "x86_64-unix").mkdir(parents=True)
+        (dxmt / "x86_64-windows").mkdir()
+        (dxmt / "x86_64-unix" / "winemetal.so").write_bytes(b"Mach-O")
+        for name in (
+            "d3d11.dll",
+            "dxgi.dll",
+            "nvapi64.dll",
+            "nvngx.dll",
+        ):
+            (dxmt / "x86_64-windows" / name).write_bytes(b"MZ")
+
+        dxvk = self.root / "DXVK-macOS-1.10.3"
+        (dxvk / "x86_64-windows").mkdir(parents=True)
+        for name in ("d3d9.dll", "d3d11.dll"):
+            (dxvk / "x86_64-windows" / name).write_bytes(b"MZ")
+
+        tools = catalog.scan_compat_tools(self.root)
+
+        self.assertEqual(
+            [tool["renderer"] for tool in tools],
+            ["dxmt", "dxvk"],
+        )
+        self.assertEqual(tools[0]["version"], "0.90")
+        self.assertTrue(tools[0]["capabilities"]["metalfx"])
+        self.assertEqual(tools[1]["version"], "1.10.3")
+        self.assertFalse(tools[1]["capabilities"]["metalfx"])
+        self.assertEqual(
+            {tool["runtimePackage"] for tool in tools},
+            {"current"},
+        )
+        self.assertEqual(
+            {tool["sourceKind"] for tool in tools},
+            {"dxmt", "dxvk"},
+        )
+
+    def test_discovers_a_complete_raw_wine_tree_conservatively(self):
+        directory = self.root / "wine11.1.2"
+        (directory / "bin").mkdir(parents=True)
+        for name in ("wine64", "wineserver"):
+            path = directory / "bin" / name
+            path.write_bytes(b"Mach-O")
+            path.chmod(0o755)
+        unix = directory / "lib" / "wine" / "x86_64-unix"
+        windows = directory / "lib" / "wine" / "x86_64-windows"
+        unix.mkdir(parents=True)
+        windows.mkdir()
+        (unix / "ntdll.so").write_bytes(b"Mach-O")
+        (windows / "ntdll.dll").write_bytes(b"MZ")
+
+        [tool] = catalog.scan_compat_tools(self.root)
+
+        self.assertEqual(tool["renderer"], "wined3d")
+        self.assertEqual(tool["version"], "11.1.2")
+        self.assertEqual(tool["sourceKind"], "wine")
+        self.assertFalse(tool["capabilities"]["msync"])
+        self.assertFalse(tool["capabilities"]["retina"])
+        self.assertFalse(tool["capabilities"]["metal_hud"])
+
+    def test_rejects_an_incomplete_raw_component_tree(self):
+        directory = self.root / "DXMT-broken"
+        (directory / "x86_64-windows").mkdir(parents=True)
+        (directory / "x86_64-windows" / "d3d11.dll").write_bytes(b"MZ")
+
+        with self.assertRaisesRegex(
+            catalog.CatalogError,
+            "DXMT payload is incomplete",
+        ):
+            catalog.scan_compat_tools(self.root)
+
+    def test_rejects_a_raw_component_symlink_that_escapes_the_tool(self):
+        directory = self.root / "DXMT-0.90"
+        (directory / "x86_64-unix").mkdir(parents=True)
+        (directory / "x86_64-windows").mkdir()
+        outside = Path(self.temporary.name) / "outside.dylib"
+        outside.write_bytes(b"Mach-O")
+        (directory / "x86_64-unix" / "winemetal.so").symlink_to(outside)
+        for name in ("d3d11.dll", "dxgi.dll"):
+            (directory / "x86_64-windows" / name).write_bytes(b"MZ")
+
+        with self.assertRaisesRegex(
+            catalog.CatalogError,
+            "escapes its tool directory",
+        ):
+            catalog.scan_compat_tools(self.root)
+
+    def test_gptk_requires_both_d3d12_modules_before_enabling_dxr(self):
+        directory = self.root / "GPTK3.0"
+        resources = (
+            directory
+            / "external"
+            / "D3DMetal.framework"
+            / "Versions"
+            / "A"
+            / "Resources"
+        )
+        resources.mkdir(parents=True)
+        (resources / "Info.plist").write_bytes(
+            plistlib.dumps(
+                {
+                    "CFBundleShortVersionString": "3.0",
+                    "CFBundleIdentifier": "com.apple.D3DMetal",
+                }
+            )
+        )
+        (directory / "external" / "libd3dshared.dylib").write_bytes(
+            b"Mach-O"
+        )
+        windows = directory / "wine" / "x86_64-windows"
+        unix = directory / "wine" / "x86_64-unix"
+        windows.mkdir(parents=True)
+        unix.mkdir()
+        for name in ("d3d11.dll", "d3d12.dll", "dxgi.dll"):
+            (windows / name).write_bytes(b"MZ")
+        for name in ("d3d11.so", "dxgi.so"):
+            (unix / name).symlink_to(
+                "../../external/libd3dshared.dylib"
+            )
+
+        [tool] = catalog.scan_compat_tools(self.root)
+
+        self.assertFalse(tool["capabilities"]["dxr"])
 
     def test_cli_prints_catalog_json(self):
         self.write_tool(
