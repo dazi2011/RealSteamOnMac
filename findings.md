@@ -1057,12 +1057,18 @@
   breaking the main Steam window. The native React checkbox and dropdown must
   therefore use stable project selection data until backend registration is
   implemented without the Cloud regression.
-- Steam's native controller configurator is a locale-independent popup named
-  `SP Controller Configurator_uid0`. Steam itself exposes `SetMinSize`,
-  `ResizeTo`, `MoveTo`, and monitor-dimension APIs in that window. Its stock
-  module only guarantees an `800x650` minimum. On the current `1920x977`
-  usable display, a native `1440x860` window plus `112%` document zoom
-  produced no element overflow or clipping.
+- The reported small controller interface is Wine's Game Controllers panel,
+  launched as `wine64 control.exe joy.cpl`, not Steam's native Steam Input
+  configurator. The earlier Steam-popup interpretation was wrong and its
+  one-second popup scanner has been removed. In the People Playground prefix,
+  Wine DPI 96 produced a `250x311` point panel, DPI 144 produced `373x436`,
+  and DPI 192 produced a readable `496x562` panel without clipping.
+- `HKCU\Control Panel\Desktop\LogPixels` is prefix-global, so it must not be
+  left at a larger value after the panel closes. The controller action records
+  the exact previous DWORD, raises it to at least 192 only while `joy.cpl`
+  runs, restores the old value in a `finally` block, and never reduces a user
+  value already above 192. The live prefix returned from `0xc0` to `0x60`
+  after the experiment.
 - A raw graphics directory cannot be executed directly because it has no Wine
   launcher, Steamworks bridge, prefix policy, or package manifest. The runtime
   now creates a content-addressed package view: the selected immutable base

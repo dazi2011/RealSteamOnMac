@@ -152,6 +152,8 @@ Phase 8: 2026-06-11 field regression remediation and verified release
       and open the selected prefix drive in Finder.
 - [x] Merge Windows component installation into Install Application To
       Container and provide a reviewed, checksum-pinned dependency catalog.
+- [x] Correct Game Controllers to Wine `joy.cpl`, make it readable with a
+      temporary prefix DPI override, and leave Steam Input unmodified.
 - [ ] Study CrossOver Preview statically and dynamically for container,
       command, registry, dependency, and launch behavior without making
       RealSteamOnMac depend on CrossOver at runtime.
@@ -338,7 +340,7 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Compose raw tools into content-addressed runtime views | Hardlink the immutable selected base Wine, clone or copy user component files into an isolated overlay, and key the cache by base package plus source-tree fingerprint so source edits create a new view without changing old launches. |
 | Reuse a Steamworks bridge for raw Wine only across the same Wine major | A matching Wine 11 bridge retains Steam ownership integration for Wine 11.x; an unknown ABI combination must launch without that bridge instead of injecting an incompatible helper. |
 | Commit compatibility selections only after authenticated native registry sync | Steam remains the control owner; the data-only fallback stabilizes checkbox/dropdown state, while delayed original-API writes persist mappings without racing startup. Successful writes are cached and failures leave project state unchanged; native tool registration is still a separate unresolved gate. |
-| Resize and scale only Steam's native controller configurator | Identify the locale-independent `SP Controller Configurator_*` popup, use `SteamClient.Window` for native sizing, and apply bounded document zoom without adding or replacing UI. |
+| Scale Wine's game-controller panel without touching Steam Input | The requested controller interface is `wine64 control.exe joy.cpl`. Temporarily raise that prefix's `LogPixels` to at least 192 while the panel runs, restore the exact prior value on every normal or failed exit, and keep Steam's native controller configurator completely untouched. |
 
 ## Errors Encountered
 

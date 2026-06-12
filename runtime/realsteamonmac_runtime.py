@@ -49,6 +49,9 @@ STEAMWORKS_UNIX_INSTALL_NAMES = frozenset(
 # It can therefore survive the game indefinitely and keep Steam's AppID active.
 POST_EXIT_PREFIX_KILL_APPIDS = frozenset((1118200,))
 ACTION_JOB_ID_PATTERN = re.compile(r"[0-9a-f]{32}")
+CONTROLLER_READABILITY_DPI = 192
+WINE_DESKTOP_REGISTRY_KEY = r"HKCU\Control Panel\Desktop"
+WINE_LOGPIXELS_VALUE = "LogPixels"
 CONTAINER_OPERATIONS = frozenset(
     (
         "open-c-drive",
@@ -2193,6 +2196,159 @@ def run_job_process(context, command, environment, log_path, description):
         )
 
 
+def run_job_process_capture(
+    context, command, environment, log_path, description
+):
+    with open_private_log(log_path) as stream:
+        stream.write(f"\n[{utc_timestamp()}] {description}\n")
+        stream.write(f"$ {shlex.join(str(part) for part in command)}\n")
+        stream.flush()
+        result = subprocess.run(
+            [str(part) for part in command],
+            cwd=str(context["install_path"]),
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="replace",
+            check=False,
+        )
+        result.stdout = result.stdout or ""
+        stream.write(result.stdout)
+        stream.flush()
+        return result
+
+
+def query_wine_registry_dword(
+    context, wine64, environment, key, name, log_path
+):
+    result = run_job_process_capture(
+        context,
+        [wine64, "reg", "query", key, "/v", name],
+        environment,
+        log_path,
+        f"query Wine registry value {key}\\{name}",
+    )
+    match = re.search(
+        rf"^\s*{re.escape(name)}\s+REG_DWORD\s+0x([0-9a-f]+)\s*$",
+        result.stdout,
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+    if result.returncode == 0 and match:
+        return int(match.group(1), 16)
+    if result.returncode != 0 and re.search(
+        r"(unable to find|not found)",
+        result.stdout,
+        flags=re.IGNORECASE,
+    ):
+        return None
+    raise RuntimeErrorWithContext(
+        f"cannot read Wine registry value {key}\\{name}; "
+        f"see {log_path}"
+    )
+
+
+def set_wine_registry_dword(
+    context, wine64, environment, key, name, value, log_path
+):
+    result = run_job_process(
+        context,
+        [
+            wine64,
+            "reg",
+            "add",
+            key,
+            "/v",
+            name,
+            "/t",
+            "REG_DWORD",
+            "/d",
+            str(value),
+            "/f",
+        ],
+        environment,
+        log_path,
+        f"set Wine registry value {key}\\{name}",
+    )
+    if result.returncode != 0:
+        raise RuntimeErrorWithContext(
+            f"cannot set Wine registry value {key}\\{name}; "
+            f"see {log_path}"
+        )
+
+
+def delete_wine_registry_value(
+    context, wine64, environment, key, name, log_path
+):
+    result = run_job_process(
+        context,
+        [wine64, "reg", "delete", key, "/v", name, "/f"],
+        environment,
+        log_path,
+        f"delete Wine registry value {key}\\{name}",
+    )
+    if result.returncode != 0:
+        raise RuntimeErrorWithContext(
+            f"cannot restore absent Wine registry value {key}\\{name}; "
+            f"see {log_path}"
+        )
+
+
+def run_wine_controller_panel(
+    context, wine64, environment, log_path
+):
+    previous_dpi = query_wine_registry_dword(
+        context,
+        wine64,
+        environment,
+        WINE_DESKTOP_REGISTRY_KEY,
+        WINE_LOGPIXELS_VALUE,
+        log_path,
+    )
+    target_dpi = max(previous_dpi or 96, CONTROLLER_READABILITY_DPI)
+    override_applied = previous_dpi != target_dpi
+    if override_applied:
+        set_wine_registry_dword(
+            context,
+            wine64,
+            environment,
+            WINE_DESKTOP_REGISTRY_KEY,
+            WINE_LOGPIXELS_VALUE,
+            target_dpi,
+            log_path,
+        )
+    try:
+        result = run_job_process(
+            context,
+            [wine64, "control.exe", "joy.cpl"],
+            environment,
+            log_path,
+            "open readable Wine game controllers",
+        )
+    finally:
+        if override_applied:
+            if previous_dpi is None:
+                delete_wine_registry_value(
+                    context,
+                    wine64,
+                    environment,
+                    WINE_DESKTOP_REGISTRY_KEY,
+                    WINE_LOGPIXELS_VALUE,
+                    log_path,
+                )
+            else:
+                set_wine_registry_dword(
+                    context,
+                    wine64,
+                    environment,
+                    WINE_DESKTOP_REGISTRY_KEY,
+                    WINE_LOGPIXELS_VALUE,
+                    previous_dpi,
+                    log_path,
+                )
+    return result, target_dpi
+
+
 def build_native_helper_environment(environment):
     return {
         name: value
@@ -2902,7 +3058,17 @@ def execute_container_action(context, runtime_root, fields, log_path):
     elif operation == "wine-configuration":
         command = [wine64, "winecfg"]
     elif operation == "controllers":
-        command = [wine64, "control", "joy.cpl"]
+        result, controller_dpi = run_wine_controller_panel(
+            context,
+            wine64,
+            environment,
+            log_path,
+        )
+        return result.returncode, {
+            "operation": operation,
+            "renderer": config["renderer"],
+            "controller_dpi": controller_dpi,
+        }
     elif operation == "restart":
         command = [wine64, "wineboot", "--restart"]
     elif operation == "task-manager":

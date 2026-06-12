@@ -678,6 +678,228 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertFalse(context["prefix"].exists())
         self.assertTrue(Path(result["recovery_path"]).is_dir())
 
+    def test_controller_panel_temporarily_uses_readable_dpi(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        wine_root = wine64.parent.parent
+        with mock.patch.object(
+            runtime,
+            "prepare",
+            return_value=(
+                self.package,
+                {"package_id": "fixture"},
+                wine_root,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+            ),
+        ), mock.patch.object(
+            runtime,
+            "query_wine_registry_dword",
+            return_value=96,
+        ), mock.patch.object(
+            runtime,
+            "set_wine_registry_dword",
+        ) as set_dword, mock.patch.object(
+            runtime,
+            "delete_wine_registry_value",
+        ) as delete_value, mock.patch.object(
+            runtime,
+            "run_job_process",
+            return_value=mock.Mock(returncode=0),
+        ) as run:
+            exit_code, result = runtime.execute_container_action(
+                context,
+                self.runtime_root,
+                {"operation": "controllers"},
+                self.root / "controllers.log",
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(result["controller_dpi"], 192)
+        self.assertEqual(
+            run.call_args.args[1],
+            [wine64, "control.exe", "joy.cpl"],
+        )
+        self.assertEqual(
+            [call.args[5] for call in set_dword.call_args_list],
+            [192, 96],
+        )
+        delete_value.assert_not_called()
+
+    def test_controller_panel_restores_dpi_after_nonzero_exit(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        with mock.patch.object(
+            runtime,
+            "query_wine_registry_dword",
+            return_value=96,
+        ), mock.patch.object(
+            runtime,
+            "set_wine_registry_dword",
+        ) as set_dword, mock.patch.object(
+            runtime,
+            "run_job_process",
+            return_value=mock.Mock(returncode=5),
+        ):
+            result, dpi = runtime.run_wine_controller_panel(
+                context,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+                self.root / "controllers.log",
+            )
+
+        self.assertEqual(result.returncode, 5)
+        self.assertEqual(dpi, 192)
+        self.assertEqual(
+            [call.args[5] for call in set_dword.call_args_list],
+            [192, 96],
+        )
+
+    def test_controller_panel_restores_an_absent_dpi_value(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        with mock.patch.object(
+            runtime,
+            "query_wine_registry_dword",
+            return_value=None,
+        ), mock.patch.object(
+            runtime,
+            "set_wine_registry_dword",
+        ) as set_dword, mock.patch.object(
+            runtime,
+            "delete_wine_registry_value",
+        ) as delete_value, mock.patch.object(
+            runtime,
+            "run_job_process",
+            side_effect=RuntimeError("controller failed"),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError, "controller failed"
+            ):
+                runtime.run_wine_controller_panel(
+                    context,
+                    wine64,
+                    {"WINEPREFIX": str(context["prefix"])},
+                    self.root / "controllers.log",
+                )
+
+        self.assertEqual(set_dword.call_args.args[5], 192)
+        delete_value.assert_called_once()
+
+    def test_controller_panel_never_reduces_an_existing_dpi(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        with mock.patch.object(
+            runtime,
+            "query_wine_registry_dword",
+            return_value=240,
+        ), mock.patch.object(
+            runtime,
+            "set_wine_registry_dword",
+        ) as set_dword, mock.patch.object(
+            runtime,
+            "delete_wine_registry_value",
+        ) as delete_value, mock.patch.object(
+            runtime,
+            "run_job_process",
+            return_value=mock.Mock(returncode=0),
+        ):
+            _, dpi = runtime.run_wine_controller_panel(
+                context,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+                self.root / "controllers.log",
+            )
+
+        self.assertEqual(dpi, 240)
+        set_dword.assert_not_called()
+        delete_value.assert_not_called()
+
+    def test_query_wine_registry_dword_parses_wine_output(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        output = (
+            "\nHKEY_CURRENT_USER\\Control Panel\\Desktop\n"
+            "    LogPixels    REG_DWORD    0xc0\n"
+        )
+        with mock.patch.object(
+            runtime,
+            "run_job_process_capture",
+            return_value=SimpleNamespace(returncode=0, stdout=output),
+        ):
+            value = runtime.query_wine_registry_dword(
+                context,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+                runtime.WINE_DESKTOP_REGISTRY_KEY,
+                runtime.WINE_LOGPIXELS_VALUE,
+                self.root / "controllers.log",
+            )
+
+        self.assertEqual(value, 192)
+
+    def test_query_wine_registry_dword_accepts_missing_value(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        with mock.patch.object(
+            runtime,
+            "run_job_process_capture",
+            return_value=SimpleNamespace(
+                returncode=1,
+                stdout=(
+                    "reg: Unable to find the specified registry value\n"
+                ),
+            ),
+        ):
+            value = runtime.query_wine_registry_dword(
+                context,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+                runtime.WINE_DESKTOP_REGISTRY_KEY,
+                runtime.WINE_LOGPIXELS_VALUE,
+                self.root / "controllers.log",
+            )
+
+        self.assertIsNone(value)
+
+    def test_query_wine_registry_dword_rejects_malformed_output(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        with mock.patch.object(
+            runtime,
+            "run_job_process_capture",
+            return_value=SimpleNamespace(
+                returncode=0,
+                stdout="LogPixels REG_SZ unexpected\n",
+            ),
+        ):
+            with self.assertRaisesRegex(
+                runtime.RuntimeErrorWithContext,
+                "cannot read Wine registry value",
+            ):
+                runtime.query_wine_registry_dword(
+                    context,
+                    wine64,
+                    {"WINEPREFIX": str(context["prefix"])},
+                    runtime.WINE_DESKTOP_REGISTRY_KEY,
+                    runtime.WINE_LOGPIXELS_VALUE,
+                    self.root / "controllers.log",
+                )
+
     def test_open_c_drive_scrubs_wine_environment(self):
         context = self.context()
         wine64 = (

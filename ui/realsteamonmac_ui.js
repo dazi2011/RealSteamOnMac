@@ -33,12 +33,6 @@
   const ACTION_POLL_INTERVAL_MS = 1000;
   const ACTION_POLL_LIMIT = 3600;
   const ACTION_JOB_ID_PATTERN = /^[0-9a-f]{32}$/;
-  const CONTROLLER_CONFIGURATOR_WINDOW_PREFIX =
-    "SP Controller Configurator_";
-  const CONTROLLER_MAX_WIDTH = 1440;
-  const CONTROLLER_MAX_HEIGHT = 860;
-  const CONTROLLER_MIN_WIDTH = 1100;
-  const CONTROLLER_MIN_HEIGHT = 700;
   const CONTROL_DEFAULTS = Object.freeze({
     compat_tool: "",
     renderer: "dxmt",
@@ -851,156 +845,9 @@
     return "normalized";
   }
 
-  function isNativeControllerConfiguratorDocument(documentObject) {
-    try {
-      return (
-        typeof documentObject?.defaultView?.name === "string" &&
-        documentObject.defaultView.name.startsWith(
-          CONTROLLER_CONFIGURATOR_WINDOW_PREFIX,
-        ) &&
-        Boolean(documentObject?.documentElement?.style)
-      );
-    } catch {
-      return false;
-    }
-  }
-
-  function controllerReadabilityTarget(monitor) {
-    const left = Number(monitor?.nUsableLeft);
-    const top = Number(monitor?.nUsableTop);
-    const usableWidth = Number(monitor?.nUsableWidth);
-    const usableHeight = Number(monitor?.nUsableHeight);
-    if (
-      ![left, top, usableWidth, usableHeight].every(Number.isFinite) ||
-      usableWidth <= 0 ||
-      usableHeight <= 0
-    ) {
-      return null;
-    }
-    const width = Math.min(
-      usableWidth,
-      CONTROLLER_MAX_WIDTH,
-      Math.max(800, Math.floor(usableWidth * 0.9)),
-    );
-    const height = Math.min(
-      usableHeight,
-      CONTROLLER_MAX_HEIGHT,
-      Math.max(650, Math.floor(usableHeight * 0.9)),
-    );
-    return {
-      left,
-      top,
-      usableWidth,
-      usableHeight,
-      width,
-      height,
-      minWidth: Math.min(CONTROLLER_MIN_WIDTH, width),
-      minHeight: Math.min(CONTROLLER_MIN_HEIGHT, height),
-    };
-  }
-
-  function controllerReadabilityZoom(width, height) {
-    if (width >= 1280 && height >= 800) {
-      return 1.12;
-    }
-    if (width >= 1100 && height >= 700) {
-      return 1.08;
-    }
-    return 1.04;
-  }
-
-  async function applyNativeControllerReadability(documentObject) {
-    if (!isNativeControllerConfiguratorDocument(documentObject)) {
-      return "ignored";
-    }
-    const root = documentObject.documentElement;
-    if (
-      root.dataset?.realsteamonmacControllerReadability === "true"
-    ) {
-      return "unchanged";
-    }
-
-    const windowObject = documentObject.defaultView;
-    const windowApi = windowObject?.SteamClient?.Window;
-    let targetWidth = Number(windowObject?.innerWidth) || 0;
-    let targetHeight = Number(windowObject?.innerHeight) || 0;
-    let resized = false;
-
-    if (
-      typeof windowApi?.GetDefaultMonitorDimensions === "function" &&
-      typeof windowApi?.GetWindowDimensions === "function" &&
-      typeof windowApi?.SetMinSize === "function" &&
-      typeof windowApi?.ResizeTo === "function" &&
-      typeof windowApi?.MoveTo === "function"
-    ) {
-      const monitor = controllerReadabilityTarget(
-        await windowApi.GetDefaultMonitorDimensions(),
-      );
-      const current = await windowApi.GetWindowDimensions();
-      if (monitor) {
-        await windowApi.SetMinSize(
-          monitor.minWidth,
-          monitor.minHeight,
-        );
-        targetWidth = Math.min(
-          monitor.usableWidth,
-          Math.max(Number(current?.width) || 0, monitor.width),
-        );
-        targetHeight = Math.min(
-          monitor.usableHeight,
-          Math.max(Number(current?.height) || 0, monitor.height),
-        );
-        if (
-          Number(current?.width) < targetWidth ||
-          Number(current?.height) < targetHeight
-        ) {
-          const currentCenterX =
-            (Number(current?.x) || monitor.left) +
-            (Number(current?.width) || targetWidth) / 2;
-          const currentCenterY =
-            (Number(current?.y) || monitor.top) +
-            (Number(current?.height) || targetHeight) / 2;
-          const x = Math.min(
-            monitor.left + monitor.usableWidth - targetWidth,
-            Math.max(
-              monitor.left,
-              Math.round(currentCenterX - targetWidth / 2),
-            ),
-          );
-          const y = Math.min(
-            monitor.top + monitor.usableHeight - targetHeight,
-            Math.max(
-              monitor.top,
-              Math.round(currentCenterY - targetHeight / 2),
-            ),
-          );
-          await windowApi.ResizeTo(
-            targetWidth,
-            targetHeight,
-            false,
-          );
-          await windowApi.MoveTo(x, y, false);
-          resized = true;
-        }
-      }
-    }
-
-    const zoom = controllerReadabilityZoom(
-      targetWidth,
-      targetHeight,
-    );
-    root.style.setProperty("zoom", String(zoom), "important");
-    root.dataset.realsteamonmacControllerReadability = "true";
-    root.dataset.realsteamonmacControllerZoom = String(zoom);
-    return resized ? "resized" : "scaled";
-  }
-
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
-      applyNativeControllerReadability,
       buildManagedAppSet,
-      controllerReadabilityTarget,
-      controllerReadabilityZoom,
       decideOverviewPatch,
       discoverManagedApps,
       findAppActionComponents,
@@ -1008,7 +855,6 @@
       getSteamUIDocuments,
       getManagedTargetStatus,
       isNativeCompatToolboxSupported,
-      isNativeControllerConfiguratorDocument,
       isOwnedWindowsOnlyGame,
       buildControlPayload,
       buildControlUrl,
@@ -1100,8 +946,6 @@
     controlPanels: 0,
     nativeCompatRenders: 0,
     nativeCompatLastError: null,
-    controllerWindowsReadable: 0,
-    controllerLastError: null,
     actionJobsStarted: 0,
     actionJobsCompleted: 0,
     actionJobsFailed: 0,
@@ -1136,23 +980,6 @@
   let lastNativeRegistryPayload = null;
   globalObject[SELECTED_COMPAT_TOOL_KEY] = (appid) =>
     compatSelections.get(Number(appid)) ?? "";
-
-  async function refreshNativeControllerReadability() {
-    let readable = 0;
-    status.controllerLastError = null;
-    for (const documentObject of getSteamUIDocuments(globalObject)) {
-      try {
-        const result =
-          await applyNativeControllerReadability(documentObject);
-        if (result !== "ignored") {
-          readable += 1;
-        }
-      } catch (error) {
-        status.controllerLastError = String(error);
-      }
-    }
-    status.controllerWindowsReadable = readable;
-  }
 
   function releaseNativeDetailsSubscription(appid) {
     const subscription = nativeDetailsSubscriptions.get(appid);
@@ -2224,7 +2051,6 @@
     status.lastError = null;
 
     try {
-      await refreshNativeControllerReadability();
       for (const appid of managedAppids) {
         const overview =
           globalObject.appStore?.GetAppOverviewByAppID?.(appid) ?? null;

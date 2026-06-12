@@ -1416,33 +1416,26 @@
   WebSocket evaluator completed successfully and left CDP healthy. Continue
   live Steam UI verification with short, immediately closed CDP sessions.
 
-## 2026-06-11 Native Controller Readability
+## 2026-06-12 Wine Game Controller Readability Correction
 
-- Confirmed the RTF report refers to Steam's separate native controller
-  configurator, not a project-owned page. Its popup name is
-  `SP Controller Configurator_uid0`, its initial content area was
-  `1280x800`, and its smallest native labels were 12 CSS pixels.
-- Steam exposes native `SetMinSize`, `ResizeTo`, `MoveTo`,
-  `GetWindowDimensions`, and `GetDefaultMonitorDimensions` methods in this
-  popup. A live prototype resized it to `1440x860`, centered it, and applied
-  `112%` document zoom. The final DOM reported zero overflowing elements.
-- Added a locale-independent, controller-popup-only readability path. It uses
-  Steam's window APIs, adapts to the usable monitor bounds, never shrinks a
-  larger user window, and adds no overlay, replacement page, or project
-  control.
-- Deployed UI version 13, then restarted native Steam into a clean helper
-  session and navigated through Steam's native People Playground properties
-  and Controller page. The committed implementation, without prototype state,
-  marked the native popup readable and produced a `1440x860` content area at
-  `1.12` computed zoom.
-- A full DOM scan found zero visible elements outside the viewport. The shared
-  UI status reported `controllerWindowsReadable=1`,
-  `controllerLastError=null`, and no project-owned control panels.
-- A desktop capture confirmed the native title bar, Steam Input content,
-  illustration, and native footer hints were all legible and unclipped.
-  CrossOver Preview control PIDs `19863`, `19885`, and `73736` remained alive,
-  and the current helper logs contained no new TypeError, navigator failure,
-  browser-frame disconnect, or patch verification error.
+- Re-read the user's clarification and corrected the target: the requested
+  interface is Wine's Game Controllers panel from `control.exe joy.cpl`, not
+  Steam's native Steam Input configurator. The 2026-06-11 interpretation was
+  wrong.
+- Removed the SteamUI code that searched every second for
+  `SP Controller Configurator_*`, resized that native window, and applied
+  document zoom. Steam Input is again completely owned and rendered by Steam.
+- Measured the actual Wine panel in the People Playground prefix. At the
+  existing 96 DPI it was `250x311` points; 144 DPI yielded `373x436`; 192 DPI
+  yielded a readable `496x562` panel with complete controls and no clipping.
+- Added a controller-only runtime path that reads
+  `HKCU\Control Panel\Desktop\LogPixels`, temporarily raises it to at least
+  192, launches `wine64 control.exe joy.cpl`, and restores the exact previous
+  value on success, nonzero exit, or exception. Existing values above 192 are
+  never lowered.
+- Closed the live 192 DPI probe and queried the same prefix through the active
+  DXMT Wine runtime. `LogPixels` was restored to `REG_DWORD 0x60` (96).
+  CrossOver Preview was not stopped or modified.
 
 ## 2026-06-11 Standard Tool Runtime Composition
 
@@ -1869,3 +1862,10 @@
   `docs/research/native-compat-interface-2026-06-12.md` with exact addresses,
   cross-version slot evidence, RTTI validation, cleanup behavior, and the
   narrowed server-side `CCompatManager` refresh target.
+- Corrected the game-controller target after the user's clarification. Removed
+  all Steam Input popup resizing and implemented temporary 192 DPI scaling for
+  Wine `control.exe joy.cpl`, with exact prior-value restoration.
+- The corrected batch passed `git diff --check`, Python compilation, JavaScript
+  syntax checking, 80 Node tests, 131 Python tests, and the runtime-package
+  installer contract. CrossOver Preview PIDs `19863`, `19885`, and `73736`
+  remained alive.
