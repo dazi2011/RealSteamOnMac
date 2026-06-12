@@ -1899,3 +1899,24 @@
   2026-06-11 at 22:51, before this acceptance run. It was neither caused nor
   closed by the controller test. Native Steam PID `8939` and CrossOver Preview
   PIDs `19863`, `19885`, and `73736` remained alive afterward.
+- Resumed the interrupted 2026-06-12 session after the usage-limit stop and
+  terminated the abandoned broad-search process without touching Steam,
+  CrossOver Preview, a Wine prefix, or game data.
+- Re-read both untracked user RTF files. The original retains SHA-256
+  `35667f4f766c527196729f534b499fe0e9fefeac18686ea93760cb2e567d68b3`;
+  the new `_副本` file has SHA-256
+  `fc2aa3152cb51f73660d254dae380e925463ff550baf544f5a2616cd1bc3a466`.
+  An initial combined command misleadingly printed the original text/hash
+  twice, but independent `shasum`, `stat`, `cmp`, and extracted-text `diff`
+  disproved that result.
+- The second RTF adds a real layout requirement: preserve the Steam-native
+  implementation while placing Install Windows Components, Container Actions,
+  and Run Command as three clearly ordered areas at the bottom of the
+  compatibility page. This is now an explicit open Phase 8 item.
+- The first RTF's two requirements remain covered by the accepted 60-sample
+  native checkbox trace and the twice-verified Wine `joy.cpl` DPI/window test.
+- Confirmed the resumed live baseline before native compatibility-manager
+  work: native Steam PID `8939` still owns the debug session, CrossOver Preview
+  PIDs `19863`, `19885`, and `73736` remain alive, and the independent runtime
+  wineserver remains separate. The next blocker is still post-start
+  `CCompatManager` tool registration, not the Wine controller implementation.

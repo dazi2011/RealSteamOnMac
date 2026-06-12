@@ -154,6 +154,9 @@ Phase 8: 2026-06-11 field regression remediation and verified release
       Container and provide a reviewed, checksum-pinned dependency catalog.
 - [x] Correct Game Controllers to Wine `joy.cpl`, make it readable with a
       temporary prefix DPI override, and leave Steam Input unmodified.
+- [ ] Restore a clear bottom-of-page order for Install Windows Components,
+      Container Actions, and Run Command while keeping every row implemented
+      with Steam-owned controls and without reintroducing custom panels.
 - [ ] Study CrossOver Preview statically and dynamically for container,
       command, registry, dependency, and launch behavior without making
       RealSteamOnMac depend on CrossOver at runtime.
@@ -175,7 +178,8 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   project actions through Steam's existing React control constructors. Live
   acceptance used the native MSync toggle, EXE picker, Run button, component
   and container dropdowns, and Open C Drive action. The remaining work in this
-  area is catalog breadth and installer acceptance, not replacement UI.
+  area includes grouping the three native action areas into the requested
+  bottom-of-page order; it does not permit replacement UI.
 - **Component-recipe checkpoint:** the runtime now accepts only three bounded
   installer strategies (`exe`, `msi`, and the fixed DirectX redistributable
   flow), validates prerequisite graphs, prefix-relative files, and restricted

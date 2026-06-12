@@ -1320,6 +1320,13 @@
   not fire during SharedJSContext's WebUI query. The current four-entry result
   is still the project's JavaScript merge, not native `CCompatManager`
   registration. Server-side cache refresh remains the implementation target.
+- The second `codex LOOKLOOK ITTTTT!!!!!!!_副本.rtf` is a distinct 917-byte
+  file, SHA-256
+  `fc2aa3152cb51f73660d254dae380e925463ff550baf544f5a2616cd1bc3a466`.
+  It asks for the three existing Steam-native action areas to be visibly
+  ordered at the bottom of the compatibility page: Install Windows
+  Components, Container Actions, then Run Command. It does not authorize
+  restoring handcrafted panels or overlays.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
