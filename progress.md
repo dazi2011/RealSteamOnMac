@@ -1869,3 +1869,33 @@
   syntax checking, 80 Node tests, 131 Python tests, and the runtime-package
   installer contract. CrossOver Preview PIDs `19863`, `19885`, and `73736`
   remained alive.
+- Committed and pushed the correction as `c97b1f6`, then backed up the installed
+  runtime and UI under
+  `~/Library/Application Support/RealSteamOnMac/backups/`
+  `wine-controller-readability-20260612T104827Z`. Source and installed hashes
+  matched after atomic deployment.
+- Direct installed-runtime acceptance opened Wine Game Controllers at
+  `496x562` points with `LogPixels=0xc0`. Closing it completed action job
+  `ee32137ad707451d88377dd487fb0c46` with exit code zero and restored
+  `LogPixels=0x60`.
+- Restarted only native Steam through `StartShutdown(true)` and LaunchServices.
+  The refreshed shared context no longer exposes either old controller-popup
+  status field. Native registry synchronization recovered to one successful
+  sync and 34 app-detail subscriptions with no error.
+- Reopened People Playground compatibility through Steam's own
+  `OpenAppSettingsDialog`. The page contained three Steam `DialogDropDown`
+  controls, seven native checkboxes, all 14 reviewed dependencies, zero legacy
+  panels, and zero legacy modal layers.
+- A 15-second, 60-sample compatibility trace observed one state and zero
+  transitions: checkbox checked and enabled, DXMT selected, and no replacement
+  UI. This reconfirms the RTF-reported compatibility-checkbox flicker remains
+  fixed after removing the mistaken controller scanner.
+- Selected `Game Controllers` through the real container `DialogDropDown` and
+  clicked Steam's native Execute button. UI status reached
+  `started=1`, `completed=1`, `failed=0`; the Wine panel again measured
+  `496x562`, and the prefix returned from `0xc0` to `0x60` after close. The
+  dropdown was restored to Open C: Drive.
+- A visible `rundll32.exe` Program Error belongs to PID `63690`, started on
+  2026-06-11 at 22:51, before this acceptance run. It was neither caused nor
+  closed by the controller test. Native Steam PID `8939` and CrossOver Preview
+  PIDs `19863`, `19885`, and `73736` remained alive afterward.
