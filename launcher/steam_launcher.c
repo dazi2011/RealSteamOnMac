@@ -202,9 +202,65 @@ static bool process_name_exists(const char *name) {
   return found;
 }
 
+static bool canonicalize_process_path(char *destination, size_t capacity,
+                                      const char *path) {
+  if (realpath(path, destination) != NULL) {
+    return true;
+  }
+
+  char directory[PATH_MAX];
+  char canonical_directory[PATH_MAX];
+  if (!parent_path(directory, sizeof(directory), path) ||
+      realpath(directory, canonical_directory) == NULL) {
+    return false;
+  }
+  const char *name = strrchr(path, '/');
+  return name != NULL &&
+         build_path(destination, capacity, canonical_directory, name + 1);
+}
+
+static bool process_argument_path_matches(pid_t pid,
+                                          const char *expected_path,
+                                          const char *update_old_path) {
+  int mib[] = {CTL_KERN, KERN_PROCARGS2, pid};
+  size_t size = 0;
+  if (sysctl(mib, 3, NULL, &size, NULL, 0) != 0 ||
+      size <= sizeof(int)) {
+    return false;
+  }
+
+  char *arguments = malloc(size);
+  if (arguments == NULL) {
+    return false;
+  }
+  if (sysctl(mib, 3, arguments, &size, NULL, 0) != 0 ||
+      size <= sizeof(int)) {
+    free(arguments);
+    return false;
+  }
+
+  const char *executable = arguments + sizeof(int);
+  size_t capacity = size - sizeof(int);
+  bool terminated = memchr(executable, '\0', capacity) != NULL;
+  char canonical_executable[PATH_MAX];
+  bool matches =
+      terminated &&
+      canonicalize_process_path(
+          canonical_executable, sizeof(canonical_executable), executable) &&
+      (strcmp(canonical_executable, expected_path) == 0 ||
+       strcmp(canonical_executable, update_old_path) == 0);
+  free(arguments);
+  return matches;
+}
+
 static pid_t find_process_by_executable_path(const char *expected_path) {
   char canonical_expected[PATH_MAX];
   if (realpath(expected_path, canonical_expected) == NULL) {
+    return 0;
+  }
+  char update_old_path[PATH_MAX];
+  if (snprintf(update_old_path, sizeof(update_old_path), "%s.old",
+               canonical_expected) >= (int)sizeof(update_old_path)) {
     return 0;
   }
 
@@ -240,11 +296,16 @@ static pid_t find_process_by_executable_path(const char *expected_path) {
     }
     int length = proc_pidpath(
         process->kp_proc.p_pid, path, sizeof(path));
-    if (
+    bool path_matches =
         length > 0 &&
         (size_t)length < sizeof(path) &&
-        strcmp(path, canonical_expected) == 0
-    ) {
+        (strcmp(path, canonical_expected) == 0 ||
+         strcmp(path, update_old_path) == 0);
+    bool deleted_path_matches =
+        length <= 0 &&
+        process_argument_path_matches(
+            process->kp_proc.p_pid, canonical_expected, update_old_path);
+    if (path_matches || deleted_path_matches) {
       found = process->kp_proc.p_pid;
       break;
     }

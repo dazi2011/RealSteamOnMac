@@ -1411,6 +1411,16 @@
   `19863`, `19885`, and `73736` remained alive. This behavior is independent
   of the Wine Game Controllers action, which remains the `joy.cpl` path rather
   than Steam Input.
+- Steam self-update has a stricter stale-IPC edge case. The updater can rename
+  the running native image to `ipcserver.old`, delete the old vnode after
+  replacement, and leave the process parented by launchd. In that state
+  `proc_pidpath` returns zero while `KERN_PROCARGS2` retains the original exact
+  native executable path. A fixture reproduces rename, replacement, and
+  deletion; the launcher uses the argument path only when the primary path is
+  unavailable and still requires current UID plus process name `ipcserver`.
+- Live beta-update acceptance terminated deleted-image PID `32189` and
+  preserved CrossOver Preview PIDs `19863`, `19885`, and `73736`. Matching a
+  basename alone remains explicitly prohibited.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

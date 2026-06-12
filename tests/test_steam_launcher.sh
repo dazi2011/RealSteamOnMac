@@ -87,6 +87,11 @@ cp /bin/sleep "$NATIVE_IPC"
 cp /bin/sleep "$CROSSOVER_IPC"
 "$NATIVE_IPC" 30 &
 NATIVE_IPC_PID=$!
+# Steam's self-updater renames the still-running executable before replacing
+# it. The process name remains ipcserver while proc_pidpath reports .old.
+mv "$NATIVE_IPC" "$NATIVE_IPC.old"
+cp /bin/sleep "$NATIVE_IPC"
+rm "$NATIVE_IPC.old"
 "$CROSSOVER_IPC" 30 &
 CROSSOVER_IPC_PID=$!
 sleep 0.1

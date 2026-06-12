@@ -2039,3 +2039,19 @@
   and the log recorded an exact-path zero-millisecond drain. CrossOver Preview
   PIDs `19863`, `19885`, and `73736` remained alive. No game, prefix,
   container, or Wine `joy.cpl` state was modified.
+- Steam installed beta manifest `1781212412` during a read-only LLDB launch.
+  Its arm64 `steamclient.dylib` UUID is
+  `BAF0A603-23F9-3F14-A019-73825732E82F`; all prior address profiles were
+  treated as invalid immediately.
+- Reproduced the updater's deleted-executable IPC state in the launcher test:
+  start `ipcserver`, rename it to `.old`, install a replacement, then delete
+  the old vnode. The pre-fix launcher missed it because `proc_pidpath`
+  returned zero.
+- Added a bounded `KERN_PROCARGS2` fallback used only when the primary
+  executable path is unavailable. It canonicalizes the preserved executable
+  or its parent directory and accepts only the exact native path or exact
+  `.old` sibling.
+- The upgraded fixture passes and leaves the fake CrossOver `ipcserver`
+  running. Live artifact acceptance also drained real deleted-image PID
+  `32189` in zero milliseconds while CrossOver Preview PIDs `19863`, `19885`,
+  and `73736` remained alive.

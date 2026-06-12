@@ -194,6 +194,12 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   CrossOver Preview PIDs `19863`, `19885`, and `73736` remained alive. This
   closes the deterministic stale-IPC cause of delayed Play/Download controls;
   the other items in the combined restart/download task remain open.
+- **Self-update restart checkpoint:** Steam beta `1781212412` exposed a second
+  stale-IPC form: the updater renamed the running image to `ipcserver.old` and
+  then deleted that vnode, causing `proc_pidpath` to return zero. The launcher
+  now falls back to the exact canonical `KERN_PROCARGS2` executable only in
+  that case. Live PID `32189` drained in zero milliseconds while the same
+  CrossOver processes remained alive.
 - **Component-recipe checkpoint:** the runtime now accepts only three bounded
   installer strategies (`exe`, `msi`, and the fixed DirectX redistributable
   flow), validates prerequisite graphs, prefix-relative files, and restricted
