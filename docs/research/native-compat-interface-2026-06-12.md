@@ -123,3 +123,58 @@ work is narrower:
 
 The browser merge remains presentation-only and must not be treated as the
 final implementation.
+
+## Live `CCompatManager` instance and platform gate
+
+The refreshed arm64 `steamclient.dylib` slice has SHA-256
+`643241ec454ce3d69ef630c54d1d1b24c57ccbac35d463253d03949187e0ce17`.
+Its current live slide is `0x127c24000`.
+
+Static string cross-references identify these current arm64 offsets:
+
+| Function / path | Image-relative offset |
+|---|---:|
+| `CCompatManager::InternalSpecifyCompatTool` | `0x728eb0` |
+| `CCompatManager::RunCacheOffJob` | `0x730dbc` |
+| `CCompatManager::YldRegisterTool` | `0x72e960` |
+| local-tool worker setup | `0x73326c` |
+| all-list processing from the cache job | `0x733e64` |
+
+A reversible People Playground mapping refresh was performed after backing up
+and hashing `config.vdf`. A breakpoint at `InternalSpecifyCompatTool` fired on
+the engine IPC thread with:
+
+```text
+x0 = 0x0000000baf2b28a0  CCompatManager this
+x1 = 0x0000000000110ff8  AppID 1118200
+x2 = "realsteamonmac-dxmt"
+x3 = ""
+x4 = 0x00000000000000fa  priority 250
+```
+
+The mapping was restored to DXMT, the deployed registry remained healthy, and
+CrossOver Preview was never attached or stopped.
+
+The constructor explains why mapping persistence and native availability have
+diverged. Near `0x725a84`, Steam obtains the current platform string, compares
+it case-insensitively with the literal `linux`, and writes the equality result
+to `CCompatManager + 0x798`:
+
+```text
+0x725a84  load "linux"
+0x725a90  call V_strnicmp
+0x725a98  cset w8, eq
+0x725a9c  strb w8, [x19, #0x798]
+```
+
+The live macOS object contains zero at both `+0x798` and the post-logon flag
+`+0x799`. Every important native method, including
+`BIsCompatibilityToolEnabled`, `OnPostLogonState`,
+`OnAppConfigInitialized`, and `RunCacheOffJob`, checks `+0x798` and returns
+early when it is zero. `RunCacheOffJob` additionally requires `+0x799`.
+
+This is the first direct root-cause proof that macOS native tool registration
+is blocked before manifest parsing. The next experiment must enable only this
+manager instance after normal macOS login, launch its normal cache-off job,
+and verify that Steam Cloud remains intact. Globally impersonating Linux at
+startup remains rejected.

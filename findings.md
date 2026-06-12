@@ -1327,6 +1327,18 @@
   ordered at the bottom of the compatibility page: Install Windows
   Components, Container Actions, then Run Command. It does not authorize
   restoring handcrafted panels or overlays.
+- The current native compatibility blocker is a concrete platform gate, not a
+  malformed tool manifest. `CCompatManager` stores a Boolean at `+0x798`
+  derived from a case-insensitive comparison of Steam's current platform with
+  `linux`; the live macOS instance stores zero there. Native mapping writes
+  still work, but local-tool loading, tool-enabled queries, post-logon
+  handling, and `RunCacheOffJob` all return before processing manifests.
+- A live breakpoint recovered the current manager instance and exact
+  `InternalSpecifyCompatTool` ABI: `x0` is the manager, `x1` is AppID, `x2`
+  the tool name, `x3` the experiment string, and `x4` priority. People
+  Playground arrived as AppID `1118200`, DXMT, empty experiment, priority
+  `250`. This gives the native engine a version-gated route to the real
+  manager without scanning arbitrary process memory.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
@@ -1340,6 +1352,7 @@
 | Steam cloud UI showed no console exception | Traced the rendered DOM, protobuf schema, settings store, and CloudStorage state; the deterministic failure is an omitted native setting field. |
 | Computer Use could not start ScreenCaptureKit | Earlier Cloud work used CDP. The later game-exit test used local screenshots, process-scoped foreground activation, and a CoreGraphics click on the visibly confirmed in-game `quit` entry. |
 | Persistent Playwright attachment made Steam CDP unresponsive | Restarted only native Steam and used the project's one-shot WebSocket evaluator. It opened the same native properties page, completed a 50-sample stability trace, and left the endpoint healthy. |
+| `llvm-objdump --macho` ignored the requested address-bounded disassembly and emitted the full arm64 text section | Terminated the command and retained the already verified string-xref and LLDB breakpoint path; do not repeat whole-image disassembly for this target. |
 | Shared app details stayed at status `14` after native data changes | Registered direct native detail subscriptions and published callbacks into the shared details store. |
 | SteamUI getter trampoline retried continuously | Removed the redundant global getter patch and added a contract that rejects its reintroduction. |
 | Native Steamworks bridge failed on missing helper exports | Added macOS-only interface validation and local notification fallback. |

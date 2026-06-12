@@ -1920,3 +1920,25 @@
   PIDs `19863`, `19885`, and `73736` remain alive, and the independent runtime
   wineserver remains separate. The next blocker is still post-start
   `CCompatManager` tool registration, not the Wine controller implementation.
+- Extracted and hashed the current arm64 `steamclient.dylib` slice, mapped its
+  cstring and text virtual addresses, and recovered the current ASLR slide
+  through a read-only LLDB attach.
+- Located `InternalSpecifyCompatTool`, `RunCacheOffJob`, `YldRegisterTool`, the
+  local-tool worker, and the cache job's all-list processing call through exact
+  string cross-references.
+- Backed up `config.vdf` under
+  `~/Library/Application Support/RealSteamOnMac/backups/`
+  `native-compat-runtime-trace-20260612T110305Z`, then cleared and restored
+  People Playground's DXMT mapping through Steam's original native API.
+- The `InternalSpecifyCompatTool` breakpoint fired twice and exposed the real
+  current `CCompatManager` object plus its AppID/tool/experiment/priority ABI.
+  The final mapping remains DXMT and the native registry probe still reports
+  one successful sync, 34 managed AppIDs, and no invalid-platform records.
+- Proved the native-registration root cause in the constructor: Steam enables
+  `CCompatManager + 0x798` only when the platform string equals `linux`.
+  Current macOS stores zero at both the platform-enabled byte and post-logon
+  byte, so `RunCacheOffJob` and local manifest processing cannot start.
+- Detached LLDB cleanly. Native Steam PID `8939` and CrossOver Preview PIDs
+  `19863`, `19885`, and `73736` remained alive. An attempted address-bounded
+  `llvm-objdump --macho` command ignored its bounds and emitted the whole text
+  section; it was terminated and will not be repeated.
