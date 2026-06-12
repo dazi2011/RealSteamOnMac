@@ -1942,3 +1942,16 @@
   `19863`, `19885`, and `73736` remained alive. An attempted address-bounded
   `llvm-objdump --macho` command ignored its bounds and emitted the whole text
   section; it was terminated and will not be repeated.
+- Corrected the tentative interpretation of backtrace address `0x7356b8`:
+  bounded static disassembly shows it belongs to an internal callback object
+  constructor, not a stable return site after `InternalSpecifyCompatTool`.
+- Verified the current method's first word as `0xd10243ff`
+  (`sub sp, sp, #0x90`) and selected it as the fail-closed bridge site. The
+  bridge will preserve the five method inputs, invoke a one-shot helper on
+  Steam's `IPC:CSteamEngine` thread, replay the displaced instruction, and
+  resume at `0x728eb4`.
+- Disassembled `LaunchLogOnCompatProcessingJob`: it owns the post-logon flag
+  transition at manager byte `+0x799`, checks app-state readiness, and
+  tail-calls `RunCacheOffJob`. The resulting cache job starts Steam's own
+  threaded local-manifest scan. Calling it from the project's reconciliation
+  pthread is therefore excluded from the implementation.

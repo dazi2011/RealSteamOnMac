@@ -178,3 +178,35 @@ is blocked before manifest parsing. The next experiment must enable only this
 manager instance after normal macOS login, launch its normal cache-off job,
 and verify that Steam Cloud remains intact. Globally impersonating Linux at
 startup remains rejected.
+
+## Safe post-login bridge shape
+
+The first instruction of the current arm64
+`CCompatManager::InternalSpecifyCompatTool` is exactly:
+
+```text
+offset 0x728eb0
+bytes  ff 43 02 d1
+word   0xd10243ff
+asm    sub sp, sp, #0x90
+```
+
+This gives the native engine a fail-closed, UUID-gated interception point. A
+near trampoline can preserve the five method arguments, call a one-shot
+project helper on the same `IPC:CSteamEngine` thread, reproduce the displaced
+stack instruction, and branch to `0x728eb4`. Calling Steam's internal Job API
+from the existing background reconciliation pthread is rejected because the
+local-tool path assumes Steam's Job/thread context.
+
+`LaunchLogOnCompatProcessingJob` at `0x731e50` is the normal entry point. It
+sets `CCompatManager + 0x799` to one, verifies app-state readiness, and
+tail-branches to `RunCacheOffJob` with the reason string
+`LaunchLogOnCompatProcessingJob`. The local-tool job then invokes
+`CLoadLocalToolListJob::ThreadedListLocalToolManifests` and iterates its
+Steam-owned path vector, logging `Processing local tool list at %s...` before
+registering manifests. The bridge therefore needs to set only the existing
+platform-enabled byte at `+0x798` and invoke this normal entry point once.
+
+The earlier backtrace address `0x7356b8` is not a reliable call-return site.
+Bounded static disassembly shows it is eight bytes into an internal callback
+object constructor. It must not be used as a post-call hook.

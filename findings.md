@@ -1339,6 +1339,18 @@
   Playground arrived as AppID `1118200`, DXMT, empty experiment, priority
   `250`. This gives the native engine a version-gated route to the real
   manager without scanning arbitrary process memory.
+- The current arm64 `InternalSpecifyCompatTool` begins with verified word
+  `0xd10243ff` (`sub sp, sp, #0x90`). A near branch island can therefore
+  preserve the five inputs, run a one-shot helper on Steam's own
+  `IPC:CSteamEngine` thread, replay that displaced instruction, and resume at
+  `0x728eb4`. The helper must not call Steam Job APIs from the project's
+  background reconciliation pthread.
+- `LaunchLogOnCompatProcessingJob` is the correct normal refresh path: it
+  writes one to manager byte `+0x799`, checks app-state readiness, and
+  tail-branches to `RunCacheOffJob`. The cache job creates
+  `CLoadLocalToolListJob::ThreadedListLocalToolManifests` and walks Steam's
+  native local-tool path vector. The project should set only `+0x798` before
+  calling this entry point once.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
@@ -1353,6 +1365,7 @@
 | Computer Use could not start ScreenCaptureKit | Earlier Cloud work used CDP. The later game-exit test used local screenshots, process-scoped foreground activation, and a CoreGraphics click on the visibly confirmed in-game `quit` entry. |
 | Persistent Playwright attachment made Steam CDP unresponsive | Restarted only native Steam and used the project's one-shot WebSocket evaluator. It opened the same native properties page, completed a 50-sample stability trace, and left the endpoint healthy. |
 | `llvm-objdump --macho` ignored the requested address-bounded disassembly and emitted the full arm64 text section | Terminated the command and retained the already verified string-xref and LLDB breakpoint path; do not repeat whole-image disassembly for this target. |
+| A live backtrace address at `0x7356b8` was initially treated as a possible post-call site | Bounded LLDB disassembly proved it is inside an internal callback object constructor; retain only the verified `InternalSpecifyCompatTool` entry as the bridge point. |
 | Shared app details stayed at status `14` after native data changes | Registered direct native detail subscriptions and published callbacks into the shared details store. |
 | SteamUI getter trampoline retried continuously | Removed the redundant global getter patch and added a contract that rejects its reintroduction. |
 | Native Steamworks bridge failed on missing helper exports | Added macOS-only interface validation and local notification fallback. |
