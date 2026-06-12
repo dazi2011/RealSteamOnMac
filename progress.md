@@ -2029,3 +2029,13 @@
   the current user's exact native Steam `ipcserver`, sends `SIGTERM`, and waits
   at most five seconds. The native fixture exits while the CrossOver fixture
   remains alive. No basename-only process kill is used.
+- Deployed the current launcher with
+  `script/install_steam_injection.sh --clean-backup` using the recorded
+  `steam-1780705203-20260607T083704Z` rollback source. Steam passed
+  `codesign --verify --deep --strict`, and the installed guard and engine
+  hashes exactly match their repository artifacts.
+- Ran installed-launcher dry-run acceptance against live orphan native
+  `ipcserver` PID `89863`. It exited immediately, the launcher returned zero,
+  and the log recorded an exact-path zero-millisecond drain. CrossOver Preview
+  PIDs `19863`, `19885`, and `73736` remained alive. No game, prefix,
+  container, or Wine `joy.cpl` state was modified.

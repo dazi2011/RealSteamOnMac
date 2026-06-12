@@ -1404,6 +1404,13 @@
   temporary paths), so the launcher canonicalizes the expected path before
   comparison. It filters by current UID and `ipcserver` process name, then
   terminates only the exact native executable when no `steam_osx` exists.
+- Live installed acceptance closed the stale-IPC hypothesis. After deploying
+  and deep-signing the new launcher, dry-run startup terminated orphan native
+  PID `89863` and logged `stale native Steam ipcserver drained after 0 ms`.
+  CrossOver Preview's wineserver, Windows Steam wrapper, and application PIDs
+  `19863`, `19885`, and `73736` remained alive. This behavior is independent
+  of the Wine Game Controllers action, which remains the `joy.cpl` path rather
+  than Steam Input.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

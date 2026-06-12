@@ -143,6 +143,8 @@ Phase 8: 2026-06-11 field regression remediation and verified release
 - [ ] Repair stable/beta Steam discovery, language-independent actions,
       restart readiness, Windows-only labeling, download reconciliation, and
       stale installed-manifest handling.
+- [x] Drain a stale native `Steam.AppBundle/.../ipcserver` before restart
+      without matching CrossOver's Windows Steam processes.
 - [ ] Repair Windows executable resolution, Rockstar bootstrap recovery,
       Windows-only `.exe` launch, and avoid false `.app` target selection.
 - [ ] Allow Steam's add-non-Steam-game flow to accept `.exe` files while
@@ -186,6 +188,12 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   reproducibly stall build `1780965181`; the experimental guard patch was
   removed. The active target is now the valid-manifest completion/dispatch
   path, and acceptance still requires Steam's own selector plus healthy Cloud.
+- **Restart-readiness checkpoint:** the signed launcher was deployed over the
+  existing Steam installation and removed live orphan PID `89863` in dry-run
+  acceptance. The exact-path log reported a zero-millisecond drain while
+  CrossOver Preview PIDs `19863`, `19885`, and `73736` remained alive. This
+  closes the deterministic stale-IPC cause of delayed Play/Download controls;
+  the other items in the combined restart/download task remain open.
 - **Component-recipe checkpoint:** the runtime now accepts only three bounded
   installer strategies (`exe`, `msi`, and the fixed DirectX redistributable
   flow), validates prerequisite graphs, prefix-relative files, and restricted
