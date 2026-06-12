@@ -1955,3 +1955,20 @@
   tail-calls `RunCacheOffJob`. The resulting cache job starts Steam's own
   threaded local-manifest scan. Calling it from the project's reconciliation
   pthread is therefore excluded from the implementation.
+- Captured a pre-experiment Cloud/config baseline and attached LLDB to native
+  Steam PID `8939`. The verified `InternalSpecifyCompatTool` breakpoint fired
+  on `IPC:CSteamEngine` for AppID `1118200`; entry bytes and manager state
+  matched the static profile.
+- Changed only manager byte `+0x798` to one and invoked the current
+  `LaunchLogOnCompatProcessingJob`. Byte `+0x799` changed to one and
+  `compat_log.txt` recorded a complete normal cache job. Cloud settings,
+  `CloudStorage.WriteKey`, and `loginusers.vdf` remained intact.
+- The job processed only Steam's built-in AppID `891390` list, rejected its
+  Linux-targeted tools, and never visited the standard user
+  `compatibilitytools.d` directory. This proves the macOS constructor did not
+  populate the local-tool path vector.
+- The incomplete refresh temporarily made native details report no selected
+  compatibility tool and removed People Playground from the dynamic registry.
+  Its persistent mapping was restored to `realsteamonmac-dxmt`, LLDB detached
+  cleanly, and native Steam plus all CrossOver Preview processes remained
+  alive. Future work must add the native path before launching the cache job.

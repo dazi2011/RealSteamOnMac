@@ -210,3 +210,48 @@ platform-enabled byte at `+0x798` and invoke this normal entry point once.
 The earlier backtrace address `0x7356b8` is not a reliable call-return site.
 Bounded static disassembly shows it is eight bytes into an internal callback
 object constructor. It must not be used as a post-call hook.
+
+## Live late-enable result
+
+A reversible LLDB experiment on native Steam PID `8939` hit
+`InternalSpecifyCompatTool` on `IPC:CSteamEngine` for People Playground and
+verified the expected entry word, manager pointer, AppID, tool name, and
+priority. The experiment then:
+
+1. changed only manager byte `+0x798` from zero to one;
+2. invoked the current build's `LaunchLogOnCompatProcessingJob` at runtime
+   address `0x128355e50`;
+3. observed manager byte `+0x799` change from zero to one;
+4. resumed Steam and allowed the normal cache job to finish.
+
+`compat_log.txt` proves the call path was valid:
+
+```text
+CCacheOffSteamPlayStateJob: start job, reason: LaunchLogOnCompatProcessingJob
+CCacheOffSteamPlayStateJob ... processing all compat lists..
+CCacheOffSteamPlayStateJob ... complete
+```
+
+The Cloud schema, values, and `CloudStorage.WriteKey` API were unchanged after
+the job. `loginusers.vdf` was byte-identical. The expected mapping write
+changed `config.vdf`, and People Playground was restored to
+`realsteamonmac-dxmt` before detaching LLDB.
+
+However, the job processed only Steam's built-in AppID `891390` tool list. It
+did not log any path below the standard user `compatibilitytools.d`
+directory. Every built-in Proton/Linux tool was rejected as targeting
+`linux`, and the project tools remained unregistered. The resulting native
+details temporarily reported no valid selected tool, causing the JavaScript
+dynamic registry to remove AppID `1118200`.
+
+Therefore the release bridge must populate Steam's own local-tool path vector
+before setting `+0x798` and launching the cache job. The required order is:
+
+1. initialize or append the standard user `compatibilitytools.d` path using
+   Steam's native path representation;
+2. set only the manager platform-enabled byte;
+3. launch the normal post-login cache job;
+4. require project manifest registration before accepting native app-detail
+   refreshes.
+
+Launching the cache job before step 1 is now a rejected implementation.
