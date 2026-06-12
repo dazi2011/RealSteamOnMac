@@ -1854,3 +1854,18 @@
   `eInstallState=7`, `eAppError=0`, and the probe cancelled successfully.
   Required bytes remain zero, no AppID manifest was created, and no download
   began, isolating native tool registration/depot selection as the next gate.
+- Corrected the private-interface investigation after LLDB proved the global
+  `CreateInterface` symbol belonged to `crashhandler.dylib`. The exact current
+  `steamclient.dylib` factory returned all `SteamClient016` through
+  `SteamClient023` wrappers and `CLIENTENGINE_INTERFACE_VERSION005`.
+- Created and released a temporary engine pipe/global-user connection, then
+  identified current `GetIClientCompat` by returned RTTI. Engine slot 72
+  returned `16IClientCompatMap`; slot 75 returned null.
+- Recorded the current 19-entry compatibility-map vtable and disassembled its
+  first five serialized IPC stubs. A WebUI `GetAvailableCompatTools` call did
+  not hit the native map breakpoint, confirming the JavaScript bridge is not a
+  native tool-registration mechanism.
+- Added
+  `docs/research/native-compat-interface-2026-06-12.md` with exact addresses,
+  cross-version slot evidence, RTTI validation, cleanup behavior, and the
+  narrowed server-side `CCompatManager` refresh target.

@@ -1298,6 +1298,22 @@
   error-29 blocker. The plan still reports zero required bytes and was
   cancelled without creating a manifest or starting a download. Native tool
   registration and Windows-depot selection are now the active blocker.
+- The earlier null `CreateInterface` result was a module-resolution error:
+  `dlsym(RTLD_DEFAULT, "CreateInterface")` selected
+  `crashhandler.dylib`. The exact current `steamclient.dylib` factory exposes
+  `SteamClient016` through `SteamClient023` and
+  `CLIENTENGINE_INTERFACE_VERSION005`.
+- Current-binary RTTI resolves `IClientEngine` slot 72, not a guessed external
+  table, as `GetIClientCompat`: it returns `16IClientCompatMap`; slot 17
+  independently returns `14IClientAppsMap`, and candidate slot 75 is null.
+- The current `IClientCompatMap` has 19 serialized IPC methods. Its first
+  entries are `BIsCompatLayerEnabled`, `GetAvailableCompatTools`,
+  `GetAvailableCompatToolsFiltered`, `GetAvailableCompatToolsForApp`, and
+  `SpecifyCompatTool`; the obsolete `EnableCompat` slot is absent.
+- A breakpoint on the verified native `GetAvailableCompatTools` map stub did
+  not fire during SharedJSContext's WebUI query. The current four-entry result
+  is still the project's JavaScript merge, not native `CCompatManager`
+  registration. Server-side cache refresh remains the implementation target.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

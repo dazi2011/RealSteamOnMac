@@ -248,6 +248,13 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   cancelled without a manifest or download, but the plan still contains zero
   bytes; post-initialization native tool registration and Windows-depot
   selection are now the next implementation target.
+- **Native compatibility interface checkpoint:** the exact current
+  `steamclient.dylib` factory exposes
+  `CLIENTENGINE_INTERFACE_VERSION005`, and RTTI proves engine slot 72 returns
+  `IClientCompatMap`. The 19-entry serialized map is now version-resolved.
+  SharedJSContext tool queries do not traverse its local stub, so the next
+  gate is the server-side `CCompatManager` cache/manifest refresh path rather
+  than another browser-layer list merge.
 - **Current checkpoint:** verified Steam launch descriptors, managed
   missing-target redirection, and guarded Rockstar recovery have passed live
   acceptance. RDR2 now reaches Rockstar Steam min-mode but not `RDR2.exe`.
