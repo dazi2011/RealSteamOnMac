@@ -1352,15 +1352,19 @@
   native local-tool path vector. The project should set only `+0x798` before
   calling this entry point once.
 - A live late-enable experiment proved that the normal cache job is callable
-  on `IPC:CSteamEngine` and does not damage Cloud settings. It also proved the
-  macOS manager lacks the standard user local-tool path: the job processed
-  only AppID `891390`, rejected its Linux-targeted tools, and never logged a
-  `compatibilitytools.d` path. Project tools therefore remained unregistered.
-- Cache refresh ordering is safety-critical. Refreshing before adding the
-  local-tool path makes native app details report no valid selected tool and
-  caused the dynamic registry to remove People Playground. The implementation
-  must populate Steam's own path vector first, then enable and refresh, and
-  accept the transition only after project manifests register.
+  on `IPC:CSteamEngine` and does not damage Cloud settings. It processed only
+  AppID `891390`, rejected its Linux-targeted tools, and never logged a project
+  `compatibilitytools.d` manifest. Project tools therefore remained
+  unregistered.
+- Bounded disassembly corrected the first path-gap interpretation:
+  `CLoadLocalToolListJob` always inserts the two system roots, optional
+  `STEAM_EXTRA_COMPAT_TOOLS_PATHS` entries, and a Steam base path with
+  `/compatibilitytools.d` appended. The remaining fault is the actual macOS
+  base path or child-manifest enumeration, not constructor omission.
+- A cache refresh without registered project manifests makes native app
+  details report no valid selected tool and caused the dynamic registry to
+  remove People Playground. Acceptance must require successful project
+  manifest registration before native app-detail refreshes are trusted.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
@@ -1376,7 +1380,8 @@
 | Persistent Playwright attachment made Steam CDP unresponsive | Restarted only native Steam and used the project's one-shot WebSocket evaluator. It opened the same native properties page, completed a 50-sample stability trace, and left the endpoint healthy. |
 | `llvm-objdump --macho` ignored the requested address-bounded disassembly and emitted the full arm64 text section | Terminated the command and retained the already verified string-xref and LLDB breakpoint path; do not repeat whole-image disassembly for this target. |
 | A live backtrace address at `0x7356b8` was initially treated as a possible post-call site | Bounded LLDB disassembly proved it is inside an internal callback object constructor; retain only the verified `InternalSpecifyCompatTool` entry as the bridge point. |
-| Late-enabling the manager ran the native cache job but did not discover project tools | The macOS constructor omitted the standard local-tool path vector entry. Locate and reproduce that native path initialization before any future refresh. |
+| Late-enabling the manager ran the native cache job but did not discover project tools | Static analysis proves the Job builds all expected root entries. Capture its actual macOS user root and audit child-manifest enumeration on the first normal refresh. |
+| Re-invoking the post-login Job from LLDB after the first refresh dereferenced a null callback | Treat `LaunchLogOnCompatProcessingJob` as one-shot and engine-thread-bound; restart only native Steam and inspect the first transition instead of replaying the Job. |
 | Shared app details stayed at status `14` after native data changes | Registered direct native detail subscriptions and published callbacks into the shared details store. |
 | SteamUI getter trampoline retried continuously | Removed the redundant global getter patch and added a contract that rejects its reintroduction. |
 | Native Steamworks bridge failed on missing helper exports | Added macOS-only interface validation and local notification fallback. |

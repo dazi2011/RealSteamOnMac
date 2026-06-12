@@ -244,14 +244,31 @@ directory. Every built-in Proton/Linux tool was rejected as targeting
 details temporarily reported no valid selected tool, causing the JavaScript
 dynamic registry to remove AppID `1118200`.
 
-Therefore the release bridge must populate Steam's own local-tool path vector
-before setting `+0x798` and launching the cache job. The required order is:
+Subsequent bounded disassembly corrected the initial explanation for this
+result. `CLoadLocalToolListJob` itself, beginning at `0x732df4`, always builds
+its root vector. It inserts:
 
-1. initialize or append the standard user `compatibilitytools.d` path using
-   Steam's native path representation;
-2. set only the manager platform-enabled byte;
-3. launch the normal post-login cache job;
-4. require project manifest registration before accepting native app-detail
-   refreshes.
+```text
+/usr/share/steam/compatibilitytools.d
+/usr/local/share/steam/compatibilitytools.d
+STEAM_EXTRA_COMPAT_TOOLS_PATHS entries, when present
+<Steam user-data base>/compatibilitytools.d
+```
 
-Launching the cache job before step 1 is now a rejected implementation.
+The user path is assembled around `0x733050..0x733174` by calling Steam's
+existing base-path provider at `0xac4528`, appending
+`/compatibilitytools.d`, and inserting the resulting `CUtlString` into the
+Job-owned vector. The macOS manager constructor therefore did not omit the
+path vector. The remaining fault lies after or inside that path construction:
+the base path may differ from the expected Application Support root, or
+`ThreadedListLocalToolManifests` may reject the deployed child layout.
+
+A second LLDB attempt tried to invoke `LaunchLogOnCompatProcessingJob` again
+from the stopped main thread solely to inspect that path. This is invalid:
+the already-completed manager had no active Steam Job callback context, and
+the queued callback dereferenced a null function pointer. Steam aborted after
+the debugger skipped the original access violation. The direct release path
+must remain one-shot and run only from the first normal
+`IPC:CSteamEngine` mapping transition. Future path inspection must set
+breakpoints before that first transition rather than manually re-running the
+post-login Job.

@@ -1964,11 +1964,24 @@
   `compat_log.txt` recorded a complete normal cache job. Cloud settings,
   `CloudStorage.WriteKey`, and `loginusers.vdf` remained intact.
 - The job processed only Steam's built-in AppID `891390` list, rejected its
-  Linux-targeted tools, and never visited the standard user
-  `compatibilitytools.d` directory. This proves the macOS constructor did not
-  populate the local-tool path vector.
+  Linux-targeted tools, and never logged a project local manifest.
 - The incomplete refresh temporarily made native details report no selected
   compatibility tool and removed People Playground from the dynamic registry.
   Its persistent mapping was restored to `realsteamonmac-dxmt`, LLDB detached
   cleanly, and native Steam plus all CrossOver Preview processes remained
-  alive. Future work must add the native path before launching the cache job.
+  alive.
+- Located all four local-root string references. Bounded disassembly proves
+  `CLoadLocalToolListJob` always constructs system roots, optional environment
+  roots, and a Steam base path plus `/compatibilitytools.d`; the earlier
+  constructor-omission hypothesis was wrong. The next inspection target is
+  the actual macOS base path or child-manifest filtering.
+- A second LLDB experiment incorrectly re-invoked the completed post-login Job
+  from the stopped main thread. Its callback lacked valid Steam Job context,
+  dereferenced address zero, and Steam aborted. No game files, prefix, Cloud
+  data, or CrossOver process was touched. This establishes a strict one-shot
+  engine-thread rule for the implementation and future dynamic tests.
+- Restarted native Steam through the installed launcher. Launcher/UI patching
+  and delayed engine injection completed, but that first process later exited
+  without a new macOS crash report. CrossOver Preview and Windows Steam
+  remained alive; the next restart will be launched with captured stdout and
+  process lifetime rather than through an opaque `open` call.
