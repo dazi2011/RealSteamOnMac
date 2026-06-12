@@ -1370,6 +1370,40 @@
   details report no valid selected tool and caused the dynamic registry to
   remove People Playground. Acceptance must require successful project
   manifest registration before native app-detail refreshes are trusted.
+- The cache-job scheduling hypothesis was incorrect. RTTI and chained-fixup
+  analysis identified the `CLoadLocalToolListJob` vtable at `0x184ce20`; its
+  constructor is reached directly from `CCompatManager` construction at
+  `0x725cc4`, and the job is queued at `0x725d04`. A late cache refresh does
+  not recreate this startup-only job, which explains why the path breakpoints
+  never fired.
+- The manager's Linux capability byte is derived immediately before the local
+  loader is queued. Current arm64 beta Steam executes `cset w8, eq` at
+  `0x725a98` and stores it to manager byte `+0x798`, but this byte is not a
+  narrow local-loader switch. A UUID-gated experiment replacing it with
+  `mov w8, #1` reproducibly stalled `CSteamEngine::BMainLoop` before the UI
+  initialized. The installed guard and engine were restored from their exact
+  backups, and the experimental source was removed.
+- A second controlled startup using unmodified `steamclient.dylib` plus a valid
+  `STEAM_EXTRA_COMPAT_TOOLS_PATHS` reproduced the same 15-second main-loop
+  stall. An empty path remains healthy. The root cause is therefore after
+  discovery of at least one valid local manifest, not the path vector itself.
+- In both stalled runs the main thread waited in Steam's startup event chain
+  while `IPC:CSteamEngine` was sleeping in its normal loop. One transient
+  thread reported `PC=0`, consistent with a missing macOS completion callback,
+  but that interpretation is not yet proven. The next investigation target is
+  the startup local-tool job completion/dispatch chain, not another global
+  manager capability patch.
+- Native Steam left parent-1 `ipcserver` processes after each failed or manual
+  shutdown. Those processes retain single-instance IPC and explain the field
+  report where Play/Download controls take a long time to return after Steam
+  is reopened. Launcher cleanup must target only the exact native
+  `Steam.AppBundle/.../ipcserver` path and must never match CrossOver Windows
+  Steam.
+- A red/green launcher fixture proved the safe discriminator. macOS
+  `proc_pidpath` returns canonical paths (including `/private/var` for
+  temporary paths), so the launcher canonicalizes the expected path before
+  comparison. It filters by current UID and `ipcserver` process name, then
+  terminates only the exact native executable when no `steam_osx` exists.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

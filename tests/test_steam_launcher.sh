@@ -6,7 +6,20 @@ BUILD_SCRIPT="$ROOT/script/build_steam_launcher.sh"
 LAUNCHER="$ROOT/artifacts/steam-launcher/realsteamonmac_launcher"
 SOURCE="$ROOT/launcher/steam_launcher.c"
 TMP_ROOT=$(mktemp -d)
-trap 'rm -rf "$TMP_ROOT"' EXIT
+NATIVE_IPC_PID=
+CROSSOVER_IPC_PID=
+cleanup() {
+    if [ -n "$NATIVE_IPC_PID" ]; then
+        kill "$NATIVE_IPC_PID" >/dev/null 2>&1 || true
+        wait "$NATIVE_IPC_PID" 2>/dev/null || true
+    fi
+    if [ -n "$CROSSOVER_IPC_PID" ]; then
+        kill "$CROSSOVER_IPC_PID" >/dev/null 2>&1 || true
+        wait "$CROSSOVER_IPC_PID" 2>/dev/null || true
+    fi
+    rm -rf "$TMP_ROOT"
+}
+trap cleanup EXIT
 
 test -x "$BUILD_SCRIPT"
 test -f "$SOURCE"
@@ -67,6 +80,17 @@ printf '%s' \
     'before(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")middle(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")controlsr=(0,s.q3)(()=>u.rV.settings.bCompatEnabled),a=vt(t.unAppID,r),o=r&&!!t.strCompatToolName&&t.nCompatToolPriority==h.JNdropdownselectedOption:t.strCompatToolName,onChange:native(0,i.jsx)(wt,{...e})]})});function vtafter' \
     >"$STEAMUI/chunk~2dcc5aaf7.js"
 
+NATIVE_IPC="$HOME_ROOT/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/ipcserver"
+CROSSOVER_IPC="$TMP_ROOT/CrossOver Preview.app/Contents/SharedSupport/CrossOver/bin/ipcserver"
+mkdir -p "$(dirname "$NATIVE_IPC")" "$(dirname "$CROSSOVER_IPC")"
+cp /bin/sleep "$NATIVE_IPC"
+cp /bin/sleep "$CROSSOVER_IPC"
+"$NATIVE_IPC" 30 &
+NATIVE_IPC_PID=$!
+"$CROSSOVER_IPC" 30 &
+CROSSOVER_IPC_PID=$!
+sleep 0.1
+
 HELPER_PID=
 if ! pgrep -x steam_osx >/dev/null 2>&1; then
     cp /bin/sleep "$TMP_ROOT/Steam Helper"
@@ -82,6 +106,16 @@ REALSTEAMONMAC_SUPPORT_ROOT="$SUPPORT" \
 REALSTEAMONMAC_COMPAT_TOOLS_ROOT="$COMPAT_TOOLS" \
 REALSTEAMONMAC_LAUNCHER_DRY_RUN=1 \
     "$LAUNCHER" -cef-enable-debugging >"$CAPTURE"
+
+if kill -0 "$NATIVE_IPC_PID" >/dev/null 2>&1; then
+    echo "launcher did not terminate stale native Steam ipcserver" >&2
+    exit 1
+fi
+wait "$NATIVE_IPC_PID" 2>/dev/null || true
+NATIVE_IPC_PID=
+kill -0 "$CROSSOVER_IPC_PID"
+grep -Fq 'stale native Steam ipcserver drained after' \
+    "$HOME_ROOT/Library/Logs/RealSteamOnMac/launcher.log"
 
 if [ -n "$HELPER_PID" ]; then
     wait "$HELPER_PID"

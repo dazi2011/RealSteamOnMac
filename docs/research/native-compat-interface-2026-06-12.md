@@ -286,3 +286,72 @@ must remain one-shot and run only from the first normal
 `IPC:CSteamEngine` mapping transition. Future path inspection must set
 breakpoints before that first transition rather than manually re-running the
 post-login Job.
+
+## Startup-only local-loader correction
+
+The prior conclusion that `CCacheOffSteamPlayStateJob` conditionally creates
+`CLoadLocalToolListJob` was wrong. Mach-O chained fixups identify the
+`CLoadLocalToolListJob` typeinfo and vtable:
+
+```text
+typeinfo name       0x155b0ad
+typeinfo object     0x184ceb8
+vtable address      0x184ce20
+job run method      0x732df4
+```
+
+Code references to that vtable lead back to `CCompatManager` construction:
+
+```text
+0x725cc4  mov   w0, #0x248
+0x725cc8  bl    operator new
+0x725cd4  bl    base job constructor
+0x725cd8  adrp/add CLoadLocalToolListJob vtable
+0x725ce0  str   vtable, [job]
+0x725d04  bl    queue job
+```
+
+The local-loader job is therefore startup-only. The late cache experiment
+could never reach its path builder, regardless of the cache job's platform
+state.
+
+Immediately before creating the job, the same manager constructor computes
+its Linux capability:
+
+```text
+0x725a84  load "linux"
+0x725a90  call V_strnicmp
+0x725a94  cmp  w0, #0
+0x725a98  cset w8, eq       ; 0x1a9f17e8
+0x725a9c  strb w8, [x19, #0x798]
+```
+
+## Rejected constructor-wide enable experiment
+
+For current arm64 beta UUID
+`4678FB72-BAE9-3D1B-8313-D9A5667EA814`, a guarded experiment changed only
+`0x725a98` from `cset w8, eq` to `mov w8, #1`. The patch applied before
+`steamclient` initializers exactly as designed, but Steam then reproducibly
+reported:
+
+```text
+Assertion Failed: CSteamEngine::BMainLoop appears to have stalled > 15 seconds
+```
+
+No project local-manifest registration completed. The installed guard and
+engine were restored from the pre-experiment backup, and the early-patch
+source was removed. Manager byte `+0x798` is therefore a broad Linux
+capability switch, not a release-safe local-loader switch.
+
+A second startup used the unmodified Steam binary and supplied the valid
+four-tool directory through `STEAM_EXTRA_COMPAT_TOOLS_PATHS`. It reproduced
+the same main-loop stall. Historical empty-directory starts remained healthy.
+This moves the root cause downstream: the macOS startup path fails when local
+enumeration produces at least one valid manifest.
+
+A read-only all-thread LLDB trace captured the main thread waiting in Steam's
+startup event chain while `IPC:CSteamEngine` slept in its normal loop. One
+transient thread had `PC=0`; this is consistent with an uninitialized macOS
+completion callback but is not yet sufficient proof. Investigation continues
+through the local-tool job completion/dispatch chain. No further global
+manager enable patch is permitted without a narrower proven call boundary.

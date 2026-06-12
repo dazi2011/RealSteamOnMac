@@ -180,6 +180,12 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   and container dropdowns, and Open C Drive action. The remaining work in this
   area includes grouping the three native action areas into the requested
   bottom-of-page order; it does not permit replacement UI.
+- **Native-registration checkpoint:** current beta arm64 Steam constructs its
+  local-tool loader only once during `CCompatManager` startup. Forcing the
+  manager-wide Linux capability byte or supplying a valid local-tool path both
+  reproducibly stall build `1780965181`; the experimental guard patch was
+  removed. The active target is now the valid-manifest completion/dispatch
+  path, and acceptance still requires Steam's own selector plus healthy Cloud.
 - **Component-recipe checkpoint:** the runtime now accepts only three bounded
   installer strategies (`exe`, `msi`, and the fixed DirectX redistributable
   flow), validates prerequisite graphs, prefix-relative files, and restricted
@@ -331,7 +337,7 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Diagnose cloud before expanding patches | Cloud behavior affects native titles too and may indicate a global UI or configuration regression. |
 | Treat visible UI and backend behavior as separate acceptance criteria | A blue button or dropdown is not proof that install or launch paths work. |
 | Never start the native worker from a dyld constructor | A delayed no-op worker still removes Cloud settings before patching anything. |
-| Do not set `STEAM_EXTRA_COMPAT_TOOLS_PATHS` to a valid tool on macOS | A/B testing proves valid native tool discovery removes the Cloud settings fields on build `1780705203`. |
+| Do not set `STEAM_EXTRA_COMPAT_TOOLS_PATHS` to a valid tool on macOS | Build `1780705203` removed Cloud fields; build `1780965181` reproducibly stalls the Steam main loop before UI initialization. |
 | Synchronize AppIDs over an authenticated loopback endpoint | Steam's browser context can reach loopback with `no-cors`; a private token and strict parser avoid a global unauthenticated patch-control surface. |
 | Subscribe directly to native app details after registry sync | Steam's shared details cache remained at status `14` without active subscriptions; `RegisterForAppDetails` provides the authoritative install, launch, and update state. |
 | Keep the SteamUI platform getter unmodified | Data-object reconciliation plus native detail subscriptions passed 34/34 live; redirecting the global getter was redundant, version-sensitive, and contrary to the narrow production design. |
@@ -345,6 +351,7 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Reuse a Steamworks bridge for raw Wine only across the same Wine major | A matching Wine 11 bridge retains Steam ownership integration for Wine 11.x; an unknown ABI combination must launch without that bridge instead of injecting an incompatible helper. |
 | Commit compatibility selections only after authenticated native registry sync | Steam remains the control owner; the data-only fallback stabilizes checkbox/dropdown state, while delayed original-API writes persist mappings without racing startup. Successful writes are cached and failures leave project state unchanged; native tool registration is still a separate unresolved gate. |
 | Scale Wine's game-controller panel without touching Steam Input | The requested controller interface is `wine64 control.exe joy.cpl`. Temporarily raise that prefix's `LogPixels` to at least 192 while the panel runs, restore the exact prior value on every normal or failed exit, and keep Steam's native controller configurator completely untouched. |
+| Reject the constructor-wide `CCompatManager +0x798` force-enable patch | It makes the startup-only local-tool job active but also enables unrelated Linux-only manager paths and reproducibly triggers `CSteamEngine::BMainLoop` stalls on build `1780965181`. |
 
 ## Errors Encountered
 

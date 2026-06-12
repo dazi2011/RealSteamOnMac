@@ -1,5 +1,7 @@
 #include <errno.h>
+#include <libproc.h>
 #include <limits.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -13,6 +15,7 @@
 
 #define HELPER_DRAIN_INTERVAL_US 250000
 #define HELPER_DRAIN_MAX_POLLS 60
+#define IPCSERVER_DRAIN_MAX_POLLS 20
 
 static void log_line(const char *format, ...) {
   const char *home = getenv("HOME");
@@ -199,6 +202,94 @@ static bool process_name_exists(const char *name) {
   return found;
 }
 
+static pid_t find_process_by_executable_path(const char *expected_path) {
+  char canonical_expected[PATH_MAX];
+  if (realpath(expected_path, canonical_expected) == NULL) {
+    return 0;
+  }
+
+  int mib[] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0};
+  size_t size = 0;
+  if (sysctl(mib, 4, NULL, &size, NULL, 0) != 0 || size == 0) {
+    log_line("could not inspect process table: %s", strerror(errno));
+    return 0;
+  }
+
+  struct kinfo_proc *processes = malloc(size);
+  if (processes == NULL) {
+    log_line("could not allocate process table");
+    return 0;
+  }
+  if (sysctl(mib, 4, processes, &size, NULL, 0) != 0) {
+    log_line("could not read process table: %s", strerror(errno));
+    free(processes);
+    return 0;
+  }
+
+  pid_t found = 0;
+  char path[PROC_PIDPATHINFO_MAXSIZE];
+  size_t count = size / sizeof(*processes);
+  for (size_t index = 0; index < count; ++index) {
+    const struct kinfo_proc *process = &processes[index];
+    if (
+        process->kp_proc.p_stat == SZOMB ||
+        process->kp_eproc.e_ucred.cr_uid != getuid() ||
+        strcmp(process->kp_proc.p_comm, "ipcserver") != 0
+    ) {
+      continue;
+    }
+    int length = proc_pidpath(
+        process->kp_proc.p_pid, path, sizeof(path));
+    if (
+        length > 0 &&
+        (size_t)length < sizeof(path) &&
+        strcmp(path, canonical_expected) == 0
+    ) {
+      found = process->kp_proc.p_pid;
+      break;
+    }
+  }
+  free(processes);
+  return found;
+}
+
+static void drain_stale_native_ipcserver(const char *expected_path) {
+  if (process_name_exists("steam_osx")) {
+    return;
+  }
+
+  pid_t pid = find_process_by_executable_path(expected_path);
+  if (pid <= 0) {
+    return;
+  }
+  log_line("terminating stale native Steam ipcserver pid %d", pid);
+  if (kill(pid, SIGTERM) != 0 && errno != ESRCH) {
+    log_line(
+        "could not terminate stale native Steam ipcserver pid %d: %s",
+        pid, strerror(errno));
+    return;
+  }
+
+  unsigned int polls = 0;
+  while (
+      polls < IPCSERVER_DRAIN_MAX_POLLS &&
+      find_process_by_executable_path(expected_path) > 0
+  ) {
+    usleep(HELPER_DRAIN_INTERVAL_US);
+    ++polls;
+  }
+  pid = find_process_by_executable_path(expected_path);
+  if (pid > 0) {
+    log_line(
+        "stale native Steam ipcserver pid %d did not exit after %u ms",
+        pid, polls * (HELPER_DRAIN_INTERVAL_US / 1000));
+    return;
+  }
+  log_line(
+      "stale native Steam ipcserver drained after %u ms",
+      polls * (HELPER_DRAIN_INTERVAL_US / 1000));
+}
+
 static void wait_for_stale_steam_helpers(void) {
   if (process_name_exists("steam_osx")) {
     log_line("existing Steam runtime detected; forwarding launch");
@@ -240,9 +331,13 @@ int main(int argc, char **argv) {
 
   char default_runtime[PATH_MAX];
   char default_support[PATH_MAX];
+  char native_ipcserver[PATH_MAX];
   if (!build_path(default_runtime, sizeof(default_runtime), home,
                   "Library/Application Support/Steam/Steam.AppBundle/"
                   "Steam/Contents/MacOS/steam_osx") ||
+      !build_path(native_ipcserver, sizeof(native_ipcserver), home,
+                  "Library/Application Support/Steam/Steam.AppBundle/"
+                  "Steam/Contents/MacOS/ipcserver") ||
       !build_path(default_support, sizeof(default_support), home,
                   "Library/Application Support/RealSteamOnMac")) {
     return exec_original_bootstrap(argc, argv, "default path is too long");
@@ -323,6 +418,7 @@ int main(int argc, char **argv) {
     return exec_original_bootstrap(argc, argv,
                                    "RealSteamOnMac support files are missing");
   }
+  drain_stale_native_ipcserver(native_ipcserver);
   wait_for_stale_steam_helpers();
   if (!install_steamui_patch(
           patcher, steamui, ui_source, allowlist, dependencies,

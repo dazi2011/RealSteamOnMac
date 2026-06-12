@@ -1998,3 +1998,34 @@
 - Disassembled `RunCacheOffJob`: after the `+0x798` and `+0x799` checks it only
   creates `CCacheOffSteamPlayStateJob`. The next reverse-engineering target is
   that cache job's condition for creating `CLoadLocalToolListJob`.
+- Resolved the remaining scheduling question through RTTI and Mach-O chained
+  fixups. `CLoadLocalToolListJob` is allocated and queued once in the
+  `CCompatManager` constructor, not by `CCacheOffSteamPlayStateJob`; therefore
+  no late cache refresh can trigger its path builder.
+- Tested the exact startup instruction controlling manager byte `+0x798`:
+  forcing it true before `steamclient` initialization produced a repeatable
+  `CSteamEngine::BMainLoop` stall and no project-manifest registration. The
+  installed guard and engine were atomically restored from
+  `early-steamplay-20260612T113603Z`; the experimental source and contracts
+  were removed before commit.
+- Reproduced the same stall without any binary patch by setting
+  `STEAM_EXTRA_COMPAT_TOOLS_PATHS` to the valid four-tool directory on current
+  beta build `1780965181`. This distinguishes valid-manifest completion from
+  path construction: empty discovery is healthy, at least one valid manifest
+  enters a broken macOS startup completion path.
+- Captured a read-only all-thread LLDB trace. The main thread waited in the
+  Steam startup event chain, `IPC:CSteamEngine` was sleeping normally, and a
+  short-lived thread had a null program counter. This is evidence for, but not
+  yet proof of, an uninitialized local-tool completion callback.
+- Confirmed the restart-delay field report has a separate deterministic cause:
+  failed/manual native Steam shutdown leaves the exact
+  `Steam.AppBundle/Steam/Contents/MacOS/ipcserver` process parented by launchd.
+  It blocks a subsequent native Steam instance until removed. CrossOver
+  Preview remained alive throughout every experiment.
+- Added a launcher regression fixture with two live processes named
+  `ipcserver`: one at the exact native Steam AppBundle path and one under a
+  fake CrossOver tree. The pre-fix test failed because both remained alive.
+- The launcher now canonicalizes the expected executable path, matches only
+  the current user's exact native Steam `ipcserver`, sends `SIGTERM`, and waits
+  at most five seconds. The native fixture exits while the CrossOver fixture
+  remains alive. No basename-only process kill is used.
