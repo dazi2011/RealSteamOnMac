@@ -1985,3 +1985,16 @@
   without a new macOS crash report. CrossOver Preview and Windows Steam
   remained alive; the next restart will be launched with captured stdout and
   process lifetime rather than through an opaque `open` call.
+- Launched native Steam in a real terminal session and held PID `11968`
+  stable beyond the delayed-injection window. The dynamic registry recovered
+  all 34 AppIDs, all four project tools were visible again, People Playground
+  returned to the registry, and Cloud state remained healthy. CrossOver
+  Preview stayed untouched.
+- On this clean process, installed breakpoints at the local user-root insertion
+  and threaded-enumerator return before the first one-shot manager enable.
+  `CCacheOffSteamPlayStateJob` completed, but neither breakpoint fired. The
+  local-tool Job is therefore not scheduled on macOS; the fault precedes path
+  construction and manifest enumeration.
+- Disassembled `RunCacheOffJob`: after the `+0x798` and `+0x799` checks it only
+  creates `CCacheOffSteamPlayStateJob`. The next reverse-engineering target is
+  that cache job's condition for creating `CLoadLocalToolListJob`.

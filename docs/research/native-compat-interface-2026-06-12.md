@@ -263,6 +263,20 @@ path vector. The remaining fault lies after or inside that path construction:
 the base path may differ from the expected Application Support root, or
 `ThreadedListLocalToolManifests` may reject the deployed child layout.
 
+A fresh native Steam process refined that conclusion again. Before the first
+late-enable transition, LLDB breakpoints were installed at the user-path
+insertion (`0x733174`) and after the threaded enumerator returned
+(`0x73328c`). The normal one-shot `IPC:CSteamEngine` transition completed and
+`CCacheOffSteamPlayStateJob` logged its start, all-list processing, and
+completion, but neither local-tool breakpoint fired. Thus the path builder is
+not receiving a wrong base path: `CLoadLocalToolListJob` is not scheduled at
+all on this macOS execution path.
+
+`RunCacheOffJob` at `0x730dbc` only validates manager state and allocates the
+`CCacheOffSteamPlayStateJob`. The next target is the cache job's condition
+that decides whether to instantiate `CLoadLocalToolListJob`; that condition
+must be corrected before any path or manifest-format work can be evaluated.
+
 A second LLDB attempt tried to invoke `LaunchLogOnCompatProcessingJob` again
 from the stopped main thread solely to inspect that path. This is invalid:
 the already-completed manager had no active Steam Job callback context, and

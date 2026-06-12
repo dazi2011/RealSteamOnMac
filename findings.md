@@ -1360,7 +1360,12 @@
   `CLoadLocalToolListJob` always inserts the two system roots, optional
   `STEAM_EXTRA_COMPAT_TOOLS_PATHS` entries, and a Steam base path with
   `/compatibilitytools.d` appended. The remaining fault is the actual macOS
-  base path or child-manifest enumeration, not constructor omission.
+  execution path, not constructor omission.
+- Breakpoints on the user-path insertion and post-enumerator return did not
+  fire during a complete normal cache-off job. This proves
+  `CLoadLocalToolListJob` is not scheduled on macOS; no path or child manifest
+  is examined yet. The next patch target is the cache job's local-loader
+  scheduling condition.
 - A cache refresh without registered project manifests makes native app
   details report no valid selected tool and caused the dynamic registry to
   remove People Playground. Acceptance must require successful project
@@ -1380,7 +1385,7 @@
 | Persistent Playwright attachment made Steam CDP unresponsive | Restarted only native Steam and used the project's one-shot WebSocket evaluator. It opened the same native properties page, completed a 50-sample stability trace, and left the endpoint healthy. |
 | `llvm-objdump --macho` ignored the requested address-bounded disassembly and emitted the full arm64 text section | Terminated the command and retained the already verified string-xref and LLDB breakpoint path; do not repeat whole-image disassembly for this target. |
 | A live backtrace address at `0x7356b8` was initially treated as a possible post-call site | Bounded LLDB disassembly proved it is inside an internal callback object constructor; retain only the verified `InternalSpecifyCompatTool` entry as the bridge point. |
-| Late-enabling the manager ran the native cache job but did not discover project tools | Static analysis proves the Job builds all expected root entries. Capture its actual macOS user root and audit child-manifest enumeration on the first normal refresh. |
+| Late-enabling the manager ran the native cache job but did not discover project tools | Breakpoint evidence proves the local-loader Job is never scheduled. Locate its cache-job scheduling condition before auditing paths or manifests. |
 | Re-invoking the post-login Job from LLDB after the first refresh dereferenced a null callback | Treat `LaunchLogOnCompatProcessingJob` as one-shot and engine-thread-bound; restart only native Steam and inspect the first transition instead of replaying the Job. |
 | Shared app details stayed at status `14` after native data changes | Registered direct native detail subscriptions and published callbacks into the shared details store. |
 | SteamUI getter trampoline retried continuously | Removed the redundant global getter patch and added a contract that rejects its reintroduction. |
