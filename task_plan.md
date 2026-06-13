@@ -200,6 +200,19 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   now falls back to the exact canonical `KERN_PROCARGS2` executable only in
   that case. Live PID `32189` drained in zero milliseconds while the same
   CrossOver processes remained alive.
+- **Build 1781212412 profile checkpoint:** the new beta is now represented by
+  exact arm64 SteamClient and SteamUI UUID profiles. Static verification locks
+  the compatibility gate at `0x00A03EF8`, install gate at `0x006279D8`,
+  SteamUI getter at `0x005EDF44`, and `_posix_spawn` lazy pointer at
+  `0x018FD500`. Patch, hook, spawn, installer, release-manifest, and injection
+  contracts pass. Installed runtime and native-dropdown acceptance remain
+  mandatory before this build is release-ready.
+- **Update package checkpoint:** the repository still builds only Install and
+  Uninstall PKGs. The design's `RealSteamOnMac-Update.pkg` is not implemented,
+  and the current top-level installer intentionally rejects an existing state
+  whose recorded Steam build differs after Valve self-update. This remains an
+  explicit release blocker rather than being treated as covered by direct
+  injection deployment.
 - **Component-recipe checkpoint:** the runtime now accepts only three bounded
   installer strategies (`exe`, `msi`, and the fixed DirectX redistributable
   flow), validates prerequisite graphs, prefix-relative files, and restricted

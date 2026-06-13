@@ -167,7 +167,11 @@ spec.loader.exec_module(updates)
 with open(sys.argv[2], encoding="utf-8") as stream:
     value = json.load(stream)
 updates.validate_manifest(value, "dazi2011/RealSteamOnMac")
-if value["supported_steam_builds"] != ["1780705203", "1780965181"]:
+if value["supported_steam_builds"] != [
+    "1780705203",
+    "1780965181",
+    "1781212412",
+]:
     raise SystemExit("release manifest Steam build list is incomplete")
 PY
 /opt/homebrew/bin/openssl pkeyutl \

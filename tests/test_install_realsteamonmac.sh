@@ -26,7 +26,7 @@ printf 'publicbeta\n' \
 cat >"$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.manifest" <<'EOF'
 "osx"
 {
-    "version" "1780965181"
+    "version" "1781212412"
 }
 EOF
 : >"$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.installed"
@@ -147,7 +147,7 @@ injection_call=$(grep '^injection	' "$LOG")
 printf '%s\n' "$injection_call" |
     grep -Fq "	--steam-app	$STEAM_APP"
 test -f "$SUPPORT/install-state.json"
-grep -q '"steam_build": "1780965181"' "$SUPPORT/install-state.json"
+grep -q '"steam_build": "1781212412"' "$SUPPORT/install-state.json"
 grep -q '"steam_channel": "publicbeta"' "$SUPPORT/install-state.json"
 
 : >"$LOG"
@@ -176,7 +176,7 @@ env \
         --compat-tools-root "$COMPAT_TOOLS" \
         --runtime-root "$STABLE_RUNTIME_ROOT" \
         --cache-dir "$CACHE"
-grep -q '"steam_build": "1780965181"' \
+grep -q '"steam_build": "1781212412"' \
     "$STABLE_SUPPORT/install-state.json"
 grep -q '"steam_channel": "stable"' \
     "$STABLE_SUPPORT/install-state.json"
@@ -190,7 +190,7 @@ printf 'publicbeta\n' \
     >"$RUNTIME_APP/Contents/MacOS/package/beta"
 
 : >"$LOG"
-sed -i '' 's/1780965181/1780705203/' \
+sed -i '' 's/1781212412/1780705203/' \
     "$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.manifest"
 if env \
     REALSTEAMONMAC_HOOK_BUILDER="$TMP/bin/hook" \
@@ -212,7 +212,7 @@ if env \
     exit 1
 fi
 test ! -s "$LOG"
-sed -i '' 's/1780705203/1780965181/' \
+sed -i '' 's/1780705203/1781212412/' \
     "$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.manifest"
 
 : >"$LOG"
@@ -279,7 +279,7 @@ test "$(cut -f1 "$LOG" | tr '\n' ' ')" = \
 grep -Fq "injection	--clean-backup	$LEGACY_BACKUP_REAL" "$LOG"
 
 : >"$LOG"
-sed -i '' 's/1780965181/1999999999/' \
+sed -i '' 's/1781212412/1999999999/' \
     "$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.manifest"
 if env \
     REALSTEAMONMAC_HOOK_BUILDER="$TMP/bin/hook" \

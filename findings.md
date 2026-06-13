@@ -1421,6 +1421,25 @@
 - Live beta-update acceptance terminated deleted-image PID `32189` and
   preserved CrossOver Preview PIDs `19863`, `19885`, and `73736`. Matching a
   basename alone remains explicitly prohibited.
+- Steam beta build `1781212412` has arm64 SteamClient UUID
+  `BAF0A603-23F9-3F14-A019-73825732E82F` and universal SHA-256
+  `234a51d3ed72fadffc88b5dd3d176b372475fc0eb49442d3936802180c574cb6`.
+  Structural matching and exact instruction reads locate its compatibility
+  gate at `0x00A03EF8`, installation platform gate at `0x006279D8`, and
+  `_posix_spawn` lazy pointer at `0x018FD500`.
+- The same build's arm64 SteamUI UUID is
+  `68D2AAA9-2289-34EA-ACFC-94C4F1221EE5`. Its platform-flags getter remains at
+  `0x005EDF44`, while the web resources exactly reuse the clean hashes already
+  accepted for build `1781139754`; no patched-resource hash was allowlisted.
+- The local compatibility-tool loader remains structurally equivalent to the
+  prior build. Its meaningful trace points moved by `+0x154`, except the
+  generic adapter, which moved by `+0xC`. Static inspection disproves the
+  earlier tentative uninitialized-callback explanation at this site because
+  the callback is explicitly set to `0x732BD8` and invoked at `0x73C758`.
+- The release builder now advertises `1781212412`, but there is still no
+  `RealSteamOnMac-Update.pkg`. The existing installer correctly refuses to
+  reuse an old recorded build state after Valve self-update, so a transactional
+  in-place update path and fresh rollback snapshot remain required.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

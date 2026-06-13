@@ -11,6 +11,7 @@ trap 'rm -rf "$TEMP_ROOT"' EXIT
 
 grep -q 'STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET' "$SOURCE"
 grep -q '0x018F9500' "$SOURCE"
+grep -q '0x018FD500' "$SOURCE"
 grep -q '0x01945548' "$SOURCE"
 grep -q 'realsteamonmac_should_redirect_spawn' "$SOURCE"
 grep -q 'is_pe_executable' "$SOURCE"

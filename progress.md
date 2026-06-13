@@ -2055,3 +2055,20 @@
   running. Live artifact acceptance also drained real deleted-image PID
   `32189` in zero milliseconds while CrossOver Preview PIDs `19863`, `19885`,
   and `73736` remained alive.
+- Added exact UUID-gated SteamClient and SteamUI profiles for beta build
+  `1781212412`, preserving fail-closed behavior for every unknown binary.
+- Verified the live universal files, expected gate instructions, error-29
+  branch, SteamUI getter, and unique `_posix_spawn` lazy binding before adding
+  the profile.
+- Updated the standalone compatibility-gate patcher, top-level build
+  allowlist, release-manifest build list, and their regression fixtures.
+- Passed the serial profile matrix: compatibility patcher, hook contract,
+  spawn redirect, one-click installer, hook environment isolation, Steam
+  injection, update-manifest validation, and release packaging.
+- Recorded the new build analysis and bounded LLDB trace points under
+  `docs/research/`. Dynamic installed-runtime and native compatibility-tool
+  registration acceptance are the next gates.
+- Confirmed that the requested `RealSteamOnMac-Update.pkg` is still absent:
+  current release output contains only Install and Uninstall packages, while
+  an existing `install-state.json` still records build `1780965181`. This is a
+  tracked release blocker, not a completed feature.

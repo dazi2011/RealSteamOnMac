@@ -1,0 +1,39 @@
+# Read-only trace for the arm64 steamclient build 1780965181.
+# Add steamclient.dylib to the target before sourcing this file so these
+# file-address breakpoints remain pending until dyld loads the image.
+
+breakpoint set --shlib steamclient.dylib --address 0x733264
+breakpoint command add 1 -o 'script print("TRACE local-job-before-worker")' -o 'register read pc x0 x1 x19' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x732a84
+breakpoint command add 2 -o 'script print("TRACE local-worker-enter")' -o 'register read pc x0' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x732d68
+breakpoint command add 3 -o 'script print("TRACE local-worker-return")' -o 'register read pc x0' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x73c5e4
+breakpoint command add 4 -o 'script print("TRACE work-item-adapter-enter")' -o 'register read pc x0 x8 x9 x10' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x73328c
+breakpoint command add 5 -o 'script print("TRACE local-job-after-worker")' -o 'register read pc x0 x19' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x7332d8
+breakpoint command add 6 -o 'script print("TRACE local-list-parse")' -o 'register read pc x0 x1 x2 x19' -o 'memory read --format c --size 1 --count 256 $x1' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x733318
+breakpoint command add 7 -o 'script print("TRACE local-list-parse-return")' -o 'register read pc w0 x19 x28' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x733380
+breakpoint command add 8 -o 'script print("TRACE process-local-compat-list")' -o 'register read pc x0 x1 x2 x19' -o 'memory read --format c --size 1 --count 256 $x2' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x72df48
+breakpoint command add 9 -o 'script print("TRACE process-compat-manifests-enter")' -o 'register read pc x0 x1 x2' -o 'memory read --format c --size 1 --count 256 $x2' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x7333d8
+breakpoint command add 10 -o 'script print("TRACE local-list-loop-complete")' -o 'register read pc x19' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x7333f4
+breakpoint command add 11 -o 'script print("TRACE local-job-post-list-state")' -o 'register read pc x0 x1 x2 x3 x4' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x733550
+breakpoint command add 12 -o 'script print("TRACE local-job-return")' -o 'register read pc x0 x19' -o 'continue'

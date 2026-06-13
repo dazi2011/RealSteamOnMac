@@ -1,0 +1,28 @@
+# Read-only trace for arm64 steamclient build 1781212412.
+# Verify UUID BAF0A603-23F9-3F14-A019-73825732E82F before sourcing this file.
+# Add steamclient.dylib to the target first so the image-relative breakpoints
+# remain pending until dyld loads the exact library.
+
+breakpoint set --shlib steamclient.dylib --address 0x7333dc
+breakpoint command add 1 -o 'script print("TRACE local-job-before-worker")' -o 'register read pc x0 x1 x19' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x73c758
+breakpoint command add 2 -o 'script print("TRACE work-item-before-callback")' -o 'register read pc x0 x8 x19' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x7333e0
+breakpoint command add 3 -o 'script print("TRACE local-job-after-worker")' -o 'register read pc x0 x19' -o 'memory read --format d --size 4 --count 1 `$x19+0x240`' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x73342c
+breakpoint command add 4 -o 'script print("TRACE local-list-parse")' -o 'register read pc x0 x1 x2 x19' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x73346c
+breakpoint command add 5 -o 'script print("TRACE local-list-valid-root")' -o 'register read pc w0 x19 x28' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x72e09c
+breakpoint command add 6 -o 'script print("TRACE process-compat-manifests-enter")' -o 'register read pc x0 x1 x2' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x733548
+breakpoint command add 7 -o 'script print("TRACE local-job-post-list-state")' -o 'register read pc x0 x1 x2 x3 x4 x19' -o 'continue'
+
+breakpoint set --shlib steamclient.dylib --address 0x7336a4
+breakpoint command add 8 -o 'script print("TRACE local-job-return")' -o 'register read pc w0 x19' -o 'continue'
