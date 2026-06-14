@@ -2088,3 +2088,15 @@
 - `tests/test_steam_launcher.sh` now proves the old updater-deleted PID exits,
   the replacement native `ipcserver` remains alive, the fake CrossOver
   `ipcserver` remains alive, and no false five-second timeout is logged.
+- Replaced the compatibility page's plain section headings and nested
+  `DialogBody` with five Valve `DialogSettingsSection` instances. The three
+  requested action areas now appear as Install Windows Components, Container
+  Actions, and Run Command in that order, with Recent Activity separated from
+  container actions.
+- Strengthened the native component shape gate and page probe so a missing
+  Steam section component or wrong DOM order fails acceptance. The source
+  still contains no legacy project panel, modal layer, handcrafted select, or
+  replacement switch.
+- Verified the exact Valve `XY` export and `label` ABI from the clean current
+  SteamUI chunk. JavaScript syntax, all 81 Node tests, all 16 Python SteamUI
+  tests, and the shell SteamUI patch contract pass.

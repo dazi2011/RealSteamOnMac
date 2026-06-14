@@ -4,6 +4,25 @@
   const comboboxes = Array.from(
     document.querySelectorAll("[role=combobox]"),
   );
+  const expectedNativeControlSectionOrder = [
+    "RealSteamOnMac 兼容性选项",
+    "安装 Windows 组件",
+    "容器操作",
+    "运行命令",
+    "最近操作状态",
+  ];
+  const nativeControlSectionOrder = Array.from(
+    document.querySelectorAll(".DialogSettingsSection"),
+  )
+    .map((section) => {
+      const lines = (section.innerText ?? "")
+        .split("\n")
+        .map((line) => line.trim());
+      return expectedNativeControlSectionOrder.find((label) =>
+        lines.includes(label),
+      );
+    })
+    .filter(Boolean);
 
   return {
     appid,
@@ -14,12 +33,14 @@
     hasSteamPlaySelector: bodyText.includes(
       "强制使用特定 Steam Play 兼容性工具",
     ),
-    hasNativeControlSections: [
-      "RealSteamOnMac 兼容性选项",
-      "运行命令",
-      "安装应用程序到容器",
-      "容器操作",
-    ].every((label) => bodyText.includes(label)),
+    hasNativeControlSections:
+      nativeControlSectionOrder.length ===
+        expectedNativeControlSectionOrder.length &&
+      nativeControlSectionOrder.every(
+        (label, index) =>
+          label === expectedNativeControlSectionOrder[index],
+      ),
+    nativeControlSectionOrder,
     comboboxes: comboboxes.map((element) => ({
       text: element.innerText?.replace(/\s+/g, " ").trim() ?? "",
       className: String(element.className),

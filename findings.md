@@ -1450,6 +1450,20 @@
   through `proc_pidinfo(PROC_PIDTBSDINFO)`. It treats zombies as exited and
   never transfers the drain wait to a replacement `ipcserver`; exact-path
   discovery and CrossOver exclusion remain unchanged.
+- Valve module `44351` exports `XY` as its real `DialogSettingsSection`.
+  Its implementation accepts a `label` prop and emits
+  `.DialogSettingsSection`, so the project can use Steam's native section
+  ownership instead of a plain heading div or nested `DialogBody`.
+- The prior native action order was Run Command, Install Application To
+  Container, then Container Actions. It also mislabeled a reviewed dependency
+  installer as arbitrary application installation. The corrected order is
+  Install Windows Components, Container Actions, then Run Command, followed by
+  a separate Recent Activity section.
+- Static analysis of build `1781212412` shows `CLoadLocalToolListJob` is
+  created and queued independently of the manager's Linux capability byte.
+  Native registration work must therefore inspect the actual install-path
+  scan root and worker result rather than reintroducing the disproved global
+  Linux-capability patch.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

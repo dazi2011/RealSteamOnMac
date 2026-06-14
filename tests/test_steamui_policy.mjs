@@ -32,6 +32,7 @@ const {
   mergeCompatTools,
   normalizeControlConfig,
   normalizeDependencyCatalog,
+  NATIVE_COMPAT_SECTION_LABELS,
   refreshAppActionComponents,
   reconcileCompatDetails,
   reconcileAppState,
@@ -297,11 +298,12 @@ test("requires Steam-owned React controls for compatibility actions", () => {
     components: {
       $n: forwardRef,
       Vb() {},
-      nB: forwardRef,
+      XY: forwardRef,
       pd() {},
       y4() {},
     },
     styles: {
+      Detail: "detail",
       SettingsDialogButton: "button",
       TopGap: "gap",
     },
@@ -318,6 +320,20 @@ test("requires Steam-owned React controls for compatibility actions", () => {
   assert.equal(
     isNativeCompatToolboxSupported({
       ...toolbox,
+      components: { ...toolbox.components, XY: undefined },
+    }),
+    false,
+  );
+  assert.equal(
+    isNativeCompatToolboxSupported({
+      ...toolbox,
+      styles: { ...toolbox.styles, Detail: undefined },
+    }),
+    false,
+  );
+  assert.equal(
+    isNativeCompatToolboxSupported({
+      ...toolbox,
       components: {
         ...toolbox.components,
         $n: { $$typeof: Symbol("react.forward_ref") },
@@ -325,6 +341,22 @@ test("requires Steam-owned React controls for compatibility actions", () => {
     }),
     false,
   );
+});
+
+test("uses native Steam sections in the required compatibility-page order", () => {
+  assert.deepEqual(NATIVE_COMPAT_SECTION_LABELS, [
+    "RealSteamOnMac 兼容性选项",
+    "安装 Windows 组件",
+    "容器操作",
+    "运行命令",
+    "最近操作状态",
+  ]);
+  assert.equal(
+    source.match(/jsx\.jsxs\(components\.XY/g)?.length,
+    NATIVE_COMPAT_SECTION_LABELS.length,
+  );
+  assert.doesNotMatch(source, /jsx\.jsxs\(components\.nB/);
+  assert.doesNotMatch(source, /安装应用程序到容器/);
 });
 
 test("production UI source contains no handcrafted compatibility controls", () => {

@@ -307,13 +307,24 @@
       typeof jsx?.jsx === "function" &&
       typeof jsx?.jsxs === "function" &&
       jsx.Fragment !== undefined &&
-      ["$n", "Vb", "nB", "pd", "y4"].every(
+      ["$n", "Vb", "XY", "pd", "y4"].every(
         (name) => isReactComponent(components?.[name]),
       ) &&
-      typeof styles?.SettingsDialogButton === "string" &&
-      typeof styles?.TopGap === "string"
+      [
+        "Detail",
+        "SettingsDialogButton",
+        "TopGap",
+      ].every((name) => typeof styles?.[name] === "string")
     );
   }
+
+  const NATIVE_COMPAT_SECTION_LABELS = Object.freeze([
+    "RealSteamOnMac 兼容性选项",
+    "安装 Windows 组件",
+    "容器操作",
+    "运行命令",
+    "最近操作状态",
+  ]);
 
   function normalizeDependencyCatalog(value) {
     if (!Array.isArray(value)) {
@@ -872,6 +883,7 @@
       mergeCompatTools,
       normalizeControlConfig,
       normalizeDependencyCatalog,
+      NATIVE_COMPAT_SECTION_LABELS,
       refreshAppActionComponents,
       reconcileCompatDetails,
       reconcileAppState,
@@ -1870,136 +1882,150 @@
         actionDisabled ||
         (deleteNeedsConfirmation && !deleteConfirmed);
 
-      return jsx.jsxs(components.nB, {
+      return jsx.jsxs(jsx.Fragment, {
         children: [
-          jsx.jsx("div", {
-            className: styles.SectionTopLine,
-            children: "RealSteamOnMac 兼容性选项",
+          jsx.jsxs(components.XY, {
+            label: NATIVE_COMPAT_SECTION_LABELS[0],
+            children: [
+              ...controlDefinitions(selectedTool).map((definition) =>
+                jsx.jsx(
+                  components.y4,
+                  {
+                    label: definition.label,
+                    checked: Boolean(value[definition.key]),
+                    disabled:
+                      !compatEnabled ||
+                      !definition.enabled ||
+                      busy,
+                    onChange: (enabled) => {
+                      void saveToggle(definition.key, enabled);
+                    },
+                  },
+                  definition.key,
+                ),
+              ),
+            ],
           }),
-          ...controlDefinitions(selectedTool).map((definition) =>
-            jsx.jsx(
-              components.y4,
-              {
-                label: definition.label,
-                checked: Boolean(value[definition.key]),
-                disabled:
-                  !compatEnabled || !definition.enabled || busy,
-                onChange: (enabled) => {
-                  void saveToggle(definition.key, enabled);
-                },
-              },
-              definition.key,
-            ),
-          ),
-          jsx.jsx("div", {
-            className: styles.SectionTopLine,
-            children: "运行命令",
-          }),
-          jsx.jsx(components.pd, {
-            className: styles.TopGap,
-            label: "命令",
-            placeholder: "cmd、regedit、C:\\path\\tool.exe 或文档",
-            spellCheck: false,
-            value: target,
-            onChange: (event) => setTarget(event.target.value),
-          }),
-          nativeButton("浏览...", () => {
-            void browseTarget();
-          }, actionDisabled),
-          jsx.jsx(components.pd, {
-            className: styles.TopGap,
-            label: "参数",
-            placeholder: '/c echo "hello"',
-            spellCheck: false,
-            value: commandArguments,
-            onChange: (event) =>
-              setCommandArguments(event.target.value),
-          }),
-          jsx.jsx(components.pd, {
-            className: styles.TopGap,
-            label: "环境变量，每行 NAME=VALUE",
-            placeholder: "DXVK_HUD=fps",
-            spellCheck: false,
-            value: commandEnvironment,
-            onChange: (event) =>
-              setCommandEnvironment(event.target.value),
-          }),
-          nativeButton("运行", () => {
-            void runAction(
-              buildRunCommandPayload({
-                target,
-                arguments: commandArguments,
-                environment: commandEnvironment,
+          jsx.jsxs(components.XY, {
+            label: NATIVE_COMPAT_SECTION_LABELS[1],
+            children: [
+              jsx.jsx(components.Vb, {
+                strClassName: styles.TopGap,
+                label: "经过校验的 Windows 组件",
+                rgOptions: dependencies.map((dependency) => ({
+                  data: dependency.id,
+                  label: dependency.name,
+                })),
+                selectedOption: dependencyId,
+                onChange: (option) => setDependencyId(option.data),
               }),
-              "运行命令",
-            );
-          }, actionDisabled),
-          jsx.jsx("div", {
-            className: styles.SectionTopLine,
-            children: "安装应用程序到容器",
+              jsx.jsx("div", {
+                className: styles.Detail,
+                children: selectedDependency
+                  ? `${selectedDependency.publisher} · ${selectedDependency.description}`
+                  : "当前没有可安装的组件",
+              }),
+              nativeButton("安装", () => {
+                if (selectedDependency) {
+                  void runAction(
+                    buildDependencyPayload(selectedDependency.id),
+                    `安装 ${selectedDependency.name}`,
+                  );
+                }
+              }, actionDisabled || !selectedDependency),
+            ],
           }),
-          jsx.jsx(components.Vb, {
-            strClassName: styles.TopGap,
-            label: "经过校验的 Windows 组件",
-            rgOptions: dependencies.map((dependency) => ({
-              data: dependency.id,
-              label: dependency.name,
-            })),
-            selectedOption: dependencyId,
-            onChange: (option) => setDependencyId(option.data),
+          jsx.jsxs(components.XY, {
+            label: NATIVE_COMPAT_SECTION_LABELS[2],
+            children: [
+              jsx.jsx(components.Vb, {
+                strClassName: styles.TopGap,
+                label: "操作",
+                rgOptions: containerActionOptions,
+                selectedOption: containerOperation,
+                onChange: (option) => {
+                  setContainerOperation(option.data);
+                  setDeleteConfirmed(false);
+                },
+              }),
+              deleteNeedsConfirmation
+                ? jsx.jsx(components.y4, {
+                    label: "确认移动现有容器到恢复目录",
+                    checked: deleteConfirmed,
+                    disabled: actionDisabled,
+                    onChange: setDeleteConfirmed,
+                  })
+                : null,
+              nativeButton("执行", () => {
+                void runAction(
+                  buildContainerActionPayload(containerOperation),
+                  containerActionOptions.find(
+                    (option) =>
+                      option.data === containerOperation,
+                  )?.label ?? "容器操作",
+                );
+              }, containerDisabled),
+            ],
           }),
-          jsx.jsx("div", {
-            className: styles.Detail,
-            children: selectedDependency
-              ? `${selectedDependency.publisher} · ${selectedDependency.description}`
-              : "当前没有可安装的组件",
+          jsx.jsxs(components.XY, {
+            label: NATIVE_COMPAT_SECTION_LABELS[3],
+            children: [
+              jsx.jsx(components.pd, {
+                className: styles.TopGap,
+                label: "命令",
+                placeholder:
+                  "cmd、regedit、C:\\path\\tool.exe 或文档",
+                spellCheck: false,
+                value: target,
+                onChange: (event) => setTarget(event.target.value),
+              }),
+              nativeButton("浏览...", () => {
+                void browseTarget();
+              }, actionDisabled),
+              jsx.jsx(components.pd, {
+                className: styles.TopGap,
+                label: "参数",
+                placeholder: '/c echo "hello"',
+                spellCheck: false,
+                value: commandArguments,
+                onChange: (event) =>
+                  setCommandArguments(event.target.value),
+              }),
+              jsx.jsx(components.pd, {
+                className: styles.TopGap,
+                label: "环境变量，每行 NAME=VALUE",
+                placeholder: "DXVK_HUD=fps",
+                spellCheck: false,
+                value: commandEnvironment,
+                onChange: (event) =>
+                  setCommandEnvironment(event.target.value),
+              }),
+              nativeButton("运行", () => {
+                void runAction(
+                  buildRunCommandPayload({
+                    target,
+                    arguments: commandArguments,
+                    environment: commandEnvironment,
+                  }),
+                  "运行命令",
+                );
+              }, actionDisabled),
+            ],
           }),
-          nativeButton("安装", () => {
-            if (selectedDependency) {
-              void runAction(
-                buildDependencyPayload(selectedDependency.id),
-                `安装 ${selectedDependency.name}`,
-              );
-            }
-          }, actionDisabled || !selectedDependency),
-          jsx.jsx("div", {
-            className: styles.SectionTopLine,
-            children: "容器操作",
-          }),
-          jsx.jsx(components.Vb, {
-            strClassName: styles.TopGap,
-            label: "操作",
-            rgOptions: containerActionOptions,
-            selectedOption: containerOperation,
-            onChange: (option) => {
-              setContainerOperation(option.data);
-              setDeleteConfirmed(false);
-            },
-          }),
-          deleteNeedsConfirmation
-            ? jsx.jsx(components.y4, {
-                label: "确认移动现有容器到恢复目录",
-                checked: deleteConfirmed,
-                disabled: actionDisabled,
-                onChange: setDeleteConfirmed,
-              })
-            : null,
-          nativeButton("执行", () => {
-            void runAction(
-              buildContainerActionPayload(containerOperation),
-              containerActionOptions.find(
-                (option) => option.data === containerOperation,
-              )?.label ?? "容器操作",
-            );
-          }, containerDisabled),
-          jsx.jsx(components.pd, {
-            className: styles.TopGap,
-            label: activity.label || "操作状态",
-            disabled: true,
-            readOnly: true,
-            value: activity.logPath
-              ? `${activity.message || "等待操作"} · ${activity.logPath}`
-              : activity.message || `等待操作 · AppID ${appid}`,
+          jsx.jsxs(components.XY, {
+            label: NATIVE_COMPAT_SECTION_LABELS[4],
+            children: [
+              jsx.jsx(components.pd, {
+                className: styles.TopGap,
+                label: activity.label || "操作状态",
+                disabled: true,
+                readOnly: true,
+                value: activity.logPath
+                  ? `${activity.message || "等待操作"} · ${activity.logPath}`
+                  : activity.message ||
+                    `等待操作 · AppID ${appid}`,
+              }),
+            ],
           }),
         ],
       });

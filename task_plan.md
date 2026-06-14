@@ -156,7 +156,7 @@ Phase 8: 2026-06-11 field regression remediation and verified release
       Container and provide a reviewed, checksum-pinned dependency catalog.
 - [x] Correct Game Controllers to Wine `joy.cpl`, make it readable with a
       temporary prefix DPI override, and leave Steam Input unmodified.
-- [ ] Restore a clear bottom-of-page order for Install Windows Components,
+- [x] Restore a clear bottom-of-page order for Install Windows Components,
       Container Actions, and Run Command while keeping every row implemented
       with Steam-owned controls and without reintroducing custom panels.
 - [ ] Study CrossOver Preview statically and dynamically for container,
@@ -219,6 +219,12 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   as exited, so the replacement process is neither terminated nor mistaken for
   the stale target. The delayed replacement fixture passes while the fake
   CrossOver process remains alive.
+- **Native section-order checkpoint:** the project controls now use Valve's
+  `DialogSettingsSection` export directly, without nesting another
+  `DialogBody`. Their exact order is Compatibility Options, Install Windows
+  Components, Container Actions, Run Command, and Recent Activity. The first
+  three requested action areas therefore remain Steam-owned controls and
+  appear in the requested bottom-of-page order.
 - **Component-recipe checkpoint:** the runtime now accepts only three bounded
   installer strategies (`exe`, `msi`, and the fixed DirectX redistributable
   flow), validates prerequisite graphs, prefix-relative files, and restricted
