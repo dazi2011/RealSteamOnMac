@@ -2104,9 +2104,11 @@
   AppID `654310` job records. The hook accepted and spawned every request; the
   installed runtime rejected each one at the appmanifest lookup before any
   requested operation executed.
-- Added an action-only context resolver, detached file selection from game
-  launch resolution, allowed prefix initialization for uninstalled library
-  entries, and kept symlink rejection around compatdata and `drive_c`.
+- Added an action-only context resolver and detached file selection from game
+  launch resolution. The initial uninstalled-library prefix fallback was then
+  removed before acceptance; current utility actions require a complete
+  install and an existing PFX, with symlink rejection around compatdata and
+  `drive_c`.
 - Hardened EXE selection by accepting Steam path objects/arrays, falling back
   after native-dialog errors, and scrubbing Wine/DYLD variables from the
   AppleScript helper.
@@ -2118,3 +2120,21 @@
   native compatibility-page probe contract, Python compilation, JavaScript
   syntax validation, and `git diff --check`. Installed Steam acceptance is
   the next gate.
+- Reversed the temporary uninstalled-AppID prefix policy before live action
+  acceptance. Added read-only installed/container inspection, fail-closed
+  backend action gating, symlink rejection, and tests proving an uninstalled
+  AppID does not gain a PFX.
+- Hid all container-dependent Steam-native sections unless both the Steam
+  install and PFX already exist. Kept `兼容性选项` visible, renamed the catalog
+  section to `安装应用程序到容器`, and removed the unsupported
+  `install-application` action token.
+- Reworked Run Command into a native `运行命令...` expansion with native
+  command, browse, argument, environment, cancel, and run controls. Steam file
+  dialog object arrays are now accepted.
+- Preserved stored renderer/toggle preferences across a disabled-tool cold
+  start. Run Command, Wine configuration, and Task Manager now detach after a
+  successful spawn; `quit-all` bypasses the action lock.
+- Passed 84 runtime-manager tests, 79 Node tests, 16 SteamUI patch tests, the
+  native compatibility-page probe contract, Python compilation, JavaScript
+  syntax validation, and `git diff --check`. Live deployment and AppID
+  `654310` no-prefix acceptance remain the next gate.

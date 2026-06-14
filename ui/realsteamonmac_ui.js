@@ -239,7 +239,6 @@
   function buildContainerActionPayload(operation) {
     const operations = new Set([
       "open-c-drive",
-      "install-application",
       "wine-configuration",
       "controllers",
       "restart",
@@ -258,6 +257,17 @@
 
   function buildChooseFilePayload() {
     return encodeActionPayload([["action", "choose-file"]]);
+  }
+
+  function buildInspectStatePayload() {
+    return encodeActionPayload([["action", "inspect-state"]]);
+  }
+
+  function nativeActionSectionsVisible(value) {
+    return (
+      value?.installed === true &&
+      value?.container_exists === true
+    );
   }
 
   async function chooseWindowsExecutableWithSteam(
@@ -289,10 +299,17 @@
         return selected || null;
       }
       if (Array.isArray(selected)) {
-        const first = selected.find(
-          (value) => typeof value === "string" && value,
-        );
-        return first ?? null;
+        for (const value of selected) {
+          if (typeof value === "string" && value) {
+            return value;
+          }
+          const objectPath =
+            value?.strPath ?? value?.path ?? value?.strFileName;
+          if (typeof objectPath === "string" && objectPath) {
+            return objectPath;
+          }
+        }
+        return null;
       }
       const objectPath =
         selected?.strPath ??
@@ -336,7 +353,7 @@
 
   const NATIVE_COMPAT_SECTION_LABELS = Object.freeze([
     "兼容性选项",
-    "安装 Windows 组件",
+    "安装应用程序到容器",
     "容器操作",
     "运行命令",
     "最近操作状态",
@@ -889,6 +906,7 @@
       buildChooseFilePayload,
       buildContainerActionPayload,
       buildDependencyPayload,
+      buildInspectStatePayload,
       buildJobUrl,
       buildRunCommandPayload,
       chooseWindowsExecutableWithSteam,
@@ -899,6 +917,7 @@
       mergeCompatTools,
       normalizeControlConfig,
       normalizeDependencyCatalog,
+      nativeActionSectionsVisible,
       NATIVE_COMPAT_SECTION_LABELS,
       refreshAppActionComponents,
       reconcileCompatDetails,
@@ -1188,26 +1207,19 @@
       return controlConfigs.get(appid);
     }
     const key = String(appid);
-    const renderer =
-      rendererForCompatTool(
-        compatSelections.get(appid),
-        projectCompatTools,
-      ) ?? CONTROL_DEFAULTS.renderer;
     const stored = Object.prototype.hasOwnProperty.call(
       storedControlConfigs,
       key,
     )
       ? storedControlConfigs[key]
       : null;
-    const selectedTool =
-      compatToolRecord(
-        compatSelections.get(appid),
-        projectCompatTools,
-      ) ??
-      projectCompatTools.find(
-        (tool) => tool.renderer === renderer,
-      ) ??
-      null;
+    const selectedTool = compatToolRecord(
+      compatSelections.get(appid),
+      projectCompatTools,
+    );
+    const renderer =
+      selectedTool?.renderer ??
+      normalizeControlConfig(stored).renderer;
     const normalized = applyToolCapabilities(
       {
         ...stored,
@@ -1428,6 +1440,24 @@
       );
     }
     throw new Error("native action timed out");
+  }
+
+  async function inspectNativeActionState(appid) {
+    const jobId = await startNativeAction(
+      appid,
+      buildInspectStatePayload(),
+    );
+    const job = await waitForNativeActionJob(appid, jobId);
+    if (
+      job.state !== "completed" ||
+      typeof job.result?.installed !== "boolean" ||
+      typeof job.result?.container_exists !== "boolean"
+    ) {
+      throw new Error(
+        job.message || "native action availability is invalid",
+      );
+    }
+    return job.result;
   }
 
   async function runNativeAction(appid, payload, label) {
@@ -1778,6 +1808,10 @@
         React.useState("");
       const [commandEnvironment, setCommandEnvironment] =
         React.useState("");
+      const [commandExpanded, setCommandExpanded] =
+        React.useState(false);
+      const [actionAvailability, setActionAvailability] =
+        React.useState(null);
       const [dependencyId, setDependencyId] = React.useState(
         dependencies[0]?.id ?? "",
       );
@@ -1813,6 +1847,25 @@
       }, [appid]);
 
       React.useEffect(() => {
+        let active = true;
+        void inspectNativeActionState(appid)
+          .then((result) => {
+            if (active) {
+              setActionAvailability(result);
+            }
+          })
+          .catch((error) => {
+            if (active) {
+              setActionAvailability(null);
+            }
+            status.nativeCompatLastError = String(error);
+          });
+        return () => {
+          active = false;
+        };
+      }, [appid]);
+
+      React.useEffect(() => {
         setValue((current) =>
           applyToolCapabilities(
             {
@@ -1835,6 +1888,14 @@
         });
         await runNativeAction(appid, payload, label);
         setActivity({ ...actionStateFor(appid) });
+        try {
+          setActionAvailability(
+            await inspectNativeActionState(appid),
+          );
+        } catch (error) {
+          setActionAvailability(null);
+          status.nativeCompatLastError = String(error);
+        }
       };
 
       const saveToggle = async (key, enabled) => {
@@ -1884,6 +1945,8 @@
         (dependency) => dependency.id === dependencyId,
       );
       const actionDisabled = !compatEnabled || busy;
+      const actionSectionsVisible =
+        nativeActionSectionsVisible(actionAvailability);
       const deleteNeedsConfirmation =
         containerOperation === "delete-container";
       const containerDisabled =
@@ -1914,7 +1977,8 @@
               ),
             ],
           }),
-          jsx.jsxs(components.XY, {
+          actionSectionsVisible
+            ? jsx.jsxs(components.XY, {
             label: NATIVE_COMPAT_SECTION_LABELS[1],
             children: [
               jsx.jsx(components.Vb, {
@@ -1942,8 +2006,10 @@
                 }
               }, actionDisabled || !selectedDependency),
             ],
-          }),
-          jsx.jsxs(components.XY, {
+            })
+            : null,
+          actionSectionsVisible
+            ? jsx.jsxs(components.XY, {
             label: NATIVE_COMPAT_SECTION_LABELS[2],
             children: [
               jsx.jsx(components.Vb, {
@@ -1974,53 +2040,70 @@
                 );
               }, containerDisabled),
             ],
-          }),
-          jsx.jsxs(components.XY, {
+            })
+            : null,
+          actionSectionsVisible
+            ? jsx.jsxs(components.XY, {
             label: NATIVE_COMPAT_SECTION_LABELS[3],
             children: [
-              jsx.jsx(components.pd, {
-                className: styles.TopGap,
-                label: "命令",
-                placeholder:
-                  "cmd、regedit、C:\\path\\tool.exe 或文档",
-                spellCheck: false,
-                value: target,
-                onChange: (event) => setTarget(event.target.value),
-              }),
-              nativeButton("浏览...", () => {
-                void browseTarget();
-              }, actionDisabled),
-              jsx.jsx(components.pd, {
-                className: styles.TopGap,
-                label: "参数",
-                placeholder: '/c echo "hello"',
-                spellCheck: false,
-                value: commandArguments,
-                onChange: (event) =>
-                  setCommandArguments(event.target.value),
-              }),
-              jsx.jsx(components.pd, {
-                className: styles.TopGap,
-                label: "环境变量，每行 NAME=VALUE",
-                placeholder: "DXVK_HUD=fps",
-                spellCheck: false,
-                value: commandEnvironment,
-                onChange: (event) =>
-                  setCommandEnvironment(event.target.value),
-              }),
-              nativeButton("运行", () => {
-                void runAction(
-                  buildRunCommandPayload({
-                    target,
-                    arguments: commandArguments,
-                    environment: commandEnvironment,
-                  }),
-                  "运行命令",
-                );
-              }, actionDisabled),
+              nativeButton("运行命令...", () => {
+                setCommandExpanded(true);
+              }, actionDisabled || commandExpanded),
+              commandExpanded
+                ? jsx.jsxs(jsx.Fragment, {
+                    children: [
+                      jsx.jsx(components.pd, {
+                        className: styles.TopGap,
+                        label: "命令",
+                        placeholder:
+                          "cmd、regedit、C:\\path\\tool.exe 或文档",
+                        spellCheck: false,
+                        value: target,
+                        onChange: (event) =>
+                          setTarget(event.target.value),
+                      }),
+                      nativeButton("浏览...", () => {
+                        void browseTarget();
+                      }, actionDisabled),
+                      jsx.jsx(components.pd, {
+                        className: styles.TopGap,
+                        label: "参数",
+                        placeholder: '/c echo "hello"',
+                        spellCheck: false,
+                        value: commandArguments,
+                        onChange: (event) =>
+                          setCommandArguments(event.target.value),
+                      }),
+                      jsx.jsx(components.pd, {
+                        className: styles.TopGap,
+                        label: "环境变量，每行 NAME=VALUE",
+                        placeholder: "DXVK_HUD=fps",
+                        spellCheck: false,
+                        value: commandEnvironment,
+                        onChange: (event) =>
+                          setCommandEnvironment(event.target.value),
+                      }),
+                      nativeButton("取消", () => {
+                        setCommandExpanded(false);
+                      }, busy),
+                      nativeButton("运行", () => {
+                        void runAction(
+                          buildRunCommandPayload({
+                            target,
+                            arguments: commandArguments,
+                            environment: commandEnvironment,
+                          }),
+                          "运行命令",
+                        );
+                      }, actionDisabled),
+                    ],
+                  })
+                : null,
             ],
-          }),
-          jsx.jsxs(components.XY, {
+            })
+            : null,
+          actionSectionsVisible
+            ? jsx.jsxs(components.XY, {
             label: NATIVE_COMPAT_SECTION_LABELS[4],
             children: [
               jsx.jsx(components.pd, {
@@ -2034,7 +2117,8 @@
                     `等待操作 · AppID ${appid}`,
               }),
             ],
-          }),
+            })
+            : null,
         ],
       });
     };

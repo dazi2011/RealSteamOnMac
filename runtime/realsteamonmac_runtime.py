@@ -55,7 +55,6 @@ WINE_LOGPIXELS_VALUE = "LogPixels"
 CONTAINER_OPERATIONS = frozenset(
     (
         "open-c-drive",
-        "install-application",
         "wine-configuration",
         "controllers",
         "restart",
@@ -408,55 +407,57 @@ def steam_library_roots(steam_root=None):
     return roots
 
 
-def resolve_action_context(appid, steam_root=None):
-    appid = parse_appid(appid)
-    roots = steam_library_roots(steam_root)
-    steamapps = None
-    for library_root in roots:
-        candidate = (library_root / "steamapps").resolve()
-        compat_data = candidate / "compatdata" / str(appid)
-        if compat_data.is_symlink():
-            raise RuntimeErrorWithContext(
-                f"compatibility data path must not be a symlink: {compat_data}"
-            )
-        if compat_data.is_dir():
-            steamapps = candidate
-            break
-    if steamapps is None:
-        for library_root in roots:
-            candidate_steamapps = (library_root / "steamapps").resolve()
-            manifest = candidate_steamapps / f"appmanifest_{appid}.acf"
-            if not manifest.is_file():
-                continue
-            steamapps = candidate_steamapps
-            break
-    if steamapps is None:
-        steamapps = (roots[0] / "steamapps").resolve()
-
-    compat_data = steamapps / "compatdata" / str(appid)
-    state = compat_data / "realsteamonmac"
-    install_path = None
-    manifest = steamapps / f"appmanifest_{appid}.acf"
-    if manifest.is_file():
-        installdir = parse_app_manifest(manifest, appid)
-        candidate_install = (
-            steamapps / "common" / installdir
-        ).resolve()
-        if candidate_install.is_dir():
-            install_path = candidate_install
-    if install_path is None:
-        install_path = state
+def inspect_action_state(appid, steam_root=None):
+    try:
+        installation = find_app_installation(appid, steam_root)
+    except RuntimeErrorWithContext:
+        return {"installed": False, "container_exists": False}
+    compat_data = (
+        installation["steamapps"]
+        / "compatdata"
+        / str(installation["appid"])
+    )
+    if compat_data.is_symlink():
+        return {"installed": True, "container_exists": False}
+    prefix = compat_data / "pfx"
     return {
-        "appid": appid,
+        "installed": True,
+        "container_exists": prefix.is_dir() and not prefix.is_symlink(),
+    }
+
+
+def resolve_existing_action_context(appid, steam_root=None):
+    installation = find_app_installation(appid, steam_root)
+    compat_data = (
+        installation["steamapps"]
+        / "compatdata"
+        / str(installation["appid"])
+    )
+    if compat_data.is_symlink():
+        raise RuntimeErrorWithContext(
+            f"compatibility data path must not be a symlink: {compat_data}"
+        )
+    compat_data = compat_data.resolve()
+    prefix = compat_data / "pfx"
+    if prefix.is_symlink() or not prefix.is_dir():
+        raise RuntimeErrorWithContext(
+            f"container has not been created for AppID {installation['appid']}"
+        )
+    state = compat_data / "realsteamonmac"
+    return {
+        "appid": installation["appid"],
         "executable": None,
-        "working_directory": install_path,
-        "install_path": install_path,
-        "steamapps": steamapps,
+        "working_directory": installation["install_path"],
+        "install_path": installation["install_path"],
+        "steamapps": installation["steamapps"],
         "compat_data": compat_data,
-        "prefix": compat_data / "pfx",
+        "prefix": prefix,
         "state": state,
         "config": state / "config.json",
-        "global_config": default_app_config_root() / f"{appid}.json",
+        "global_config": (
+            default_app_config_root()
+            / f"{installation['appid']}.json"
+        ),
         "logs": state / "logs",
     }
 
@@ -1969,6 +1970,7 @@ def parse_action_payload(payload):
         "install-dependency": {"action", "dependency"},
         "container": {"action", "operation"},
         "choose-file": {"action"},
+        "inspect-state": {"action"},
     }
     if action not in allowed or set(fields) != allowed[action]:
         raise RuntimeErrorWithContext(
@@ -1988,6 +1990,10 @@ def resolve_command_target(context, target):
     raw = target.strip()
     if not raw:
         candidate = context["executable"]
+        if candidate is None:
+            raise RuntimeErrorWithContext(
+                "run-command target is required"
+            )
     elif re.match(r"^[A-Za-z]:[\\/]", raw):
         drive = raw[0].lower()
         relative = raw[3:].replace("\\", "/")
@@ -2246,6 +2252,21 @@ def run_job_process(context, command, environment, log_path, description):
             stdout=stream,
             stderr=subprocess.STDOUT,
             check=False,
+        )
+
+
+def start_job_process(context, command, environment, log_path, description):
+    with open_private_log(log_path) as stream:
+        stream.write(f"\n[{utc_timestamp()}] {description}\n")
+        stream.write(f"$ {shlex.join(str(part) for part in command)}\n")
+        stream.flush()
+        return subprocess.Popen(
+            [str(part) for part in command],
+            cwd=str(context["install_path"]),
+            env=environment,
+            stdout=stream,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
         )
 
 
@@ -2838,17 +2859,18 @@ def execute_run_command_action(context, runtime_root, fields, log_path):
             "arguments_text": fields["arguments"],
         },
     )
-    result = run_job_process(
+    process = start_job_process(
         context,
         plan["command"],
         environment,
         log_path,
         "run command",
     )
-    return result.returncode, {
+    return 0, {
         "kind": plan["kind"],
         "target": plan["target"],
         "renderer": config["renderer"],
+        "pid": process.pid,
     }
 
 
@@ -3052,10 +3074,6 @@ def execute_choose_file_action(context):
 
 def execute_container_action(context, runtime_root, fields, log_path):
     operation = fields["operation"]
-    if operation == "install-application":
-        raise RuntimeErrorWithContext(
-            "install application must use the reviewed component catalog"
-        )
     if operation == "open-c-drive":
         config = load_config(context)
         drive_c = context["prefix"] / "drive_c"
@@ -3127,6 +3145,25 @@ def execute_container_action(context, runtime_root, fields, log_path):
             "recovery_path": "",
         }
 
+    if operation == "quit-all":
+        _, _, wine_root, _, _ = load_selected_package(
+            runtime_root, config
+        )
+        environment = build_environment(
+            context, config, wine_root
+        )
+        result = run_job_process(
+            context,
+            [wine_root / "bin" / "wineserver", "-k"],
+            environment,
+            log_path,
+            f"container operation {operation}",
+        )
+        return result.returncode, {
+            "operation": operation,
+            "renderer": config["renderer"],
+        }
+
     _, _, wine_root, wine64, environment = prepare(
         context, runtime_root, config
     )
@@ -3149,7 +3186,20 @@ def execute_container_action(context, runtime_root, fields, log_path):
     elif operation == "task-manager":
         command = [wine64, "taskmgr"]
     else:
-        command = [wine_root / "bin" / "wineserver", "-k"]
+        command = [wine64, "wineboot", "--restart"]
+    if operation in {"wine-configuration", "task-manager"}:
+        process = start_job_process(
+            context,
+            command,
+            environment,
+            log_path,
+            f"container operation {operation}",
+        )
+        return 0, {
+            "operation": operation,
+            "renderer": config["renderer"],
+            "pid": process.pid,
+        }
     result = run_job_process(
         context,
         command,
@@ -3180,13 +3230,26 @@ def action_job(args):
             started_at=started_at,
             log_path=str(paths["log"]),
         )
-        if action == "choose-file":
+        if action in {"choose-file", "inspect-state"}:
             context = None
         else:
-            context = resolve_action_context(appid)
+            context = resolve_existing_action_context(appid)
         runtime_root = Path(args.runtime_root).expanduser().resolve()
         if action == "choose-file":
             exit_code, result = execute_choose_file_action(context)
+        elif action == "inspect-state":
+            exit_code, result = 0, inspect_action_state(appid)
+        elif (
+            action == "container"
+            and fields["operation"] == "quit-all"
+        ):
+            exit_code, result = execute_container_action(
+                context, runtime_root, fields, paths["log"]
+            )
+            if exit_code != 0:
+                raise RuntimeErrorWithContext(
+                    f"container operation exited with {exit_code}"
+                )
         else:
             context["state"].mkdir(parents=True, exist_ok=True)
             context["state"].chmod(0o700)

@@ -1470,11 +1470,10 @@
   `execute_run_command_action()` nor `execute_container_action()` ran. The
   common defect was the unconditional game-launch context resolution before
   action dispatch, not the Steam controls, loopback server, token, or Wine.
-- Runtime actions now resolve an AppID-scoped action context independently of
-  a launchable game. Existing compatdata wins, an appmanifest selects its
-  library when present, and otherwise a private prefix is created in the
-  default Steam library. Relative game paths still use an existing install
-  directory, while built-ins and absolute external EXEs need no game EXE.
+- The first action-context repair temporarily allowed an uninstalled AppID to
+  fall back to the default Steam library. That policy was superseded before
+  live acceptance: utility actions now require a complete Steam installation
+  and an existing PFX, and the permissive resolver was deleted.
 - Open C Drive initializes a missing prefix before invoking Finder and rejects
   symlinked compatdata or `drive_c`. The Finder and AppleScript helper paths
   strip Wine, Steam compatibility, renderer, and `DYLD_*` variables.
@@ -1483,6 +1482,21 @@
   configured tool back into the active Steam selection; and persistence
   rewrote snapshots from only the currently managed set. All three could
   reset or resurrect settings after disable/re-enable or registry rediscovery.
+- Creating a default prefix for an uninstalled AppID was the wrong repair
+  policy. The native page now submits a read-only `inspect-state` job; only a
+  complete Steam installation with an existing, non-symlink PFX exposes
+  component installation, container operations, Run Command, and recent
+  action status. The runtime independently rejects attempts to bypass that UI
+  gate and the probe does not create compatdata.
+- `Run Command` is a Win+R-style launcher, not a process supervisor. Waiting
+  for `cmd`, Wine configuration, or Task Manager to exit held the prefix lock
+  and made later buttons appear dead. These actions now complete after process
+  creation, while `quit-all` bypasses the lock and can terminate a still-open
+  synchronous Wine `joy.cpl` controller action.
+- The old literal container operation `install-application` was accepted by
+  the parser but always failed. It has been removed. The native section is now
+  named `安装应用程序到容器` and routes only to the reviewed dependency
+  catalog through `action=install-dependency`.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

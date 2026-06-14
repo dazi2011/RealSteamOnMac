@@ -13,6 +13,7 @@ const {
   buildDependencyPayload,
   buildContainerActionPayload,
   buildChooseFilePayload,
+  buildInspectStatePayload,
   buildJobUrl,
   buildManagedAppSet,
   buildControlPayload,
@@ -32,6 +33,7 @@ const {
   mergeCompatTools,
   normalizeControlConfig,
   normalizeDependencyCatalog,
+  nativeActionSectionsVisible,
   NATIVE_COMPAT_SECTION_LABELS,
   refreshAppActionComponents,
   reconcileCompatDetails,
@@ -206,6 +208,34 @@ test("builds the fixed native control request shape", () => {
   );
 });
 
+test("builds a read-only native action availability request", () => {
+  assert.equal(buildInspectStatePayload(), "action=inspect-state");
+});
+
+test("shows container-dependent native sections only for an existing container", () => {
+  assert.equal(
+    nativeActionSectionsVisible({
+      installed: true,
+      container_exists: true,
+    }),
+    true,
+  );
+  assert.equal(
+    nativeActionSectionsVisible({
+      installed: true,
+      container_exists: false,
+    }),
+    false,
+  );
+  assert.equal(
+    nativeActionSectionsVisible({
+      installed: false,
+      container_exists: true,
+    }),
+    false,
+  );
+});
+
 test("builds fixed native action and job request shapes", () => {
   assert.equal(
     buildActionUrl(
@@ -323,6 +353,20 @@ test("uses Steam's native file dialog for Windows command targets", async () => 
       SteamClient: {
         System: {
           async OpenFileDialog() {
+            return [
+              { strPath: "/Volumes/Games/array-portable.exe" },
+            ];
+          },
+        },
+      },
+    }),
+    "/Volumes/Games/array-portable.exe",
+  );
+  assert.equal(
+    await chooseWindowsExecutableWithSteam({
+      SteamClient: {
+        System: {
+          async OpenFileDialog() {
             throw new Error("dialog unavailable");
           },
         },
@@ -398,7 +442,7 @@ test("requires Steam-owned React controls for compatibility actions", () => {
 test("uses native Steam sections in the required compatibility-page order", () => {
   assert.deepEqual(NATIVE_COMPAT_SECTION_LABELS, [
     "兼容性选项",
-    "安装 Windows 组件",
+    "安装应用程序到容器",
     "容器操作",
     "运行命令",
     "最近操作状态",
@@ -408,7 +452,15 @@ test("uses native Steam sections in the required compatibility-page order", () =
     NATIVE_COMPAT_SECTION_LABELS.length,
   );
   assert.doesNotMatch(source, /jsx\.jsxs\(components\.nB/);
-  assert.doesNotMatch(source, /安装应用程序到容器/);
+  assert.doesNotMatch(source, /安装 Windows 组件/);
+});
+
+test("uses a native button to expand the run-command secondary controls", () => {
+  assert.match(source, /const \[commandExpanded, setCommandExpanded\]/);
+  assert.match(source, /nativeButton\("运行命令\.\.\."/);
+  assert.match(source, /commandExpanded\s*\?/);
+  assert.match(source, /nativeButton\("取消"/);
+  assert.doesNotMatch(source, /realsteamonmac-command-modal/);
 });
 
 test("production UI source contains no handcrafted compatibility controls", () => {

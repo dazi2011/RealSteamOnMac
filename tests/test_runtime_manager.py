@@ -444,21 +444,7 @@ class RuntimeManagerTests(unittest.TestCase):
             self.steamapps.resolve() / "compatdata" / "1118200",
         )
 
-    def test_resolves_action_context_without_an_app_manifest(self):
-        (self.steamapps / "appmanifest_1118200.acf").unlink()
-        self.executable.unlink()
-
-        context = runtime.resolve_action_context("1118200")
-
-        self.assertEqual(context["appid"], 1118200)
-        self.assertIsNone(context["executable"])
-        self.assertEqual(
-            context["compat_data"],
-            self.steamapps.resolve() / "compatdata" / "1118200",
-        )
-        self.assertEqual(context["install_path"], context["state"])
-
-    def test_action_context_rejects_linked_compatibility_data(self):
+    def test_existing_action_context_rejects_linked_compatibility_data(self):
         compat_data = self.steamapps / "compatdata" / "1118200"
         compat_data.parent.mkdir()
         compat_data.symlink_to(self.root, target_is_directory=True)
@@ -467,7 +453,7 @@ class RuntimeManagerTests(unittest.TestCase):
             runtime.RuntimeErrorWithContext,
             "must not be a symlink",
         ):
-            runtime.resolve_action_context("1118200")
+            runtime.resolve_existing_action_context("1118200")
 
     def test_rejects_staged_only_installation_context(self):
         self.executable.unlink()
@@ -634,6 +620,16 @@ class RuntimeManagerTests(unittest.TestCase):
             runtime.parse_action_payload("action=choose-file"),
             {"action": "choose-file"},
         )
+        self.assertEqual(
+            runtime.parse_action_payload("action=inspect-state"),
+            {"action": "inspect-state"},
+        )
+        with self.assertRaisesRegex(
+            runtime.RuntimeErrorWithContext, "operation is unsupported"
+        ):
+            runtime.parse_action_payload(
+                "action=container&operation=install-application"
+            )
         with self.assertRaisesRegex(
             runtime.RuntimeErrorWithContext, "duplicate"
         ):
@@ -660,9 +656,9 @@ class RuntimeManagerTests(unittest.TestCase):
             ),
         ), mock.patch.object(
             runtime,
-            "run_job_process",
-            return_value=mock.Mock(returncode=0),
-        ) as run:
+            "start_job_process",
+            return_value=mock.Mock(pid=4321),
+        ) as start:
             exit_code, result = runtime.execute_container_action(
                 context,
                 self.runtime_root,
@@ -672,7 +668,7 @@ class RuntimeManagerTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(
-            run.call_args.args[1],
+            start.call_args.args[1],
             [wine64, "taskmgr"],
         )
         self.assertEqual(result["operation"], "task-manager")
@@ -1423,6 +1419,12 @@ class RuntimeManagerTests(unittest.TestCase):
         )
 
     def test_action_job_writes_private_completed_status(self):
+        (
+            self.steamapps
+            / "compatdata"
+            / "1118200"
+            / "pfx"
+        ).mkdir(parents=True)
         arguments = SimpleNamespace(
             appid="1118200",
             job_id="0123456789abcdef0123456789abcdef",
@@ -1454,7 +1456,7 @@ class RuntimeManagerTests(unittest.TestCase):
         )
         self.assertEqual(action_lock.stat().st_mode & 0o777, 0o600)
 
-    def test_action_job_runs_without_an_app_manifest(self):
+    def test_action_job_rejects_run_command_without_an_app_manifest(self):
         (self.steamapps / "appmanifest_1118200.acf").unlink()
         self.executable.unlink()
         arguments = SimpleNamespace(
@@ -1472,12 +1474,72 @@ class RuntimeManagerTests(unittest.TestCase):
             "execute_run_command_action",
             return_value=(0, {"target": "cmd.exe"}),
         ) as execute:
-            self.assertEqual(runtime.action_job(arguments), 0)
+            self.assertEqual(runtime.action_job(arguments), 1)
 
-        context = execute.call_args.args[0]
-        self.assertEqual(context["appid"], 1118200)
-        self.assertIsNone(context["executable"])
-        self.assertEqual(context["install_path"], context["state"])
+        execute.assert_not_called()
+        status = json.loads(
+            runtime.job_paths(1118200, arguments.job_id)["status"].read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(status["state"], "failed")
+        self.assertIn("manifest was not found", status["message"])
+
+    def test_inspect_state_job_does_not_create_a_prefix(self):
+        (self.steamapps / "appmanifest_1118200.acf").unlink()
+        self.executable.unlink()
+        arguments = SimpleNamespace(
+            appid="1118200",
+            job_id="33333333333333333333333333333333",
+            payload="action=inspect-state",
+            runtime_root=str(self.runtime_root),
+        )
+
+        self.assertEqual(runtime.action_job(arguments), 0)
+
+        status = json.loads(
+            runtime.job_paths(1118200, arguments.job_id)["status"].read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(status["state"], "completed")
+        self.assertEqual(
+            status["result"],
+            {"container_exists": False, "installed": False},
+        )
+        self.assertFalse(
+            (
+                self.steamapps
+                / "compatdata"
+                / "1118200"
+                / "pfx"
+            ).exists()
+        )
+
+    def test_action_job_rejects_an_installed_app_without_a_container(self):
+        arguments = SimpleNamespace(
+            appid="1118200",
+            job_id="44444444444444444444444444444444",
+            payload=(
+                "action=run-command&target=cmd&"
+                "arguments=%2Fc%20exit%200&environment="
+            ),
+            runtime_root=str(self.runtime_root),
+        )
+        with mock.patch.object(
+            runtime,
+            "execute_run_command_action",
+            return_value=(0, {"target": "cmd.exe"}),
+        ) as execute:
+            self.assertEqual(runtime.action_job(arguments), 1)
+
+        execute.assert_not_called()
+        status = json.loads(
+            runtime.job_paths(1118200, arguments.job_id)["status"].read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertIn("container has not been created", status["message"])
 
     def test_choose_file_job_does_not_resolve_an_app_context(self):
         (self.steamapps / "appmanifest_1118200.acf").unlink()
@@ -1491,7 +1553,7 @@ class RuntimeManagerTests(unittest.TestCase):
 
         with mock.patch.object(
             runtime,
-            "resolve_action_context",
+            "resolve_existing_action_context",
         ) as resolve, mock.patch.object(
             runtime,
             "execute_choose_file_action",
@@ -1511,7 +1573,7 @@ class RuntimeManagerTests(unittest.TestCase):
         context = self.context()
         with mock.patch.object(
             runtime,
-            "resolve_action_context",
+            "resolve_existing_action_context",
             return_value=context,
         ), mock.patch.object(
             runtime,
@@ -1551,9 +1613,9 @@ class RuntimeManagerTests(unittest.TestCase):
             ),
         ), mock.patch.object(
             runtime,
-            "run_job_process",
-            return_value=mock.Mock(returncode=0),
-        ) as run:
+            "start_job_process",
+            return_value=mock.Mock(pid=4321),
+        ) as start:
             exit_code, result = runtime.execute_run_command_action(
                 context,
                 self.runtime_root,
@@ -1568,7 +1630,7 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(result["renderer"], "dxmt")
         self.assertEqual(
-            run.call_args.args[1],
+            start.call_args.args[1],
             [
                 wine64,
                 self.executable.resolve(),
@@ -1577,9 +1639,80 @@ class RuntimeManagerTests(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            run.call_args.args[2]["CUSTOM_FLAG"],
+            start.call_args.args[2]["CUSTOM_FLAG"],
             "value",
         )
+
+    def test_run_command_requires_an_explicit_target_for_action_context(self):
+        context = self.context()
+        context["executable"] = None
+
+        with self.assertRaisesRegex(
+            runtime.RuntimeErrorWithContext,
+            "run-command target is required",
+        ):
+            runtime.resolve_command_target(context, "")
+
+    def test_run_command_starts_without_waiting_for_the_windows_process(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        with mock.patch.object(
+            runtime,
+            "prepare",
+            return_value=(
+                self.package,
+                {"package_id": "fixture"},
+                wine64.parent.parent,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+            ),
+        ), mock.patch.object(
+            runtime,
+            "start_job_process",
+            return_value=mock.Mock(pid=1234),
+        ) as start:
+            exit_code, result = runtime.execute_run_command_action(
+                context,
+                self.runtime_root,
+                {
+                    "target": "cmd",
+                    "arguments": "",
+                    "environment": "",
+                },
+                self.root / "run-command.log",
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(result["pid"], 1234)
+        self.assertEqual(start.call_args.args[1], [wine64, "cmd.exe"])
+
+    def test_quit_all_does_not_prepare_or_take_the_action_lock(self):
+        (
+            self.steamapps
+            / "compatdata"
+            / "1118200"
+            / "pfx"
+        ).mkdir(parents=True)
+        arguments = SimpleNamespace(
+            appid="1118200",
+            job_id="55555555555555555555555555555555",
+            payload="action=container&operation=quit-all",
+            runtime_root=str(self.runtime_root),
+        )
+        with mock.patch.object(
+            runtime,
+            "execute_container_action",
+            return_value=(0, {"operation": "quit-all"}),
+        ) as execute, mock.patch.object(
+            runtime.fcntl,
+            "flock",
+        ) as flock:
+            self.assertEqual(runtime.action_job(arguments), 0)
+
+        execute.assert_called_once()
+        flock.assert_not_called()
 
     def test_run_command_builds_builtin_batch_and_association_plans(self):
         context = self.context()
@@ -1744,24 +1877,6 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(native_environment["PATH"], "/usr/bin:/bin")
         self.assertNotIn("WINEPREFIX", native_environment)
         self.assertNotIn("DYLD_INSERT_LIBRARIES", native_environment)
-
-    def test_install_application_routes_to_the_reviewed_catalog(self):
-        context = self.context()
-        with mock.patch.object(runtime, "prepare") as prepare, mock.patch.object(
-            runtime, "choose_executable_file"
-        ) as choose:
-            with self.assertRaisesRegex(
-                runtime.RuntimeErrorWithContext,
-                "reviewed component catalog",
-            ):
-                runtime.execute_container_action(
-                    context,
-                    self.runtime_root,
-                    {"operation": "install-application"},
-                    self.root / "install-application.log",
-                )
-        prepare.assert_not_called()
-        choose.assert_not_called()
 
     def test_dependency_action_writes_a_private_prefix_receipt(self):
         context = self.context()

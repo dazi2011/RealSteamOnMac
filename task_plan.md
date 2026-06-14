@@ -399,6 +399,9 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Commit compatibility selections only after authenticated native registry sync | Steam remains the control owner; the data-only fallback stabilizes checkbox/dropdown state, while delayed original-API writes persist mappings without racing startup. Successful writes are cached and failures leave project state unchanged; native tool registration is still a separate unresolved gate. |
 | Scale Wine's game-controller panel without touching Steam Input | The requested controller interface is `wine64 control.exe joy.cpl`. Temporarily raise that prefix's `LogPixels` to at least 192 while the panel runs, restore the exact prior value on every normal or failed exit, and keep Steam's native controller configurator completely untouched. |
 | Reject the constructor-wide `CCompatManager +0x798` force-enable patch | It makes the startup-only local-tool job active but also enables unrelated Linux-only manager paths and reproducibly triggers `CSteamEngine::BMainLoop` stalls on build `1780965181`. |
+| Never create a prefix from compatibility-page utility actions | A complete Steam installation and an existing non-symlink `compatdata/<appid>/pfx` are now required for component installation, container management, and Run Command. Uninstalled or not-yet-launched games expose only compatibility selection/options. |
+| Model Run Command as a Steam-native secondary section | The compatibility page shows one native `运行命令...` button and expands Valve-owned input/button controls in place. No overlay, custom modal, or replacement UI is introduced. |
+| Let recovery escape long-running interactive actions | Run Command, Wine configuration, and Task Manager return after successful process creation; `quit-all` bypasses the per-prefix action lock so it can stop a still-open Wine controller panel or application. |
 
 ## Errors Encountered
 
