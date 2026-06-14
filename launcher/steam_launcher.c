@@ -314,6 +314,19 @@ static pid_t find_process_by_executable_path(const char *expected_path) {
   return found;
 }
 
+static bool process_is_alive(pid_t pid) {
+  if (pid <= 0) {
+    return false;
+  }
+  struct proc_bsdinfo information;
+  int bytes = proc_pidinfo(
+      pid, PROC_PIDTBSDINFO, 0, &information, sizeof(information));
+  if (bytes == (int)sizeof(information)) {
+    return information.pbi_status != SZOMB;
+  }
+  return false;
+}
+
 static void drain_stale_native_ipcserver(const char *expected_path) {
   if (process_name_exists("steam_osx")) {
     return;
@@ -334,13 +347,12 @@ static void drain_stale_native_ipcserver(const char *expected_path) {
   unsigned int polls = 0;
   while (
       polls < IPCSERVER_DRAIN_MAX_POLLS &&
-      find_process_by_executable_path(expected_path) > 0
+      process_is_alive(pid)
   ) {
     usleep(HELPER_DRAIN_INTERVAL_US);
     ++polls;
   }
-  pid = find_process_by_executable_path(expected_path);
-  if (pid > 0) {
+  if (process_is_alive(pid)) {
     log_line(
         "stale native Steam ipcserver pid %d did not exit after %u ms",
         pid, polls * (HELPER_DRAIN_INTERVAL_US / 1000));

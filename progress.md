@@ -2072,3 +2072,19 @@
   current release output contains only Install and Uninstall packages, while
   an existing `install-state.json` still records build `1780965181`. This is a
   tracked release blocker, not a completed feature.
+- Deployed the `1781212412` engine and launcher into the live Steam
+  installation. Repository and installed hook hashes match, both Steam app
+  signatures verify, and the new session remained alive beyond the delayed
+  injection window.
+- Live logs prove the exact new profile is active: the installation gate
+  patched with `build=1781212412`, the allowlist-scoped spawn redirect
+  installed, 34 managed AppIDs registered, and the data reconciliation worker
+  patched the remaining tracked objects. Steam Cloud restore jobs completed
+  normally for the observed platform changes.
+- The same launch exposed a double-launch IPC race: a replacement native
+  `ipcserver` appeared while the first launcher was waiting for the stale PID
+  it had terminated. Added a delayed-exit/replacement fixture and changed the
+  drain loop to track only the original PID using BSD process status.
+- `tests/test_steam_launcher.sh` now proves the old updater-deleted PID exits,
+  the replacement native `ipcserver` remains alive, the fake CrossOver
+  `ipcserver` remains alive, and no false five-second timeout is logged.

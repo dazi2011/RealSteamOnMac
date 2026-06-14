@@ -8,6 +8,7 @@ SOURCE="$ROOT/launcher/steam_launcher.c"
 TMP_ROOT=$(mktemp -d)
 NATIVE_IPC_PID=
 CROSSOVER_IPC_PID=
+NEW_NATIVE_IPC_PID=
 cleanup() {
     if [ -n "$NATIVE_IPC_PID" ]; then
         kill "$NATIVE_IPC_PID" >/dev/null 2>&1 || true
@@ -16,6 +17,10 @@ cleanup() {
     if [ -n "$CROSSOVER_IPC_PID" ]; then
         kill "$CROSSOVER_IPC_PID" >/dev/null 2>&1 || true
         wait "$CROSSOVER_IPC_PID" 2>/dev/null || true
+    fi
+    if [ -n "$NEW_NATIVE_IPC_PID" ]; then
+        kill "$NEW_NATIVE_IPC_PID" >/dev/null 2>&1 || true
+        wait "$NEW_NATIVE_IPC_PID" 2>/dev/null || true
     fi
     rm -rf "$TMP_ROOT"
 }
@@ -82,18 +87,31 @@ printf '%s' \
 
 NATIVE_IPC="$HOME_ROOT/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/ipcserver"
 CROSSOVER_IPC="$TMP_ROOT/CrossOver Preview.app/Contents/SharedSupport/CrossOver/bin/ipcserver"
+IPC_FIXTURE="$TMP_ROOT/ipcserver"
 mkdir -p "$(dirname "$NATIVE_IPC")" "$(dirname "$CROSSOVER_IPC")"
-cp /bin/sleep "$NATIVE_IPC"
+xcrun clang \
+    -Wall \
+    -Wextra \
+    -Werror \
+    -Os \
+    -o "$IPC_FIXTURE" \
+    "$ROOT/tests/fixtures/ipcserver_lifecycle_fixture.c"
+cp "$IPC_FIXTURE" "$NATIVE_IPC"
 cp /bin/sleep "$CROSSOVER_IPC"
-"$NATIVE_IPC" 30 &
+"$NATIVE_IPC" stale &
 NATIVE_IPC_PID=$!
 # Steam's self-updater renames the still-running executable before replacing
 # it. The process name remains ipcserver while proc_pidpath reports .old.
 mv "$NATIVE_IPC" "$NATIVE_IPC.old"
-cp /bin/sleep "$NATIVE_IPC"
+cp "$IPC_FIXTURE" "$NATIVE_IPC"
 rm "$NATIVE_IPC.old"
 "$CROSSOVER_IPC" 30 &
 CROSSOVER_IPC_PID=$!
+(
+    sleep 0.35
+    exec "$NATIVE_IPC" current
+) &
+NEW_NATIVE_IPC_PID=$!
 sleep 0.1
 
 HELPER_PID=
@@ -119,8 +137,14 @@ fi
 wait "$NATIVE_IPC_PID" 2>/dev/null || true
 NATIVE_IPC_PID=
 kill -0 "$CROSSOVER_IPC_PID"
+kill -0 "$NEW_NATIVE_IPC_PID"
 grep -Fq 'stale native Steam ipcserver drained after' \
     "$HOME_ROOT/Library/Logs/RealSteamOnMac/launcher.log"
+if grep -Fq 'did not exit after' \
+    "$HOME_ROOT/Library/Logs/RealSteamOnMac/launcher.log"; then
+    echo "launcher waited on the replacement native ipcserver" >&2
+    exit 1
+fi
 
 if [ -n "$HELPER_PID" ]; then
     wait "$HELPER_PID"

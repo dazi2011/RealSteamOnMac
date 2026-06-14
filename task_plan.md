@@ -213,6 +213,12 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   whose recorded Steam build differs after Valve self-update. This remains an
   explicit release blocker rather than being treated as covered by direct
   injection deployment.
+- **Concurrent restart checkpoint:** a second launcher can start a new native
+  `ipcserver` while the first launcher is still draining the stale one. The
+  drain now follows only the originally matched PID and treats its zombie state
+  as exited, so the replacement process is neither terminated nor mistaken for
+  the stale target. The delayed replacement fixture passes while the fake
+  CrossOver process remains alive.
 - **Component-recipe checkpoint:** the runtime now accepts only three bounded
   installer strategies (`exe`, `msi`, and the fixed DirectX redistributable
   flow), validates prerequisite graphs, prefix-relative files, and restricted

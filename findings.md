@@ -1440,6 +1440,16 @@
   `RealSteamOnMac-Update.pkg`. The existing installer correctly refuses to
   reuse an old recorded build state after Valve self-update, so a transactional
   in-place update path and fresh rollback snapshot remain required.
+- Live build `1781212412` acceptance exposed a launcher concurrency race:
+  after terminating stale PID `46147`, a nearly simultaneous second launch
+  created current PID `47450` at the same exact executable path. The old wait
+  loop repeatedly searched by path, switched targets, and incorrectly logged
+  that PID `47450` had not exited after five seconds even though the intended
+  stale process was gone.
+- The launcher now captures the stale PID once and polls that PID's BSD status
+  through `proc_pidinfo(PROC_PIDTBSDINFO)`. It treats zombies as exited and
+  never transfers the drain wait to a replacement `ipcserver`; exact-path
+  discovery and CrossOver exclusion remain unchanged.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
