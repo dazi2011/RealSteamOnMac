@@ -150,7 +150,7 @@ Phase 8: 2026-06-11 field regression remediation and verified release
 - [ ] Allow Steam's add-non-Steam-game flow to accept `.exe` files while
       preserving native `.app` behavior and applying compatibility only to PE
       executables.
-- [x] Make Run Command behave like Windows Run, fix EXE selection persistence,
+- [ ] Make Run Command behave like Windows Run, fix EXE selection persistence,
       and open the selected prefix drive in Finder.
 - [x] Merge Windows component installation into Install Application To
       Container and provide a reviewed, checksum-pinned dependency catalog.
@@ -170,18 +170,20 @@ Phase 8: 2026-06-11 field regression remediation and verified release
 - [ ] Update bilingual README and research/handoff evidence, build signed
       release artifacts, publish the release, and confirm remote hashes.
 - **Status:** in progress
-- **Run/Container checkpoint:** the runtime now has Windows-style argument
-  parsing and typed plans for built-ins, PE files, batch files, control-panel
-  applets, documents, URLs, and external installers. Steam's native
-  `OpenFileDialog` is wired for EXE/BAT/CMD selection, Finder receives the
-  exact prefix `drive_c`, and Install Application routes to the reviewed
-  catalog.
-- **Native-controls checkpoint:** the compatibility page now renders all
-  project actions through Steam's existing React control constructors. Live
-  acceptance used the native MSync toggle, EXE picker, Run button, component
-  and container dropdowns, and Open C Drive action. The remaining work in this
-  area includes grouping the three native action areas into the requested
-  bottom-of-page order; it does not permit replacement UI.
+- **Run/Container checkpoint:** live jobs for uninstalled AppID `654310`
+  proved that the action endpoint and hook were healthy but every command was
+  rejected before dispatch by `resolve_app_context()`. Actions now use a
+  separate AppID/container context that can initialize a prefix without an
+  appmanifest or game EXE; file selection bypasses game context entirely and
+  native helper processes receive a scrubbed environment. Automated coverage
+  passes, but installed Steam acceptance is still required before this item
+  can be checked again.
+- **Native-controls checkpoint:** the compatibility page renders all project
+  actions through Steam's existing React control constructors. The section
+  order is complete, but the prior live-action acceptance claim was invalid:
+  seven real jobs for AppID `654310` all failed before entering their command
+  handlers. The corrected runtime and EXE picker remain pending installed
+  acceptance; replacement UI is still prohibited.
 - **Native-registration checkpoint:** current beta arm64 Steam constructs its
   local-tool loader only once during `CCompatManager` startup. Forcing the
   manager-wide Linux capability byte or supplying a valid local-tool path both
@@ -225,6 +227,12 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   Components, Container Actions, Run Command, and Recent Activity. The first
   three requested action areas therefore remain Steam-owned controls and
   appear in the requested bottom-of-page order.
+- **Compatibility preference checkpoint:** disabling Steam's force-tool
+  control no longer clears MSync, Retina, Metal HUD, MetalFX, DXR, or AVX
+  preferences. Backend configuration loads cannot silently re-enable the
+  force-tool control, and temporary registry removal preserves per-AppID
+  snapshots for later rediscovery. The first section label is now exactly
+  `兼容性选项`.
 - **Component-recipe checkpoint:** the runtime now accepts only three bounded
   installer strategies (`exe`, `msi`, and the fixed DirectX redistributable
   flow), validates prerequisite graphs, prefix-relative files, and restricted

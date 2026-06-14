@@ -2100,3 +2100,21 @@
 - Verified the exact Valve `XY` export and `label` ABI from the clean current
   SteamUI chunk. JavaScript syntax, all 81 Node tests, all 16 Python SteamUI
   tests, and the shell SteamUI patch contract pass.
+- Reproduced the user's Run Command and container failures from seven real
+  AppID `654310` job records. The hook accepted and spawned every request; the
+  installed runtime rejected each one at the appmanifest lookup before any
+  requested operation executed.
+- Added an action-only context resolver, detached file selection from game
+  launch resolution, allowed prefix initialization for uninstalled library
+  entries, and kept symlink rejection around compatdata and `drive_c`.
+- Hardened EXE selection by accepting Steam path objects/arrays, falling back
+  after native-dialog errors, and scrubbing Wine/DYLD variables from the
+  AppleScript helper.
+- Preserved compatibility option values while the Steam force-tool control is
+  disabled, stopped backend config reads from re-enabling the tool, retained
+  per-AppID snapshots across registry removal/re-addition, and renamed the
+  first native section to `兼容性选项`.
+- Passed 81 runtime-manager tests, 82 Node tests, 16 SteamUI patch tests, the
+  native compatibility-page probe contract, Python compilation, JavaScript
+  syntax validation, and `git diff --check`. Installed Steam acceptance is
+  the next gate.

@@ -5,7 +5,7 @@
     document.querySelectorAll("[role=combobox]"),
   );
   const expectedNativeControlSectionOrder = [
-    "RealSteamOnMac 兼容性选项",
+    "兼容性选项",
     "安装 Windows 组件",
     "容器操作",
     "运行命令",

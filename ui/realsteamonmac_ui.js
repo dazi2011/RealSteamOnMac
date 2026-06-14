@@ -98,6 +98,9 @@
       value,
       tool?.renderer,
     );
+    if (!tool) {
+      return normalized;
+    }
     if (!tool?.capabilities?.metalfx) {
       normalized.metalfx = false;
     }
@@ -282,11 +285,24 @@
           },
         ],
       });
-      return typeof selected === "string" && selected
-        ? selected
+      if (typeof selected === "string") {
+        return selected || null;
+      }
+      if (Array.isArray(selected)) {
+        const first = selected.find(
+          (value) => typeof value === "string" && value,
+        );
+        return first ?? null;
+      }
+      const objectPath =
+        selected?.strPath ??
+        selected?.path ??
+        selected?.strFileName;
+      return typeof objectPath === "string" && objectPath
+        ? objectPath
         : null;
     } catch {
-      return null;
+      return undefined;
     }
   }
 
@@ -319,7 +335,7 @@
   }
 
   const NATIVE_COMPAT_SECTION_LABELS = Object.freeze([
-    "RealSteamOnMac 兼容性选项",
+    "兼容性选项",
     "安装 Windows 组件",
     "容器操作",
     "运行命令",
@@ -1143,10 +1159,11 @@
   }
 
   function persistCompatSelections() {
-    const serialized = {};
+    const serialized = { ...storedCompatSelections };
     for (const [appid, tool] of compatSelections) {
       serialized[String(appid)] = tool;
     }
+    storedCompatSelections = serialized;
     globalObject.localStorage?.setItem(
       COMPAT_SELECTIONS_KEY,
       JSON.stringify(serialized),
@@ -1204,10 +1221,11 @@
   }
 
   function persistControlConfigs() {
-    const serialized = {};
+    const serialized = { ...storedControlConfigs };
     for (const [appid, value] of controlConfigs) {
       serialized[String(appid)] = normalizeControlConfig(value);
     }
+    storedControlConfigs = serialized;
     globalObject.localStorage?.setItem(
       CONTROL_CONFIGS_KEY,
       JSON.stringify(serialized),
@@ -1257,20 +1275,10 @@
       loadedTool,
     );
     controlConfigs.set(appid, loaded);
-    const tool =
-      loaded.compat_tool ||
-      compatToolForRenderer(
-        loaded.renderer,
-        projectCompatTools,
-      );
-    if (tool) {
-      compatSelections.set(appid, tool);
-    }
     nativeLoadedControlAppids.add(appid);
     status.controlNativeLoads += 1;
     status.controlLastError = null;
     persistControlConfigs();
-    persistCompatSelections();
   }
 
   async function refreshNativeControlConfigs() {

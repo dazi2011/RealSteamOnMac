@@ -444,6 +444,31 @@ class RuntimeManagerTests(unittest.TestCase):
             self.steamapps.resolve() / "compatdata" / "1118200",
         )
 
+    def test_resolves_action_context_without_an_app_manifest(self):
+        (self.steamapps / "appmanifest_1118200.acf").unlink()
+        self.executable.unlink()
+
+        context = runtime.resolve_action_context("1118200")
+
+        self.assertEqual(context["appid"], 1118200)
+        self.assertIsNone(context["executable"])
+        self.assertEqual(
+            context["compat_data"],
+            self.steamapps.resolve() / "compatdata" / "1118200",
+        )
+        self.assertEqual(context["install_path"], context["state"])
+
+    def test_action_context_rejects_linked_compatibility_data(self):
+        compat_data = self.steamapps / "compatdata" / "1118200"
+        compat_data.parent.mkdir()
+        compat_data.symlink_to(self.root, target_is_directory=True)
+
+        with self.assertRaisesRegex(
+            runtime.RuntimeErrorWithContext,
+            "must not be a symlink",
+        ):
+            runtime.resolve_action_context("1118200")
+
     def test_rejects_staged_only_installation_context(self):
         self.executable.unlink()
         (self.steamapps / "appmanifest_1118200.acf").write_text(
@@ -902,32 +927,20 @@ class RuntimeManagerTests(unittest.TestCase):
 
     def test_open_c_drive_scrubs_wine_environment(self):
         context = self.context()
-        wine64 = (
-            self.package / "wine" / "dxmt" / "bin" / "wine64"
-        ).resolve()
-        wine_root = wine64.parent.parent
         context["prefix"].mkdir(parents=True)
         (context["prefix"] / "drive_c").mkdir()
-        prepared_environment = {
-            "HOME": str(self.root),
-            "PATH": "/usr/bin:/bin",
-            "WINEPREFIX": str(context["prefix"]),
-            "WINEMSYNC": "1",
-            "STEAM_COMPAT_APP_ID": "1118200",
-            "DYLD_INSERT_LIBRARIES": "/tmp/x86_64-shim.dylib",
-            "REALSTEAMONMAC_RENDERER": "dxmt",
-        }
 
-        with mock.patch.object(
-            runtime,
-            "prepare",
-            return_value=(
-                self.package,
-                {"package_id": "fixture"},
-                wine_root,
-                wine64,
-                prepared_environment,
-            ),
+        with mock.patch.dict(
+            os.environ,
+            {
+                "HOME": str(self.root),
+                "PATH": "/usr/bin:/bin",
+                "WINEPREFIX": str(context["prefix"]),
+                "WINEMSYNC": "1",
+                "STEAM_COMPAT_APP_ID": "1118200",
+                "DYLD_INSERT_LIBRARIES": "/tmp/x86_64-shim.dylib",
+                "REALSTEAMONMAC_RENDERER": "dxmt",
+            },
         ), mock.patch.object(
             runtime,
             "run_job_process",
@@ -962,6 +975,71 @@ class RuntimeManagerTests(unittest.TestCase):
         ):
             with self.subTest(name=name):
                 self.assertNotIn(name, native_environment)
+
+    def test_open_c_drive_initializes_a_missing_directory(self):
+        context = self.context()
+        context["prefix"].mkdir(parents=True)
+
+        def initialize_prefix(
+            _context, _runtime_root, _config
+        ):
+            (context["prefix"] / "drive_c").mkdir()
+            return (
+                self.package,
+                {"package_id": "fixture"},
+                self.package / "wine" / "dxmt",
+                self.package / "wine" / "dxmt" / "bin" / "wine64",
+                {"HOME": str(self.root), "PATH": "/usr/bin:/bin"},
+            )
+
+        with mock.patch.object(
+            runtime,
+            "prepare",
+            side_effect=initialize_prefix,
+        ), mock.patch.object(
+            runtime,
+            "run_job_process",
+            return_value=mock.Mock(returncode=0),
+        ) as run:
+            exit_code, result = runtime.execute_container_action(
+                context,
+                self.runtime_root,
+                {"operation": "open-c-drive"},
+                self.root / "open-c-drive.log",
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            result["path"], str(context["prefix"] / "drive_c")
+        )
+        self.assertEqual(
+            run.call_args.args[1],
+            [
+                "/usr/bin/open",
+                "-a",
+                "Finder",
+                context["prefix"] / "drive_c",
+            ],
+        )
+
+    def test_open_c_drive_rejects_a_linked_directory(self):
+        context = self.context()
+        context["prefix"].mkdir(parents=True)
+        outside = self.root / "outside-drive"
+        outside.mkdir()
+        (context["prefix"] / "drive_c").symlink_to(
+            outside, target_is_directory=True
+        )
+        with self.assertRaisesRegex(
+            runtime.RuntimeErrorWithContext,
+            "container C drive is unavailable",
+        ):
+            runtime.execute_container_action(
+                context,
+                self.runtime_root,
+                {"operation": "open-c-drive"},
+                self.root / "open-c-drive.log",
+            )
 
     def test_run_command_resolves_external_files_and_windows_paths(self):
         context = self.context()
@@ -1376,6 +1454,53 @@ class RuntimeManagerTests(unittest.TestCase):
         )
         self.assertEqual(action_lock.stat().st_mode & 0o777, 0o600)
 
+    def test_action_job_runs_without_an_app_manifest(self):
+        (self.steamapps / "appmanifest_1118200.acf").unlink()
+        self.executable.unlink()
+        arguments = SimpleNamespace(
+            appid="1118200",
+            job_id="11111111111111111111111111111111",
+            payload=(
+                "action=run-command&target=cmd&"
+                "arguments=&environment="
+            ),
+            runtime_root=str(self.runtime_root),
+        )
+
+        with mock.patch.object(
+            runtime,
+            "execute_run_command_action",
+            return_value=(0, {"target": "cmd.exe"}),
+        ) as execute:
+            self.assertEqual(runtime.action_job(arguments), 0)
+
+        context = execute.call_args.args[0]
+        self.assertEqual(context["appid"], 1118200)
+        self.assertIsNone(context["executable"])
+        self.assertEqual(context["install_path"], context["state"])
+
+    def test_choose_file_job_does_not_resolve_an_app_context(self):
+        (self.steamapps / "appmanifest_1118200.acf").unlink()
+        self.executable.unlink()
+        arguments = SimpleNamespace(
+            appid="1118200",
+            job_id="22222222222222222222222222222222",
+            payload="action=choose-file",
+            runtime_root=str(self.runtime_root),
+        )
+
+        with mock.patch.object(
+            runtime,
+            "resolve_action_context",
+        ) as resolve, mock.patch.object(
+            runtime,
+            "execute_choose_file_action",
+            return_value=(0, {"target": "/tmp/tool.exe"}),
+        ):
+            self.assertEqual(runtime.action_job(arguments), 0)
+
+        resolve.assert_not_called()
+
     def test_container_nonzero_exit_fails_job(self):
         arguments = SimpleNamespace(
             appid="1118200",
@@ -1386,7 +1511,7 @@ class RuntimeManagerTests(unittest.TestCase):
         context = self.context()
         with mock.patch.object(
             runtime,
-            "resolve_app_context",
+            "resolve_action_context",
             return_value=context,
         ), mock.patch.object(
             runtime,
@@ -1587,6 +1712,38 @@ class RuntimeManagerTests(unittest.TestCase):
                 runtime.execute_choose_file_action(context),
                 (0, {"target": str(outside.resolve())}),
             )
+
+    def test_choose_file_scrubs_wine_and_dyld_environment(self):
+        outside = self.root / "external.exe"
+        outside.write_bytes(b"MZexternal")
+        completed = SimpleNamespace(
+            returncode=0,
+            stdout=f"{outside}\n",
+            stderr="",
+        )
+        with mock.patch.dict(
+            os.environ,
+            {
+                "HOME": str(self.root),
+                "PATH": "/usr/bin:/bin",
+                "WINEPREFIX": "/tmp/pfx",
+                "DYLD_INSERT_LIBRARIES": "/tmp/injected.dylib",
+            },
+        ), mock.patch.object(
+            runtime.subprocess,
+            "run",
+            return_value=completed,
+        ) as run:
+            self.assertEqual(
+                runtime.choose_executable_file(),
+                outside.resolve(),
+            )
+
+        native_environment = run.call_args.kwargs["env"]
+        self.assertEqual(native_environment["HOME"], str(self.root))
+        self.assertEqual(native_environment["PATH"], "/usr/bin:/bin")
+        self.assertNotIn("WINEPREFIX", native_environment)
+        self.assertNotIn("DYLD_INSERT_LIBRARIES", native_environment)
 
     def test_install_application_routes_to_the_reviewed_catalog(self):
         context = self.context()

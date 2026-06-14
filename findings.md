@@ -1464,6 +1464,25 @@
   Native registration work must therefore inspect the actual install-path
   scan root and worker result rather than reintroducing the disproved global
   Linux-capability patch.
+- Seven live action jobs for uninstalled AppID `654310` reached the native
+  hook and spawned the runtime successfully, then failed identically with
+  `Steam app manifest was not found for AppID 654310`. Neither
+  `execute_run_command_action()` nor `execute_container_action()` ran. The
+  common defect was the unconditional game-launch context resolution before
+  action dispatch, not the Steam controls, loopback server, token, or Wine.
+- Runtime actions now resolve an AppID-scoped action context independently of
+  a launchable game. Existing compatdata wins, an appmanifest selects its
+  library when present, and otherwise a private prefix is created in the
+  default Steam library. Relative game paths still use an existing install
+  directory, while built-ins and absolute external EXEs need no game EXE.
+- Open C Drive initializes a missing prefix before invoking Finder and rejects
+  symlinked compatdata or `drive_c`. The Finder and AppleScript helper paths
+  strip Wine, Steam compatibility, renderer, and `DYLD_*` variables.
+- The compatibility preference bug had three layers: a null active tool was
+  treated as supporting no capabilities; backend config load wrote the last
+  configured tool back into the active Steam selection; and persistence
+  rewrote snapshots from only the currently managed set. All three could
+  reset or resurrect settings after disable/re-enable or registry rediscovery.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

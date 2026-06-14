@@ -408,6 +408,59 @@ def steam_library_roots(steam_root=None):
     return roots
 
 
+def resolve_action_context(appid, steam_root=None):
+    appid = parse_appid(appid)
+    roots = steam_library_roots(steam_root)
+    steamapps = None
+    for library_root in roots:
+        candidate = (library_root / "steamapps").resolve()
+        compat_data = candidate / "compatdata" / str(appid)
+        if compat_data.is_symlink():
+            raise RuntimeErrorWithContext(
+                f"compatibility data path must not be a symlink: {compat_data}"
+            )
+        if compat_data.is_dir():
+            steamapps = candidate
+            break
+    if steamapps is None:
+        for library_root in roots:
+            candidate_steamapps = (library_root / "steamapps").resolve()
+            manifest = candidate_steamapps / f"appmanifest_{appid}.acf"
+            if not manifest.is_file():
+                continue
+            steamapps = candidate_steamapps
+            break
+    if steamapps is None:
+        steamapps = (roots[0] / "steamapps").resolve()
+
+    compat_data = steamapps / "compatdata" / str(appid)
+    state = compat_data / "realsteamonmac"
+    install_path = None
+    manifest = steamapps / f"appmanifest_{appid}.acf"
+    if manifest.is_file():
+        installdir = parse_app_manifest(manifest, appid)
+        candidate_install = (
+            steamapps / "common" / installdir
+        ).resolve()
+        if candidate_install.is_dir():
+            install_path = candidate_install
+    if install_path is None:
+        install_path = state
+    return {
+        "appid": appid,
+        "executable": None,
+        "working_directory": install_path,
+        "install_path": install_path,
+        "steamapps": steamapps,
+        "compat_data": compat_data,
+        "prefix": compat_data / "pfx",
+        "state": state,
+        "config": state / "config.json",
+        "global_config": default_app_config_root() / f"{appid}.json",
+        "logs": state / "logs",
+    }
+
+
 def parse_app_manifest(path, expected_appid):
     try:
         return manifest_install_directory(path, expected_appid)
@@ -2963,6 +3016,7 @@ def choose_executable_file():
     )
     result = subprocess.run(
         ["/usr/bin/osascript", "-e", script],
+        env=build_native_helper_environment(os.environ),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -3002,6 +3056,35 @@ def execute_container_action(context, runtime_root, fields, log_path):
         raise RuntimeErrorWithContext(
             "install application must use the reviewed component catalog"
         )
+    if operation == "open-c-drive":
+        config = load_config(context)
+        drive_c = context["prefix"] / "drive_c"
+        if drive_c.is_symlink():
+            raise RuntimeErrorWithContext(
+                f"container C drive is unavailable: {drive_c}"
+            )
+        environment = os.environ
+        if not drive_c.is_dir():
+            _, _, _, _, environment = prepare(
+                context, runtime_root, config
+            )
+        if not drive_c.is_dir():
+            raise RuntimeErrorWithContext(
+                f"container C drive is unavailable: {drive_c}"
+            )
+        result = run_job_process(
+            context,
+            ["/usr/bin/open", "-a", "Finder", drive_c],
+            build_native_helper_environment(environment),
+            log_path,
+            f"container operation {operation}",
+        )
+        return result.returncode, {
+            "operation": operation,
+            "path": str(drive_c),
+            "renderer": config["renderer"],
+        }
+
     config = load_config(context)
     if operation == "delete-container":
         package, manifest, wine_root, wine64, _ = load_selected_package(
@@ -3047,15 +3130,7 @@ def execute_container_action(context, runtime_root, fields, log_path):
     _, _, wine_root, wine64, environment = prepare(
         context, runtime_root, config
     )
-    if operation == "open-c-drive":
-        command = [
-            "/usr/bin/open",
-            "-a",
-            "Finder",
-            context["prefix"] / "drive_c",
-        ]
-        environment = build_native_helper_environment(environment)
-    elif operation == "wine-configuration":
+    if operation == "wine-configuration":
         command = [wine64, "winecfg"]
     elif operation == "controllers":
         result, controller_dpi = run_wine_controller_panel(
@@ -3105,40 +3180,47 @@ def action_job(args):
             started_at=started_at,
             log_path=str(paths["log"]),
         )
-        context = resolve_app_context(appid)
+        if action == "choose-file":
+            context = None
+        else:
+            context = resolve_action_context(appid)
         runtime_root = Path(args.runtime_root).expanduser().resolve()
-        context["state"].mkdir(parents=True, exist_ok=True)
-        context["state"].chmod(0o700)
-        action_lock_path = context["state"] / "action.lock"
-        with action_lock_path.open("a+", encoding="utf-8") as action_lock:
-            action_lock_path.chmod(0o600)
-            fcntl.flock(action_lock.fileno(), fcntl.LOCK_EX)
-            if action == "run-command":
-                exit_code, result = execute_run_command_action(
-                    context, runtime_root, fields, paths["log"]
-                )
-                if exit_code != 0:
-                    raise RuntimeErrorWithContext(
-                        f"run command exited with {exit_code}"
+        if action == "choose-file":
+            exit_code, result = execute_choose_file_action(context)
+        else:
+            context["state"].mkdir(parents=True, exist_ok=True)
+            context["state"].chmod(0o700)
+            action_lock_path = context["state"] / "action.lock"
+            with action_lock_path.open(
+                "a+", encoding="utf-8"
+            ) as action_lock:
+                action_lock_path.chmod(0o600)
+                fcntl.flock(action_lock.fileno(), fcntl.LOCK_EX)
+                if action == "run-command":
+                    exit_code, result = execute_run_command_action(
+                        context, runtime_root, fields, paths["log"]
                     )
-            elif action == "install-dependency":
-                exit_code, result = execute_dependency_action(
-                    context, runtime_root, fields, paths["log"]
-                )
-                if exit_code != 0:
-                    raise RuntimeErrorWithContext(
-                        f"dependency installation exited with {exit_code}"
+                    if exit_code != 0:
+                        raise RuntimeErrorWithContext(
+                            f"run command exited with {exit_code}"
+                        )
+                elif action == "install-dependency":
+                    exit_code, result = execute_dependency_action(
+                        context, runtime_root, fields, paths["log"]
                     )
-            elif action == "container":
-                exit_code, result = execute_container_action(
-                    context, runtime_root, fields, paths["log"]
-                )
-                if exit_code != 0:
-                    raise RuntimeErrorWithContext(
-                        f"container operation exited with {exit_code}"
+                    if exit_code != 0:
+                        raise RuntimeErrorWithContext(
+                            "dependency installation exited with "
+                            f"{exit_code}"
+                        )
+                else:
+                    exit_code, result = execute_container_action(
+                        context, runtime_root, fields, paths["log"]
                     )
-            else:
-                exit_code, result = execute_choose_file_action(context)
+                    if exit_code != 0:
+                        raise RuntimeErrorWithContext(
+                            f"container operation exited with {exit_code}"
+                        )
         write_job_status(
             paths["status"],
             appid,

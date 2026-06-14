@@ -151,6 +151,34 @@ test("applies the selected tool capability matrix", () => {
   );
 });
 
+test("preserves saved compatibility options while the tool is disabled", () => {
+  assert.deepEqual(
+    applyToolCapabilities(
+      {
+        compat_tool: "",
+        renderer: "gptk",
+        msync: true,
+        retina: true,
+        metal_hud: true,
+        metalfx: true,
+        dxr: true,
+        avx: true,
+      },
+      null,
+    ),
+    {
+      compat_tool: "",
+      renderer: "gptk",
+      msync: true,
+      retina: true,
+      metal_hud: true,
+      metalfx: true,
+      dxr: true,
+      avx: true,
+    },
+  );
+});
+
 test("builds the fixed native control request shape", () => {
   assert.equal(
     buildControlPayload({
@@ -278,6 +306,30 @@ test("uses Steam's native file dialog for Windows command targets", async () => 
     await chooseWindowsExecutableWithSteam({}, ""),
     undefined,
   );
+  assert.equal(
+    await chooseWindowsExecutableWithSteam({
+      SteamClient: {
+        System: {
+          async OpenFileDialog() {
+            return { strPath: "/Volumes/Games/portable.exe" };
+          },
+        },
+      },
+    }),
+    "/Volumes/Games/portable.exe",
+  );
+  assert.equal(
+    await chooseWindowsExecutableWithSteam({
+      SteamClient: {
+        System: {
+          async OpenFileDialog() {
+            throw new Error("dialog unavailable");
+          },
+        },
+      },
+    }),
+    undefined,
+  );
 });
 
 test("requires Steam-owned React controls for compatibility actions", () => {
@@ -345,7 +397,7 @@ test("requires Steam-owned React controls for compatibility actions", () => {
 
 test("uses native Steam sections in the required compatibility-page order", () => {
   assert.deepEqual(NATIVE_COMPAT_SECTION_LABELS, [
-    "RealSteamOnMac 兼容性选项",
+    "兼容性选项",
     "安装 Windows 组件",
     "容器操作",
     "运行命令",

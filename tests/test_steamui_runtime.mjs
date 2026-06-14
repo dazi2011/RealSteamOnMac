@@ -382,8 +382,10 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   assert.equal(controlRequests.length, controlRequestCount);
   rejectedNativeTool = null;
 
+  const controlRequestsBeforeDisable = controlRequests.length;
   await context.SteamClient.Apps.SpecifyCompatTool(990080, "");
   assert.deepEqual(nativeSpecifyCalls.at(-1), [990080, ""]);
+  assert.equal(controlRequests.length, controlRequestsBeforeDisable);
   assert.equal(
     context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__(990080),
     "",
@@ -428,6 +430,17 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   assert.equal(
     context.__REALSTEAMONMAC_UI_STATUS__.nativeDetailsSubscriptions,
     1,
+  );
+
+  overviews[1].subscribed_to = true;
+  await intervalCallbacks.get(5000)();
+  await waitFor(
+    () => context.__REALSTEAMONMAC_UI_STATUS__.registryScans === 6,
+  );
+  assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(990080), true);
+  assert.equal(
+    context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__(990080),
+    "",
   );
 });
 
