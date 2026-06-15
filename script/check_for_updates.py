@@ -97,6 +97,7 @@ def validate_manifest(value, repository):
         "minimum_macos",
         "architecture",
         "installer",
+        "updater",
         "uninstaller",
     }
     if not isinstance(value, dict) or set(value) != expected_keys:
@@ -137,11 +138,23 @@ def validate_manifest(value, repository):
         value["installer"], repository, "RealSteamOnMac-Install.pkg"
     )
     validate_artifact(
+        value["updater"], repository, "RealSteamOnMac-Update.pkg"
+    )
+    validate_artifact(
         value["uninstaller"],
         repository,
         "RealSteamOnMac-Uninstall.pkg",
     )
+    if value["updater"] == value["installer"]:
+        raise UpdateError("update package must be distinct from installer")
     return value
+
+
+def select_update_artifact(manifest):
+    updater = manifest.get("updater")
+    if not isinstance(updater, dict):
+        raise UpdateError("release manifest has no update package")
+    return updater
 
 
 def fetch_bounded(url, destination, maximum):
@@ -303,14 +316,14 @@ def main():
             raise UpdateError(
                 "the latest release does not support this Steam build"
             )
-        package = manifest["installer"]
+        package = select_update_artifact(manifest)
         destination = arguments.download_dir / package["name"]
         size, digest = fetch_bounded(
             package["url"], destination, package["size"]
         )
         if size != package["size"] or digest != package["sha256"]:
             destination.unlink(missing_ok=True)
-            raise UpdateError("installer package verification failed")
+            raise UpdateError("update package verification failed")
         if arguments.install:
             if os.geteuid() == 0:
                 subprocess.run(

@@ -38,6 +38,15 @@ def valid_manifest():
                 "releases/download/v0.1.1/RealSteamOnMac-Install.pkg"
             ),
         },
+        "updater": {
+            "name": "RealSteamOnMac-Update.pkg",
+            "sha256": "c" * 64,
+            "size": 1024,
+            "url": (
+                "https://github.com/dazi2011/RealSteamOnMac/"
+                "releases/download/v0.1.1/RealSteamOnMac-Update.pkg"
+            ),
+        },
         "uninstaller": {
             "name": "RealSteamOnMac-Uninstall.pkg",
             "sha256": "b" * 64,
@@ -86,6 +95,21 @@ class UpdateManifestTests(unittest.TestCase):
             updates.validate_manifest(
                 value, "dazi2011/RealSteamOnMac"
             )
+
+    def test_requires_a_distinct_update_package(self):
+        value = valid_manifest()
+        value["updater"] = dict(value["installer"])
+        with self.assertRaises(updates.UpdateError):
+            updates.validate_manifest(
+                value, "dazi2011/RealSteamOnMac"
+            )
+
+    def test_selects_the_update_package_for_existing_installs(self):
+        value = valid_manifest()
+        self.assertIs(
+            updates.select_update_artifact(value),
+            value["updater"],
+        )
 
     def test_swift_verifier_accepts_signature_and_rejects_tamper(self):
         with tempfile.TemporaryDirectory() as temporary:

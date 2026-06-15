@@ -7,8 +7,8 @@
 
 > [!WARNING]
 > 这是会修改特定 macOS Steam 构建的实验性软件。请保留安装器自动生成的回滚
-> 备份。`0.1.1` 已验证 Steam Public Beta build `1780705203` 和
-> `1780965181`。
+> 备份。`0.1.2` 支持已验证的 Steam build `1780705203`、
+> `1780965181` 和 `1781212412`。
 
 ## 主要功能
 
@@ -22,10 +22,10 @@
 - 每个游戏保存精确的工具 ID 和不可变运行时包。
 - 在兼容性页面提供 Steam 风格的 MSync、Retina、Metal HUD、MetalFX、
   DXR 和 Rosetta AVX 控件，并根据工具能力自动禁用不支持的选项。
-- 通过二级窗口运行命令、安装依赖、打开 C: 盘、配置 Wine、管理进程和
-  可恢复地移除容器。
+- 直接使用兼容性页面中的 Valve 原生控件运行命令、安装依赖、打开 C: 盘、
+  配置 Wine、管理进程和可恢复地移除容器。
 - 新容器默认为 Windows 10，并使用真正的 `WINEMSYNC=1`。
-- 提供可回滚的安装/卸载 PKG 和 Ed25519 签名更新清单。
+- 提供可回滚的安装/更新/卸载 PKG 和 Ed25519 签名更新清单。
 
 ## 界面预览
 
@@ -33,21 +33,15 @@
 
 ![兼容性工具下拉菜单](docs/images/compatibility-tools.png)
 
-运行命令和安装 Windows 组件使用独立的 Steam 风格二级窗口：
-
-| 运行命令 | 安装 Windows 组件 |
-|---|---|
-| ![运行命令窗口](docs/images/run-command.png) | ![Windows 组件窗口](docs/images/windows-components.png) |
-
-容器管理操作集中在单独的紧凑窗口中：
-
-![容器操作窗口](docs/images/container-operations.png)
+运行命令、安装 Windows 组件和容器操作直接在 Steam 原有兼容性选择器
+下方展开，不挂载覆盖层或替代设置面板。
 
 ## 系统要求
 
 - Apple Silicon Mac。
 - macOS 14 Sonoma 或更高版本。
-- 原生 macOS Steam，build `1780705203` 或 `1780965181`。
+- 原生 macOS Steam，build `1780705203`、`1780965181` 或
+  `1781212412`。
 - 网络连接和大约 3 GB 可用空间。
 - Apple Command Line Tools，包括 `/usr/bin/python3`。
 
@@ -85,18 +79,21 @@ WineD3D 11.10。公开包不会重新分发 Apple D3DMetal。
 ## 更新
 
 已安装的更新器会验证发布清单签名、Steam build、文件大小和 SHA-256，
-再打开新安装包：
+再打开独立的事务更新包 `RealSteamOnMac-Update.pkg`：
 
 ```bash
 "$HOME/Library/Application Support/RealSteamOnMac/bin/check-for-updates" \
   --current-version "$(<"$HOME/Library/Application Support/RealSteamOnMac/VERSION")" \
-  --steam-build 1780965181 \
+  --steam-build 1781212412 \
   --public-key "$HOME/Library/Application Support/RealSteamOnMac/release-public-key.hex" \
   --verifier "$HOME/Library/Application Support/RealSteamOnMac/bin/verify-release-signature" \
   --install
 ```
 
 未知 Steam build 会直接拒绝更新，直到发布对应兼容版本。
+Update.pkg 会先快照 Steam 应用和项目可变文件，再安装并切换并存的新运行时；
+任何步骤失败都会恢复旧安装。已下载游戏、PFX 容器、用户自行添加的兼容性
+工具和每游戏配置不在替换范围内。
 在两个受支持的 Steam build 之间切换时，需要先卸载 RealSteamOnMac，
 让 Steam 完成更新，再重新安装。这样会为新构建生成匹配的干净回滚快照，
 不会复用旧 Steam build 的备份。

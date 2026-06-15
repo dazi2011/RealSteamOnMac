@@ -61,15 +61,16 @@ prevents an uninstall from restoring a runtime from a different Steam build.
 ## Release Manifest
 
 `release-manifest.json` schema 1 includes the semantic version, repository,
-supported Steam builds, platform requirements, package names, sizes, hashes,
-and HTTPS release URLs. The detached signature is Ed25519 and is verified with
+supported Steam builds, platform requirements, and distinct install, update,
+and uninstall package names, sizes, hashes, and HTTPS release URLs. The
+detached signature is Ed25519 and is verified with
 `config/release-public-key.hex`.
 
 Unknown fields, unknown Steam builds, cross-repository URLs, incorrect sizes,
 and incorrect SHA-256 digests fail closed.
 
-Release `0.1.1` supports Steam Public Beta builds `1780705203` and
-`1780965181`.
+Release `0.1.2` supports Steam builds `1780705203`, `1780965181`, and
+`1781212412`.
 
 ## Recovery
 

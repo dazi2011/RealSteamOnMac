@@ -8,6 +8,9 @@
     "installer": {
       "$ref": "#/$defs/artifact"
     },
+    "updater": {
+      "$ref": "#/$defs/artifact"
+    },
     "minimum_macos": {
       "pattern": "^[0-9]+\\.[0-9]+$",
       "type": "string"
@@ -53,6 +56,7 @@
     "minimum_macos",
     "architecture",
     "installer",
+    "updater",
     "uninstaller"
   ],
   "type": "object",
@@ -61,7 +65,7 @@
       "additionalProperties": false,
       "properties": {
         "name": {
-          "pattern": "^RealSteamOnMac-(Install|Uninstall)\\.pkg$",
+          "pattern": "^RealSteamOnMac-(Install|Update|Uninstall)\\.pkg$",
           "type": "string"
         },
         "sha256": {

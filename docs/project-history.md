@@ -26,6 +26,9 @@ README. Current user installation and feature documentation lives in
 9. Added UUID-, hash-, and instruction-verified profiles for Steam Public Beta
    builds `1780705203` and `1780965181`, while preserving fail-closed behavior
    for unknown builds and stale rollback snapshots.
+10. Added build `1781212412`, a distinct transactional Update.pkg, and
+    failure rollback that preserves game depots, PFX containers, user tools,
+    and per-game configuration.
 
 ## Detailed Records
 

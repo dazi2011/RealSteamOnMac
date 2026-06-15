@@ -1,0 +1,60 @@
+#!/bin/sh
+set -eu
+
+PAYLOAD_ROOT=${REALSTEAMONMAC_PACKAGE_PAYLOAD_ROOT:-"/Library/Application Support/RealSteamOnMac/Installer"}
+PACKAGE_USER=${REALSTEAMONMAC_PACKAGE_USER:-}
+PACKAGE_HOME=${REALSTEAMONMAC_PACKAGE_HOME:-}
+PACKAGE_RUNNER=${REALSTEAMONMAC_PACKAGE_RUNNER:-}
+
+if [ -z "$PACKAGE_USER" ]; then
+    PACKAGE_USER=$(/usr/bin/stat -f '%Su' /dev/console)
+fi
+case "$PACKAGE_USER" in
+    ""|root|loginwindow)
+        echo "no interactive macOS user is available" >&2
+        exit 1
+        ;;
+esac
+if [ -z "$PACKAGE_HOME" ]; then
+    PACKAGE_HOME=$(
+        /usr/bin/dscl . -read "/Users/$PACKAGE_USER" NFSHomeDirectory |
+            awk '{print $2}'
+    )
+fi
+[ -d "$PACKAGE_HOME" ] || {
+    echo "interactive user home is unavailable: $PACKAGE_HOME" >&2
+    exit 1
+}
+
+UPDATER="$PAYLOAD_ROOT/script/update_realsteamonmac.sh"
+[ -x "$UPDATER" ] || {
+    echo "packaged updater is missing" >&2
+    exit 1
+}
+
+run_as_user() {
+    if [ -n "$PACKAGE_RUNNER" ]; then
+        "$PACKAGE_RUNNER" "$@"
+        return
+    fi
+    uid=$(/usr/bin/id -u "$PACKAGE_USER")
+    /bin/launchctl asuser "$uid" \
+        /usr/bin/sudo -u "$PACKAGE_USER" \
+        /usr/bin/env \
+            HOME="$PACKAGE_HOME" \
+            USER="$PACKAGE_USER" \
+            LOGNAME="$PACKAGE_USER" \
+            REALSTEAMONMAC_HOOK_BUILDER=/usr/bin/true \
+            REALSTEAMONMAC_LAUNCHER_BUILDER=/usr/bin/true \
+            "$@"
+}
+
+run_as_user \
+    "$UPDATER" \
+    --payload-root "$PAYLOAD_ROOT" \
+    --home "$PACKAGE_HOME"
+
+SUPPORT_ROOT="$PACKAGE_HOME/Library/Application Support/RealSteamOnMac"
+chown -R "$PACKAGE_USER" "$SUPPORT_ROOT"
+
+exit 0

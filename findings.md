@@ -1507,6 +1507,25 @@
   the parser but always failed. It has been removed. The native section is now
   named `安装应用程序到容器` and routes only to the reviewed dependency
   catalog through `action=install-dependency`.
+- Existing `0.1.1` installation state predates the `steam_channel` field.
+  Treating that field as mandatory would make the first Update package
+  unusable for exactly the installed users it must migrate. The updater now
+  accepts the missing field only when current and rollback Steam package
+  manifests independently agree on channel and both builds match the recorded
+  `steam_build`.
+- A rollback backup must be validated as data, not merely checked for
+  directory existence. The transaction preflight now parses its Steam
+  manifest before any snapshot directory is created and rejects a stale or
+  mismatched backup.
+- The current development machine is a deliberate negative acceptance case:
+  its state and clean backup record beta build `1780965181`, while the active
+  beta client is `1781212412`. Update.pkg therefore fails closed without
+  writing a transaction. A successful live update cannot be claimed until a
+  same-build clean rollback backup exists.
+- The release builder can sign the detached manifest with the repository
+  Ed25519 key, but this machine has no Developer ID Installer identity. The
+  three PKGs report `Status: no signature`; publishing them as notarized Apple
+  installer packages remains a separate release-credential gate.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

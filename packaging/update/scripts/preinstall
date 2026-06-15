@@ -1,0 +1,70 @@
+#!/bin/sh
+set -eu
+
+PACKAGE_USER=${REALSTEAMONMAC_PACKAGE_USER:-}
+PACKAGE_HOME=${REALSTEAMONMAC_PACKAGE_HOME:-}
+
+if [ -z "$PACKAGE_USER" ]; then
+    PACKAGE_USER=$(/usr/bin/stat -f '%Su' /dev/console)
+fi
+case "$PACKAGE_USER" in
+    ""|root|loginwindow)
+        echo "no interactive macOS user is available" >&2
+        exit 1
+        ;;
+esac
+if [ -z "$PACKAGE_HOME" ]; then
+    PACKAGE_HOME=$(
+        /usr/bin/dscl . -read "/Users/$PACKAGE_USER" NFSHomeDirectory |
+            awk '{print $2}'
+    )
+fi
+
+STATE_FILE="$PACKAGE_HOME/Library/Application Support/RealSteamOnMac/install-state.json"
+[ -f "$STATE_FILE" ] || {
+    echo "RealSteamOnMac must already be installed before applying Update.pkg" >&2
+    exit 1
+}
+
+/usr/bin/python3 - "$STATE_FILE" <<'PY'
+import json
+import os
+import re
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    state = json.load(stream)
+required = {
+    "schema",
+    "version",
+    "clean_backup",
+    "steam_build",
+    "runtime_package",
+    "managed_compat_tools",
+}
+if not isinstance(state, dict) or not required.issubset(state):
+    raise SystemExit("installation state is incomplete")
+if state["schema"] != 1:
+    raise SystemExit("installation state schema is unsupported")
+if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", state["version"]) is None:
+    raise SystemExit("installed version is invalid")
+if re.fullmatch(r"[0-9]{8,12}", state["steam_build"]) is None:
+    raise SystemExit("installed Steam build is invalid")
+channel = state.get("steam_channel")
+if channel is not None and (
+    not isinstance(channel, str)
+    or re.fullmatch(
+        r"stable|[a-z0-9][a-z0-9_-]{0,31}", channel
+    )
+    is None
+):
+    raise SystemExit("installed Steam channel is invalid")
+backup = state["clean_backup"]
+if not isinstance(backup, str) or not os.path.isabs(backup):
+    raise SystemExit("clean backup path is invalid")
+for name in ("Steam.app", "SteamRuntime.app"):
+    if not os.path.isdir(os.path.join(backup, name)):
+        raise SystemExit(f"clean backup is incomplete: {name}")
+PY
+
+exit 0

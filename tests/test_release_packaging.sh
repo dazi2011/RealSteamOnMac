@@ -84,6 +84,37 @@ grep -q -- '--gptk-dmg' "$CALLS"
 grep -q -- "--gptk-steamworks-bridge $PAYLOAD/prebuilt/lsteamclient-proton7-gptk7.7-macos1" \
     "$CALLS"
 
+UPDATE_BACKUP="$HOME_ROOT/RealSteamOnMac-Backups/update-fixture"
+mkdir -p \
+    "$UPDATE_BACKUP/Steam.app" \
+    "$UPDATE_BACKUP/SteamRuntime.app"
+cat >"$SUPPORT/install-state.json" <<EOF
+{
+  "schema": 1,
+  "version": "0.1.0",
+  "clean_backup": "$UPDATE_BACKUP",
+  "steam_build": "1781212412",
+  "runtime_package": "fixture",
+  "managed_compat_tools": []
+}
+EOF
+cat >"$PAYLOAD/script/update_realsteamonmac.sh" <<EOF
+#!/bin/sh
+printf 'update\\t%s\\n' "\$*" >"$CALLS"
+EOF
+chmod +x "$PAYLOAD/script/update_realsteamonmac.sh"
+env \
+    REALSTEAMONMAC_PACKAGE_USER="$USER_NAME" \
+    REALSTEAMONMAC_PACKAGE_HOME="$HOME_ROOT" \
+    "$ROOT/packaging/update/scripts/preinstall"
+env \
+    REALSTEAMONMAC_PACKAGE_PAYLOAD_ROOT="$PAYLOAD" \
+    REALSTEAMONMAC_PACKAGE_USER="$USER_NAME" \
+    REALSTEAMONMAC_PACKAGE_HOME="$HOME_ROOT" \
+    REALSTEAMONMAC_PACKAGE_RUNNER="$TMP_ROOT/runner" \
+    "$ROOT/packaging/update/scripts/postinstall"
+grep -Fq "update	--payload-root $PAYLOAD --home $HOME_ROOT" "$CALLS"
+
 rm -rf "$PAYLOAD"
 mkdir -p "$PAYLOAD/script"
 cat >"$PAYLOAD/script/uninstall_realsteamonmac.sh" <<EOF
@@ -147,6 +178,7 @@ env REALSTEAMONMAC_ALLOW_TEST_FIXTURES=1 \
 
 for package in \
     RealSteamOnMac-Install.pkg \
+    RealSteamOnMac-Update.pkg \
     RealSteamOnMac-Uninstall.pkg; do
     test -f "$DIST/$package"
     pkgutil --payload-files "$DIST/$package" >/dev/null
@@ -173,6 +205,8 @@ if value["supported_steam_builds"] != [
     "1781212412",
 ]:
     raise SystemExit("release manifest Steam build list is incomplete")
+if value["updater"]["name"] != "RealSteamOnMac-Update.pkg":
+    raise SystemExit("release manifest updater is missing")
 PY
 /opt/homebrew/bin/openssl pkeyutl \
     -verify \

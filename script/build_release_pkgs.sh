@@ -177,11 +177,13 @@ ditto "$GPTK_BRIDGE" \
 
 chmod 0755 \
     "$PAYLOAD/script/install_realsteamonmac.sh" \
+    "$PAYLOAD/script/update_realsteamonmac.sh" \
     "$PAYLOAD/script/uninstall_realsteamonmac.sh" \
     "$PAYLOAD/script/check_for_updates.py" \
     "$PAYLOAD/prebuilt/realsteamonmac-verify-signature"
 
 INSTALL_COMPONENT="$WORK/RealSteamOnMac-Install-component.pkg"
+UPDATE_COMPONENT="$WORK/RealSteamOnMac-Update-component.pkg"
 UNINSTALL_COMPONENT="$WORK/RealSteamOnMac-Uninstall-component.pkg"
 pkgbuild \
     --root "$WORK/install-root" \
@@ -190,6 +192,12 @@ pkgbuild \
     --version "$VERSION" \
     "$INSTALL_COMPONENT"
 pkgbuild \
+    --root "$WORK/install-root" \
+    --scripts "$ROOT/packaging/update/scripts" \
+    --identifier io.github.dazi2011.realsteamonmac.update \
+    --version "$VERSION" \
+    "$UPDATE_COMPONENT"
+pkgbuild \
     --nopayload \
     --scripts "$ROOT/packaging/uninstall/scripts" \
     --identifier io.github.dazi2011.realsteamonmac.uninstall \
@@ -197,14 +205,18 @@ pkgbuild \
     "$UNINSTALL_COMPONENT"
 
 INSTALL_PKG="$OUTPUT/RealSteamOnMac-Install.pkg"
+UPDATE_PKG="$OUTPUT/RealSteamOnMac-Update.pkg"
 UNINSTALL_PKG="$OUTPUT/RealSteamOnMac-Uninstall.pkg"
 if [ -n "$SIGNING_IDENTITY" ]; then
     productsign --sign "$SIGNING_IDENTITY" \
         "$INSTALL_COMPONENT" "$INSTALL_PKG"
     productsign --sign "$SIGNING_IDENTITY" \
+        "$UPDATE_COMPONENT" "$UPDATE_PKG"
+    productsign --sign "$SIGNING_IDENTITY" \
         "$UNINSTALL_COMPONENT" "$UNINSTALL_PKG"
 else
     cp "$INSTALL_COMPONENT" "$INSTALL_PKG"
+    cp "$UPDATE_COMPONENT" "$UPDATE_PKG"
     cp "$UNINSTALL_COMPONENT" "$UNINSTALL_PKG"
 fi
 
@@ -212,14 +224,17 @@ fi
     cd "$OUTPUT"
     shasum -a 256 \
         RealSteamOnMac-Install.pkg \
+        RealSteamOnMac-Update.pkg \
         RealSteamOnMac-Uninstall.pkg \
         >SHA256SUMS
 )
 
 TAG="v$VERSION"
 INSTALL_SHA=$(shasum -a 256 "$INSTALL_PKG" | awk '{print $1}')
+UPDATE_SHA=$(shasum -a 256 "$UPDATE_PKG" | awk '{print $1}')
 UNINSTALL_SHA=$(shasum -a 256 "$UNINSTALL_PKG" | awk '{print $1}')
 INSTALL_SIZE=$(stat -f '%z' "$INSTALL_PKG")
+UPDATE_SIZE=$(stat -f '%z' "$UPDATE_PKG")
 UNINSTALL_SIZE=$(stat -f '%z' "$UNINSTALL_PKG")
 MANIFEST="$OUTPUT/release-manifest.json"
 /usr/bin/python3 - \
@@ -229,6 +244,8 @@ MANIFEST="$OUTPUT/release-manifest.json"
     "$STEAM_BUILDS" \
     "$INSTALL_SHA" \
     "$INSTALL_SIZE" \
+    "$UPDATE_SHA" \
+    "$UPDATE_SIZE" \
     "$UNINSTALL_SHA" \
     "$UNINSTALL_SIZE" <<'PY'
 import datetime
@@ -242,6 +259,8 @@ import sys
     steam_builds_raw,
     install_sha,
     install_size,
+    update_sha,
+    update_size,
     uninstall_sha,
     uninstall_size,
 ) = sys.argv[1:]
@@ -274,6 +293,12 @@ manifest = {
         "size": int(install_size),
         "url": f"{base}/RealSteamOnMac-Install.pkg",
     },
+    "updater": {
+        "name": "RealSteamOnMac-Update.pkg",
+        "sha256": update_sha,
+        "size": int(update_size),
+        "url": f"{base}/RealSteamOnMac-Update.pkg",
+    },
     "uninstaller": {
         "name": "RealSteamOnMac-Uninstall.pkg",
         "sha256": uninstall_sha,
@@ -299,6 +324,7 @@ PY
     "$OUTPUT/release-manifest.json.sig"
 
 echo "install=$INSTALL_PKG"
+echo "update=$UPDATE_PKG"
 echo "uninstall=$UNINSTALL_PKG"
 echo "checksums=$OUTPUT/SHA256SUMS"
 echo "manifest=$MANIFEST"

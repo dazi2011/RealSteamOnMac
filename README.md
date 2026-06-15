@@ -7,8 +7,8 @@ per-game GPTK, DXMT, DXVK macOS, or WineD3D selection.
 
 > [!WARNING]
 > This is experimental software that patches a specific macOS Steam build.
-> Keep the generated rollback backup. Release `0.1.1` is verified against
-> Steam Public Beta builds `1780705203` and `1780965181`.
+> Keep the generated rollback backup. Release `0.1.2` supports verified Steam
+> builds `1780705203`, `1780965181`, and `1781212412`.
 
 ## Highlights
 
@@ -21,11 +21,11 @@ per-game GPTK, DXMT, DXVK macOS, or WineD3D selection.
 - Persists the exact compatibility tool and immutable runtime package per game.
 - Adds compact Steam-style controls for MSync, Retina mode, Metal HUD,
   MetalFX, DXR, and Rosetta AVX when supported.
-- Provides secondary dialogs for running commands, installing dependencies,
-  opening the C: drive, Wine configuration, process control, and recoverable
-  prefix removal.
+- Uses Valve-owned controls in the native Compatibility page for running
+  commands, installing dependencies, opening the C: drive, Wine tools,
+  process control, and recoverable prefix removal.
 - Creates Windows 10 prefixes and uses real `WINEMSYNC=1`.
-- Ships reversible install/uninstall PKGs and an Ed25519-signed update
+- Ships reversible install/update/uninstall PKGs and an Ed25519-signed update
   manifest.
 
 ## Screenshots
@@ -35,21 +35,15 @@ Properties page:
 
 ![Compatibility tool selector](docs/images/compatibility-tools.png)
 
-Use focused Steam-style dialogs for commands and Windows dependencies:
-
-| Run a command | Install Windows components |
-|---|---|
-| ![Run command dialog](docs/images/run-command.png) | ![Windows component dialog](docs/images/windows-components.png) |
-
-Container actions remain in a separate compact dialog:
-
-![Container operations dialog](docs/images/container-operations.png)
+Run Command, dependency installation, and container actions expand directly
+below Steam's original compatibility selector. No overlay or replacement
+settings panel is mounted.
 
 ## Requirements
 
 - Apple Silicon Mac.
 - macOS 14 Sonoma or later.
-- Native macOS Steam with build `1780705203` or `1780965181`.
+- Native macOS Steam with build `1780705203`, `1780965181`, or `1781212412`.
 - Internet access and approximately 3 GB of free space.
 - Apple Command Line Tools, including `/usr/bin/python3`.
 
@@ -90,18 +84,24 @@ users may install additional validated tool folders side by side.
 ## Update
 
 The installed updater verifies the release manifest signature, Steam build,
-package size, and SHA-256 before opening a newer installer:
+package size, and SHA-256 before opening the distinct transactional
+`RealSteamOnMac-Update.pkg`:
 
 ```bash
 "$HOME/Library/Application Support/RealSteamOnMac/bin/check-for-updates" \
   --current-version "$(<"$HOME/Library/Application Support/RealSteamOnMac/VERSION")" \
-  --steam-build 1780965181 \
+  --steam-build 1781212412 \
   --public-key "$HOME/Library/Application Support/RealSteamOnMac/release-public-key.hex" \
   --verifier "$HOME/Library/Application Support/RealSteamOnMac/bin/verify-release-signature" \
   --install
 ```
 
 Unknown Steam builds fail closed until a compatible release is published.
+Update.pkg snapshots the Steam applications and mutable project files,
+installs a side-by-side runtime, validates activation, and restores the prior
+installation if any update step fails. Game depots, PFX containers, user-added
+compatibility tools, and per-game configuration are outside the replacement
+set.
 When Steam changes between supported builds, uninstall RealSteamOnMac first,
 allow Steam to update, then reinstall. This refreshes the clean rollback
 snapshot instead of reusing a backup from the previous Steam build.

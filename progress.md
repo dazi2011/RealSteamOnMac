@@ -2167,3 +2167,30 @@
 - Passed 84 runtime-manager tests, 80 Node tests, 16 Python SteamUI patch
   tests, both SteamUI shell contracts, Python/JavaScript syntax checks, and
   `git diff --check` after the live acceptance fix.
+- Added a distinct transactional `RealSteamOnMac-Update.pkg` for release
+  `0.1.2`. It snapshots both Steam applications, mutable RealSteamOnMac state,
+  managed compatibility tools, and the active runtime before invoking the
+  existing installer; a failed update restores the snapshot and preserves its
+  transaction under `~/RealSteamOnMac-Rollback/`.
+- The updater preserves user-added compatibility tools, PFX directories, and
+  existing immutable runtime packages. The online update checker now selects
+  the separately signed and hashed `updater` artifact instead of reusing the
+  install package.
+- Added migration support for `0.1.1` state files that predate
+  `steam_channel`. The updater derives the effective channel from both the
+  current Steam runtime and the clean rollback backup, verifies both manifests
+  against the recorded build, and writes the channel through the new installer.
+- Passed the transactional success, legacy-state migration, failure rollback,
+  current-build mismatch, and backup-build mismatch fixtures. The final
+  packaging contract produced Install, Update, and Uninstall packages; all
+  three SHA-256 entries and the detached Ed25519 release-manifest signature
+  verified.
+- Expanded the final Update package and verified identifier
+  `io.github.dazi2011.realsteamonmac.update`, version `0.1.2`, both package
+  scripts, 109 payload files, and an exact updater-script hash match.
+- The live `0.1.1` preinstall migration check passes. The full live updater
+  correctly refuses before creating a transaction because current Steam build
+  `1781212412` does not match rollback build `1780965181`. A destructive
+  uninstall/reinstall was not performed. All three PKGs remain unsigned at the
+  Apple installer layer because no Developer ID Installer identity is
+  available; release-manifest authenticity remains independently verified.

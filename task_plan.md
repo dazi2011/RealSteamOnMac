@@ -403,6 +403,24 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Model Run Command as a Steam-native secondary section | The compatibility page shows one native `运行命令...` button and expands Valve-owned input/button controls in place. No overlay, custom modal, or replacement UI is introduced. |
 | Let recovery escape long-running interactive actions | Run Command, Wine configuration, and Task Manager return after successful process creation; `quit-all` bypasses the per-prefix action lock so it can stop a still-open Wine controller panel or application. |
 | Let only the newest native action own visible status | A recovery action may intentionally terminate an older Wine process. Preserve both job records, but ignore stale completion when updating Steam's current action status. |
+| Ship update as a distinct transactional package | Existing installations need rollback ownership and preservation of user tools/PFX; the online updater must never substitute the full install package for an in-place update. |
+| Infer a missing legacy Steam channel from two manifests | `0.1.1` did not persist `steam_channel`. Accept migration only when the current runtime and clean backup agree and both match the recorded build. |
+
+## Update Package Checkpoint
+
+- [x] Build separate Install, Update, and Uninstall packages.
+- [x] Add transactional snapshot and rollback around the existing installer.
+- [x] Preserve user compatibility tools, PFX directories, and old runtime
+  packages.
+- [x] Migrate legacy `0.1.1` state without `steam_channel`.
+- [x] Make the online updater select and verify the distinct Update artifact.
+- [x] Verify checksums, detached release signature, package scripts, package
+  metadata, rollback fixtures, and live fail-closed preflight.
+- [ ] Obtain a Developer ID Installer identity and sign/notarize the three
+  Apple installer packages.
+- [ ] Perform a successful live Update.pkg run only after a current-build clean
+  rollback snapshot is available; do not destroy the current installation
+  without explicit approval.
 
 ## Errors Encountered
 
