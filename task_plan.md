@@ -402,6 +402,7 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Never create a prefix from compatibility-page utility actions | A complete Steam installation and an existing non-symlink `compatdata/<appid>/pfx` are now required for component installation, container management, and Run Command. Uninstalled or not-yet-launched games expose only compatibility selection/options. |
 | Model Run Command as a Steam-native secondary section | The compatibility page shows one native `运行命令...` button and expands Valve-owned input/button controls in place. No overlay, custom modal, or replacement UI is introduced. |
 | Let recovery escape long-running interactive actions | Run Command, Wine configuration, and Task Manager return after successful process creation; `quit-all` bypasses the per-prefix action lock so it can stop a still-open Wine controller panel or application. |
+| Let only the newest native action own visible status | A recovery action may intentionally terminate an older Wine process. Preserve both job records, but ignore stale completion when updating Steam's current action status. |
 
 ## Errors Encountered
 

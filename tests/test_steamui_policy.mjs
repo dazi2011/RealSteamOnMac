@@ -34,6 +34,7 @@ const {
   normalizeControlConfig,
   normalizeDependencyCatalog,
   nativeActionSectionsVisible,
+  nativeContainerActionDisabled,
   NATIVE_COMPAT_SECTION_LABELS,
   refreshAppActionComponents,
   reconcileCompatDetails,
@@ -233,6 +234,44 @@ test("shows container-dependent native sections only for an existing container",
       container_exists: true,
     }),
     false,
+  );
+});
+
+test("keeps quit-all available while another native action is running", () => {
+  assert.equal(
+    nativeContainerActionDisabled({
+      compatEnabled: true,
+      busy: true,
+      operation: "quit-all",
+      deleteConfirmed: false,
+    }),
+    false,
+  );
+  assert.equal(
+    nativeContainerActionDisabled({
+      compatEnabled: true,
+      busy: true,
+      operation: "task-manager",
+      deleteConfirmed: false,
+    }),
+    true,
+  );
+  assert.equal(
+    nativeContainerActionDisabled({
+      compatEnabled: true,
+      busy: false,
+      operation: "delete-container",
+      deleteConfirmed: false,
+    }),
+    true,
+  );
+  assert.match(
+    source,
+    /allowWhileBusy:\s*containerOperation === "quit-all"/,
+  );
+  assert.match(
+    source,
+    /actionStateFor\(appid\)\.jobId !== jobId/,
   );
 });
 

@@ -1493,6 +1493,16 @@
   and made later buttons appear dead. These actions now complete after process
   creation, while `quit-all` bypasses the lock and can terminate a still-open
   synchronous Wine `joy.cpl` controller action.
+- Backend lock bypass alone is insufficient for interactive recovery. The
+  Steam-native Execute button and the browser action-state guard must both
+  explicitly permit `quit-all` while another action is running.
+- Terminating synchronous `joy.cpl` normally makes its Wine process return
+  nonzero. Concurrent action results therefore need latest-job ownership:
+  the older controller completion remains in its job record, but cannot
+  replace the newer successful quit status shown in Steam.
+- Live AppID `654310` acceptance proves the read-only availability probe is
+  side-effect free: it returned false/false, hid all PFX-dependent sections,
+  and created no compatdata directory in any known Steam library.
 - The old literal container operation `install-application` was accepted by
   the parser but always failed. It has been removed. The native section is now
   named `安装应用程序到容器` and routes only to the reviewed dependency

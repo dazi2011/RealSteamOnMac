@@ -270,6 +270,24 @@
     );
   }
 
+  function nativeContainerActionDisabled({
+    compatEnabled,
+    busy,
+    operation,
+    deleteConfirmed,
+  }) {
+    if (!compatEnabled) {
+      return true;
+    }
+    if (busy && operation !== "quit-all") {
+      return true;
+    }
+    return (
+      operation === "delete-container" &&
+      deleteConfirmed !== true
+    );
+  }
+
   async function chooseWindowsExecutableWithSteam(
     steamGlobal,
     initialFile = "",
@@ -918,6 +936,7 @@
       normalizeControlConfig,
       normalizeDependencyCatalog,
       nativeActionSectionsVisible,
+      nativeContainerActionDisabled,
       NATIVE_COMPAT_SECTION_LABELS,
       refreshAppActionComponents,
       reconcileCompatDetails,
@@ -1460,8 +1479,16 @@
     return job.result;
   }
 
-  async function runNativeAction(appid, payload, label) {
-    if (actionStateFor(appid).state === "running") {
+  async function runNativeAction(
+    appid,
+    payload,
+    label,
+    { allowWhileBusy = false } = {},
+  ) {
+    if (
+      actionStateFor(appid).state === "running" &&
+      !allowWhileBusy
+    ) {
       return null;
     }
     setActionState(
@@ -1475,8 +1502,9 @@
       },
     );
     status.actionJobsStarted += 1;
+    let jobId = "";
     try {
-      const jobId = await startNativeAction(appid, payload);
+      jobId = await startNativeAction(appid, payload);
       setActionState(
         appid,
         {
@@ -1486,6 +1514,9 @@
         },
       );
       const result = await waitForNativeActionJob(appid, jobId);
+      if (actionStateFor(appid).jobId !== jobId) {
+        return result;
+      }
       const failed = result.state === "failed";
       setActionState(
         appid,
@@ -1506,6 +1537,12 @@
       }
       return result;
     } catch (error) {
+      if (
+        jobId &&
+        actionStateFor(appid).jobId !== jobId
+      ) {
+        return null;
+      }
       status.actionJobsFailed += 1;
       status.actionLastError = String(error);
       setActionState(
@@ -1780,7 +1817,7 @@
   const containerActionOptions = [
     { data: "open-c-drive", label: "打开 C: 盘" },
     { data: "wine-configuration", label: "Wine 配置" },
-    { data: "controllers", label: "Game Controllers" },
+    { data: "controllers", label: "Wine 游戏控制器" },
     { data: "restart", label: "模拟重启" },
     { data: "task-manager", label: "任务管理器" },
     { data: "quit-all", label: "退出所有应用程序" },
@@ -1879,14 +1916,20 @@
         );
       }, [selectedToolName]);
 
-      const runAction = async (payload, label) => {
+      const runAction = async (
+        payload,
+        label,
+        { allowWhileBusy = false } = {},
+      ) => {
         setActivity({
           ...actionStateFor(appid),
           state: "running",
           label,
           message: "任务运行中",
         });
-        await runNativeAction(appid, payload, label);
+        await runNativeAction(appid, payload, label, {
+          allowWhileBusy,
+        });
         setActivity({ ...actionStateFor(appid) });
         try {
           setActionAvailability(
@@ -1949,9 +1992,12 @@
         nativeActionSectionsVisible(actionAvailability);
       const deleteNeedsConfirmation =
         containerOperation === "delete-container";
-      const containerDisabled =
-        actionDisabled ||
-        (deleteNeedsConfirmation && !deleteConfirmed);
+      const containerDisabled = nativeContainerActionDisabled({
+        compatEnabled,
+        busy,
+        operation: containerOperation,
+        deleteConfirmed,
+      });
 
       return jsx.jsxs(jsx.Fragment, {
         children: [
@@ -2037,6 +2083,10 @@
                     (option) =>
                       option.data === containerOperation,
                   )?.label ?? "容器操作",
+                  {
+                    allowWhileBusy:
+                      containerOperation === "quit-all",
+                  },
                 );
               }, containerDisabled),
             ],

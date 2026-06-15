@@ -2138,3 +2138,32 @@
   native compatibility-page probe contract, Python compilation, JavaScript
   syntax validation, and `git diff --check`. Live deployment and AppID
   `654310` no-prefix acceptance remain the next gate.
+- Deployed the native action-gating build and opened AppID `654310` through
+  Steam's own `OpenAppSettingsDialog(appid, "")` API. Its compatibility page
+  showed only the force-tool row and `兼容性选项`; component installation,
+  container operations, Run Command, and recent status were absent.
+- The resulting read-only job returned
+  `installed=false, container_exists=false`. Searches across the user Steam
+  root and both `/Volumes/990pro` libraries found no
+  `steamapps/compatdata/654310`, proving the page probe did not create a PFX.
+- AppID `1118200` exposed all five Valve `DialogSettingsSection` sections.
+  `运行命令...` expanded in place into Valve-owned command, browse, arguments,
+  environment, cancel, and run controls. `cmd /c exit 0` completed with
+  runtime PID `65530`.
+- `打开 C: 盘` completed against
+  `/Volumes/990pro/games/mac/steamapps/compatdata/1118200/pfx/drive_c` and
+  logged the exact `/usr/bin/open -a Finder` invocation.
+- Live testing found that the UI still suppressed `quit-all` while synchronous
+  `wine64 control.exe joy.cpl` was running, despite the backend lock bypass.
+  The native Execute button and the action dispatcher now both permit only
+  `quit-all` during a busy action.
+- Renamed the controller entry to `Wine 游戏控制器` and added latest-job
+  ownership so a terminated older `joy.cpl` task cannot overwrite the newer
+  successful quit result.
+- Redeployed and repeated the controller sequence. The quit Execute button was
+  enabled without a Disabled class, the quit job completed, and the Steam
+  status remained `退出所有应用程序 · 任务已完成` after the older controller
+  job exited with Wine status 1.
+- Passed 84 runtime-manager tests, 80 Node tests, 16 Python SteamUI patch
+  tests, both SteamUI shell contracts, Python/JavaScript syntax checks, and
+  `git diff --check` after the live acceptance fix.
