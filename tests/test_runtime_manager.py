@@ -1534,6 +1534,36 @@ class RuntimeManagerTests(unittest.TestCase):
         )
         self.assertIn("container has not been created", status["message"])
 
+    def test_action_job_rejects_every_container_operation_without_a_container(
+        self,
+    ):
+        for index, operation in enumerate(sorted(runtime.CONTAINER_OPERATIONS)):
+            with self.subTest(operation=operation):
+                job_id = f"{0x55555555555555555555555555555555 + index:032x}"
+                arguments = SimpleNamespace(
+                    appid="1118200",
+                    job_id=job_id,
+                    payload=f"action=container&operation={operation}",
+                    runtime_root=str(self.runtime_root),
+                )
+                with mock.patch.object(
+                    runtime,
+                    "execute_container_action",
+                    return_value=(0, {"operation": operation}),
+                ) as execute:
+                    self.assertEqual(runtime.action_job(arguments), 1)
+
+                execute.assert_not_called()
+                status = json.loads(
+                    runtime.job_paths(1118200, job_id)[
+                        "status"
+                    ].read_text(encoding="utf-8")
+                )
+                self.assertIn(
+                    "container has not been created",
+                    status["message"],
+                )
+
     def test_choose_file_job_does_not_resolve_an_app_context(self):
         (self.steamapps / "appmanifest_1118200.acf").unlink()
         self.executable.unlink()

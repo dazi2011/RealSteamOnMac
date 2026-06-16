@@ -515,6 +515,13 @@ test("uses a native button to expand the run-command secondary controls", () => 
   assert.doesNotMatch(source, /realsteamonmac-command-modal/);
 });
 
+test("disables the delete-container confirmation when no prefix exists", () => {
+  assert.match(
+    source,
+    /label: "确认移动现有容器到恢复目录"[\s\S]*?disabled: containerActionDisabled/,
+  );
+});
+
 test("production UI source contains no handcrafted compatibility controls", () => {
   assert.doesNotMatch(source, /\.realsteamonmac-controls/);
   assert.doesNotMatch(source, /\.realsteamonmac-modal-layer/);

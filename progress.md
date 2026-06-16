@@ -207,10 +207,25 @@
   - Simplified Open C Drive's native helper command from
     `open -a Finder <drive_c>` to `open <drive_c>` while retaining the
     Wine/DYLD environment scrub.
+  - Tightened the no-PFX native action UI after review: the delete-container
+    confirmation checkbox now follows the same existing-PFX disabled state as
+    the Execute button, and every container operation is covered by a
+    fail-closed no-PFX backend test.
+  - Added `wineconsole` to runtime package validation and SHA coverage so
+    Windows Run-style `cmd` launches do not silently fall back to an invisible
+    `wine64 cmd.exe` path because a package omitted the console helper.
+  - Kept the Steam library Play button semantics separate from utility
+    actions: first game launch may create the PFX, while compatibility-page
+    component/container/run-command utilities require an already created PFX.
 - Files modified:
+  - `script/install_runtime_package.sh`
   - `task_plan.md`
   - `findings.md`
   - `progress.md`
+  - `tests/test_runtime_manager.py`
+  - `tests/test_runtime_package_installer.sh`
+  - `tests/test_steamui_policy.mjs`
+  - `ui/realsteamonmac_ui.js`
 
 ## Session: 2026-06-09
 
@@ -2186,10 +2201,12 @@
   acceptance. Added read-only installed/container inspection, fail-closed
   backend action gating, symlink rejection, and tests proving an uninstalled
   AppID does not gain a PFX.
-- Hid all container-dependent Steam-native sections unless both the Steam
-  install and PFX already exist. Kept `兼容性选项` visible, renamed the catalog
-  section to `安装应用程序到容器`, and removed the unsupported
-  `install-application` action token.
+- Updated the no-PFX compatibility-page policy again after field feedback:
+  installed games now keep the native `安装 Windows 组件`, `容器操作`, and
+  `运行命令` sections visible, but their dependency, operation, browse, command,
+  and run controls are disabled until an existing non-symlink PFX is detected.
+  Uninstalled games still hide those sections, and the backend still refuses
+  direct action jobs without a PFX.
 - Reworked Run Command into a native `运行命令...` expansion with native
   command, browse, argument, environment, cancel, and run controls. Steam file
   dialog object arrays are now accepted.

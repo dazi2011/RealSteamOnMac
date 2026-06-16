@@ -37,7 +37,9 @@ Properties page:
 
 Run Command, dependency installation, and container actions expand directly
 below Steam's original compatibility selector. No overlay or replacement
-settings panel is mounted.
+settings panel is mounted. For installed games that have never been launched,
+these native sections remain visible but stay disabled until Steam has created
+`steamapps/compatdata/<appid>/pfx`.
 
 ## Requirements
 

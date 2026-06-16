@@ -2082,7 +2082,7 @@
                 ? jsx.jsx(components.y4, {
                     label: "确认移动现有容器到恢复目录",
                     checked: deleteConfirmed,
-                    disabled: actionDisabled,
+                    disabled: containerActionDisabled,
                     onChange: setDeleteConfirmed,
                   })
                 : null,

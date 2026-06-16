@@ -439,6 +439,7 @@ if [ "$WITHOUT_GPTK" = false ]; then
 fi
 for renderer in $RENDERERS; do
     test -x "$PACKAGE/wine/$renderer/bin/wine64"
+    test -x "$PACKAGE/wine/$renderer/bin/wineconsole"
     test -x "$PACKAGE/wine/$renderer/bin/wineserver"
 done
 if [ "$WITHOUT_GPTK" = false ]; then
@@ -571,17 +572,21 @@ PY
     CHECKSUM_FILES="\
         manifest.json \
         wine/dxmt/bin/wine64 \
+        wine/dxmt/bin/wineconsole \
         wine/dxmt/lib/wine/x86_64-unix/winemac.so \
         wine/dxmt/lib/wine/x86_64-unix/winemetal.so \
         wine/dxmt/lib/librealsteamonmac_dxmt_macdrv_shim.dylib \
         dxmt-winemac-compat/build-info.json \
         wine/dxvk/bin/wine64 \
+        wine/dxvk/bin/wineconsole \
         wine/dxvk/lib/wine/x86_64-windows/d3d11.dll \
         wine/wined3d/bin/wine64 \
+        wine/wined3d/bin/wineconsole \
         wine/wined3d/lib/wine/x86_64-windows/wined3d.dll"
     if [ "$WITHOUT_GPTK" = false ]; then
         CHECKSUM_FILES="$CHECKSUM_FILES \
             wine/gptk/bin/wine64 \
+            wine/gptk/bin/wineconsole \
             wine/gptk/lib/external/D3DMetal.framework/Versions/A/D3DMetal"
     fi
     # shellcheck disable=SC2086

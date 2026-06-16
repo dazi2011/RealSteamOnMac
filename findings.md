@@ -1525,20 +1525,22 @@
   fall back to the default Steam library. That policy was superseded before
   live acceptance: utility actions now require a complete Steam installation
   and an existing PFX, and the permissive resolver was deleted.
-- Open C Drive initializes a missing prefix before invoking Finder and rejects
-  symlinked compatdata or `drive_c`. The Finder and AppleScript helper paths
-  strip Wine, Steam compatibility, renderer, and `DYLD_*` variables.
+- Open C Drive is only reachable after an existing non-symlink PFX is
+  resolved. It may finish an incomplete `drive_c` inside that existing prefix,
+  then invokes Finder through a scrubbed native environment; it must not create
+  a PFX for a game that has never launched.
 - The compatibility preference bug had three layers: a null active tool was
   treated as supporting no capabilities; backend config load wrote the last
   configured tool back into the active Steam selection; and persistence
   rewrote snapshots from only the currently managed set. All three could
   reset or resurrect settings after disable/re-enable or registry rediscovery.
 - Creating a default prefix for an uninstalled AppID was the wrong repair
-  policy. The native page now submits a read-only `inspect-state` job; only a
-  complete Steam installation with an existing, non-symlink PFX exposes
-  component installation, container operations, Run Command, and recent
-  action status. The runtime independently rejects attempts to bypass that UI
-  gate and the probe does not create compatdata.
+  policy. The native page now submits a read-only `inspect-state` job; a
+  complete Steam installation exposes the native action sections, but
+  component installation, container operations, Run Command, browse, and run
+  controls remain disabled until an existing non-symlink PFX is present. The
+  runtime independently rejects attempts to bypass that UI gate and the probe
+  does not create compatdata.
 - `Run Command` is a Win+R-style launcher, not a process supervisor. Waiting
   for `cmd`, Wine configuration, or Task Manager to exit held the prefix lock
   and made later buttons appear dead. These actions now complete after process
@@ -1556,8 +1558,8 @@
   and created no compatdata directory in any known Steam library.
 - The old literal container operation `install-application` was accepted by
   the parser but always failed. It has been removed. The native section is now
-  named `安装应用程序到容器` and routes only to the reviewed dependency
-  catalog through `action=install-dependency`.
+  named `安装 Windows 组件` and routes only to the reviewed dependency catalog
+  through `action=install-dependency`.
 - Existing `0.1.1` installation state predates the `steam_channel` field.
   Treating that field as mandatory would make the first Update package
   unusable for exactly the installed users it must migrate. The updater now

@@ -171,13 +171,14 @@ Phase 8: 2026-06-11 field regression remediation and verified release
       release artifacts, publish the release, and confirm remote hashes.
 - **Status:** in progress
 - **Run/Container checkpoint:** live jobs for uninstalled AppID `654310`
-  proved that the action endpoint and hook were healthy but every command was
-  rejected before dispatch by `resolve_app_context()`. Actions now use a
-  separate AppID/container context that can initialize a prefix without an
-  appmanifest or game EXE; file selection bypasses game context entirely and
-  native helper processes receive a scrubbed environment. Automated coverage
-  passes, but installed Steam acceptance is still required before this item
-  can be checked again.
+  proved that the action endpoint and hook were healthy but the original
+  launch-context resolver rejected utility commands before dispatch. Actions
+  now use a separate existing-container resolver: file selection and
+  `inspect-state` remain read-only, installed games without a PFX keep their
+  native action sections visible but disabled, and run/container/dependency
+  jobs fail closed instead of creating a prefix. Automated coverage passes,
+  but installed Steam acceptance is still required before this item can be
+  checked again.
 - **Native-controls checkpoint:** the compatibility page renders all project
   actions through Steam's existing React control constructors. The section
   order is complete, but the prior live-action acceptance claim was invalid:
@@ -399,7 +400,7 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 | Commit compatibility selections only after authenticated native registry sync | Steam remains the control owner; the data-only fallback stabilizes checkbox/dropdown state, while delayed original-API writes persist mappings without racing startup. Successful writes are cached and failures leave project state unchanged; native tool registration is still a separate unresolved gate. |
 | Scale Wine's game-controller panel without touching Steam Input | The requested controller interface is `wine64 control.exe joy.cpl`. Temporarily raise that prefix's `LogPixels` to at least 192 while the panel runs, restore the exact prior value on every normal or failed exit, and keep Steam's native controller configurator completely untouched. |
 | Reject the constructor-wide `CCompatManager +0x798` force-enable patch | It makes the startup-only local-tool job active but also enables unrelated Linux-only manager paths and reproducibly triggers `CSteamEngine::BMainLoop` stalls on build `1780965181`. |
-| Never create a prefix from compatibility-page utility actions | A complete Steam installation and an existing non-symlink `compatdata/<appid>/pfx` are now required for component installation, container management, and Run Command. Uninstalled or not-yet-launched games expose only compatibility selection/options. |
+| Never create a prefix from compatibility-page utility actions | A complete Steam installation controls section visibility; an existing non-symlink `compatdata/<appid>/pfx` controls whether component installation, container management, Run Command, browse, and run controls are enabled. Uninstalled games expose only compatibility selection/options. |
 | Model Run Command as a Steam-native secondary section | The compatibility page shows one native `运行命令...` button and expands Valve-owned input/button controls in place. No overlay, custom modal, or replacement UI is introduced. |
 | Let recovery escape long-running interactive actions | Run Command, Wine configuration, and Task Manager return after successful process creation; `quit-all` bypasses the per-prefix action lock so it can stop a still-open Wine controller panel or application. |
 | Let only the newest native action own visible status | A recovery action may intentionally terminate an older Wine process. Preserve both job records, but ignore stale completion when updating Steam's current action status. |

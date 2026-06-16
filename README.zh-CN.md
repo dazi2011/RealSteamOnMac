@@ -34,7 +34,9 @@
 ![兼容性工具下拉菜单](docs/images/compatibility-tools.png)
 
 运行命令、安装 Windows 组件和容器操作直接在 Steam 原有兼容性选择器
-下方展开，不挂载覆盖层或替代设置面板。
+下方展开，不挂载覆盖层或替代设置面板。对于已经安装但还没有启动过的
+游戏，这些原生区块会显示但保持灰色，直到 Steam 创建
+`steamapps/compatdata/<appid>/pfx` 容器。
 
 ## 系统要求
 
