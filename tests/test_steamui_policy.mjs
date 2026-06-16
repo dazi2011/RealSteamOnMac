@@ -481,7 +481,7 @@ test("requires Steam-owned React controls for compatibility actions", () => {
 test("uses native Steam sections in the required compatibility-page order", () => {
   assert.deepEqual(NATIVE_COMPAT_SECTION_LABELS, [
     "兼容性选项",
-    "安装应用程序到容器",
+    "安装 Windows 组件",
     "容器操作",
     "运行命令",
     "最近操作状态",
@@ -491,7 +491,7 @@ test("uses native Steam sections in the required compatibility-page order", () =
     NATIVE_COMPAT_SECTION_LABELS.length,
   );
   assert.doesNotMatch(source, /jsx\.jsxs\(components\.nB/);
-  assert.doesNotMatch(source, /安装 Windows 组件/);
+  assert.doesNotMatch(source, /安装应用程序到容器/);
 });
 
 test("uses a native button to expand the run-command secondary controls", () => {

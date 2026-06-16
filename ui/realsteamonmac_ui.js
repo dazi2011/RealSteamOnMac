@@ -371,7 +371,7 @@
 
   const NATIVE_COMPAT_SECTION_LABELS = Object.freeze([
     "兼容性选项",
-    "安装应用程序到容器",
+    "安装 Windows 组件",
     "容器操作",
     "运行命令",
     "最近操作状态",
@@ -1576,7 +1576,9 @@
     if (nativeCompatSelections.get(appid) === tool) {
       return undefined;
     }
-    const result = await originalSpecifyCompatTool(appid, tool);
+    const result = projectCompatToolNames.has(tool)
+      ? undefined
+      : await originalSpecifyCompatTool(appid, tool);
     nativeCompatSelections.set(appid, tool);
     status.compatNativeSyncs += 1;
     return result;

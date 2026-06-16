@@ -78,6 +78,14 @@
 - Titanfall 2's current Steam appinfo is protocol-only (`link2ea`), so there
   is no safe Windows launch record for the spawn redirect without a separate
   EA-app handling design.
+- The native Steam Play checkbox flicker has a concrete bridge-level risk:
+  project compatibility tools are synthesized in the JavaScript
+  `GetAvailableCompatTools` wrapper, so passing `realsteamonmac-*` tool names
+  through Steam's original `SpecifyCompatTool` backend can make Steam and
+  RealSteamOnMac fight over the force-tool state. The UI bridge now keeps
+  synthetic project tools in RealSteamOnMac's mirrored native-details/config
+  layer and reserves the original Steam backend call for real native tools or
+  clearing a selection.
 
 ## 2026-06-11 Initial Audit
 

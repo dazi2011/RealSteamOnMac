@@ -132,7 +132,12 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     SteamClient: {
       Apps: {
         async GetAvailableCompatTools() {
-          return [];
+          return [
+            {
+              strToolName: "proton-native",
+              strDisplayName: "Native Proton",
+            },
+          ];
         },
         async SpecifyCompatTool(appid, tool) {
           if (tool === rejectedNativeTool) {
@@ -293,10 +298,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     overviews[1].selected_per_client_data.display_status,
     9,
   );
-  assert.deepEqual(nativeSpecifyCalls, [
-    [1118200, "realsteamonmac-dxmt"],
-    [990080, "realsteamonmac-dxmt"],
-  ]);
+  assert.deepEqual(nativeSpecifyCalls, []);
   const scansBeforeNativeDetailCallback =
     context.__REALSTEAMONMAC_UI_STATUS__.scans;
   nativeDetailCallbacks.get(1118200)({
@@ -339,21 +341,18 @@ test("installs the predicate before dynamically replacing the bootstrap registry
 
   const tools =
     await context.SteamClient.Apps.GetAvailableCompatTools(990080);
-  assert.equal(tools.length, 4);
+  assert.equal(tools.length, 5);
+  assert.equal(tools[0].strToolName, "proton-native");
   assert.equal(
-    tools[1].strToolName,
-    "realsteamonmac-dxmt",
+    tools.some((tool) => tool.strToolName === "realsteamonmac-dxmt"),
+    true,
   );
 
   await context.SteamClient.Apps.SpecifyCompatTool(
     990080,
     "realsteamonmac-dxvk",
   );
-  assert.deepEqual(nativeSpecifyCalls, [
-    [1118200, "realsteamonmac-dxmt"],
-    [990080, "realsteamonmac-dxmt"],
-    [990080, "realsteamonmac-dxvk"],
-  ]);
+  assert.deepEqual(nativeSpecifyCalls, []);
   assert.equal(
     context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__(990080),
     "realsteamonmac-dxvk",
@@ -367,11 +366,11 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   );
 
   const controlRequestCount = controlRequests.length;
-  rejectedNativeTool = "realsteamonmac-gptk";
+  rejectedNativeTool = "proton-native";
   await assert.rejects(
     context.SteamClient.Apps.SpecifyCompatTool(
       990080,
-      "realsteamonmac-gptk",
+      "proton-native",
     ),
     /native compatibility tool rejected/,
   );

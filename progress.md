@@ -183,6 +183,19 @@
     Black Myth currently has no manifest; Titanfall 2 is protocol-only; several
     older titles remain update-required or missing their expected Windows
     targets.
+  - Fast-forwarded `main` from `origin/main` to the verified
+    `codex/people-playground-experiment` history and pushed `main`, so future
+    work now continues on the repository's primary branch.
+  - Fixed a likely native Steam Play checkbox flicker source by no longer
+    passing synthesized `realsteamonmac-*` compatibility tool names into
+    Steam's original `SpecifyCompatTool` backend. Project tools now update the
+    RealSteamOnMac config/native-details mirror only, while real native tools
+    and clearing the selection still go through Steam's backend.
+  - Restored the lower native Compatibility page section label to
+    `安装 Windows 组件`, keeping the three native-control sections as
+    Install Windows Components, Container Operations, and Run Command.
+  - Re-ran the SteamUI policy/runtime tests after the flicker fix; 80 focused
+    JS tests passed.
 - Files modified:
   - `task_plan.md`
   - `findings.md`
