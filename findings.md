@@ -43,6 +43,42 @@
   installation tests, update.pkg upgrade acceptance, README updates, PKG
   publication, and remote verification.
 
+## 2026-06-16 Game Matrix And Runtime Drift
+
+- `origin/main` is an ancestor of the active
+  `codex/people-playground-experiment` branch and is 99 commits behind it.
+  After the current coherent batch is committed, work should move to `main`
+  by a normal merge/fast-forward path instead of continuing indefinitely on the
+  Codex branch.
+- The out-of-band RTF notes are present and were read. They add two active UI
+  requirements: the native Steam Play force-tool checkbox must not flicker
+  between enabled and disabled states, and the lower Compatibility page
+  actions should remain organized as Install Windows Components, Container
+  Operations, and Run Command sections while using native Steam controls.
+- Current SteamUI build `1781212412` calls
+  `SteamClient.Apps.RunGame(appid, "", -1, flag)`. The previous one-argument
+  live probe failed with `Apps.RunGame requires 4 arguments; only 1 given`, so
+  all future live probes must use the four-argument native shape.
+- The 2026-06-16 read-only game matrix report is stored at
+  `/tmp/realsteamonmac-game-acceptance-2026-06-16.json`, SHA-256
+  `b15edc27c1901b021ca4c3b6b201b561b577b5453113365b127a64da8768b577`.
+- The installed runtime binary matches the current source, but the installed
+  `steam_launch_descriptor.py` is stale. This directly explains why Aimlabs
+  can still try `AimLab.app` in the live client while the current source
+  resolver selects `AimLab_tb.exe`.
+- Aimlabs has a valid Windows launch record and a valid Windows PE target, but
+  its current manifest state is `files-missing`/`repair-required`; the fix must
+  update the installed descriptor and then address Steam's repair-required
+  state separately.
+- Hogwarts Legacy resolves to `HogwartsLegacy.exe` in current source and no
+  longer needs `Phoenix-Win64-Test.exe`, but its manifest is also
+  `files-missing`/`repair-required`.
+- Black Myth: Wukong currently has no appmanifest after uninstall, so the
+  acceptance harness treats it as not installed and does not create a PFX.
+- Titanfall 2's current Steam appinfo is protocol-only (`link2ea`), so there
+  is no safe Windows launch record for the spawn redirect without a separate
+  EA-app handling design.
+
 ## 2026-06-11 Initial Audit
 
 - The active branch is `codex/people-playground-experiment`, clean and aligned

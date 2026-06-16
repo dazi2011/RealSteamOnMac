@@ -521,14 +521,12 @@ def build_launch_descriptor_from_appinfo(
             raise LaunchDescriptorError(
                 f"Steam appinfo launch config is invalid for entry {entry_id}"
             )
-        os_name = _launch_os_name(raw_config.get("oslist"))
         executable = raw_entry.get("executable")
         arguments = raw_entry.get("arguments", "")
         working_directory = raw_entry.get("workingdir", ".")
         launch_type = raw_entry.get("type", "")
         if (
-            os_name is None
-            or not isinstance(executable, str)
+            not isinstance(executable, str)
             or not isinstance(arguments, str)
             or not isinstance(working_directory, str)
             or not isinstance(launch_type, str)
@@ -536,6 +534,24 @@ def build_launch_descriptor_from_appinfo(
             raise LaunchDescriptorError(
                 f"Steam appinfo launch fields are invalid for entry {entry_id}"
             )
+        if "://" in executable:
+            continue
+        oslist = raw_config.get("oslist")
+        if oslist is not None and not isinstance(oslist, str):
+            raise LaunchDescriptorError(
+                f"Steam appinfo launch OS is invalid for entry {entry_id}"
+            )
+        os_name = _launch_os_name(oslist)
+        if os_name is None and not oslist:
+            suffix = PurePosixPath(
+                executable.replace("\\", "/")
+            ).suffix.casefold()
+            if suffix == ".exe":
+                os_name = "windows"
+            elif suffix == ".app":
+                os_name = "macos"
+        if os_name is None:
+            continue
         entries.append(
             {
                 "id": entry_id,
@@ -547,6 +563,11 @@ def build_launch_descriptor_from_appinfo(
             }
         )
 
+    if not entries:
+        raise LaunchDescriptorError(
+            f"Steam appinfo has no usable launch records for AppID "
+            f"{expected_appid}"
+        )
     requested_relative = _relative_requested_target(
         requested_target, install_path
     )
@@ -566,6 +587,8 @@ def build_launch_descriptor_from_appinfo(
             ),
             None,
         )
+        if selected_entry_id is None and len(entries) == 1:
+            selected_entry_id = entries[0]["id"]
     return _validate_descriptor_value(
         {
             "schema": 1,

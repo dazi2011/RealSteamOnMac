@@ -145,6 +145,44 @@
   - Passed a live Finder smoke test against the People Playground `drive_c`;
     `/usr/bin/open` returned zero with the fatal DXMT shim removed from its
     environment.
+  - Read the two out-of-band RTF instruction files now present in the project
+    root. They require fixing the native Steam Play checkbox flicker and
+    keeping the lower Compatibility page organized as Install Windows
+    Components, Container Operations, and Run Command sections while using
+    native Steam controls.
+  - Verified `origin/main` is an ancestor of
+    `codex/people-playground-experiment` and is 99 commits behind the active
+    branch, so the next coherent commit batch should be merged onto `main`
+    and future work should continue there.
+  - Added the read-only game acceptance harness
+    `script/run_game_acceptance.py`, including Steam library discovery,
+    appmanifest inspection, launch descriptor replay/live appinfo parsing,
+    bounded evidence hashing, bounded process probes, and an installed-runtime
+    fingerprint section.
+  - Added regression coverage for Aimlabs `.app` fallback, Hogwarts stale
+    test-target fallback, Black Myth incomplete-download/no-PFX behavior,
+    external Steam libraries, descriptor failures that preserve manifest
+    state, bounded probes, and stale installed runtime detection.
+  - Updated appinfo launch parsing to skip protocol-only launch records,
+    infer Windows for single `.exe` records without explicit OS metadata, and
+    infer macOS for `.app` records without treating them as redirectable
+    Windows targets.
+  - Confirmed current SteamUI build `1781212412` uses the four-argument native
+    shape `SteamClient.Apps.RunGame(appid, "", -1, flag)`. A single-argument
+    live probe fails with `Apps.RunGame requires 4 arguments; only 1 given`.
+  - Ran the 2026-06-16 read-only game matrix over 12 AppIDs. The report SHA-256
+    is `b15edc27c1901b021ca4c3b6b201b561b577b5453113365b127a64da8768b577`.
+  - Proved the installed `realsteamonmac-runtime` matches current source while
+    the installed `steam_launch_descriptor.py` is stale, explaining why Aimlabs
+    can still try `AimLab.app` in the live client despite the source resolver
+    selecting `AimLab_tb.exe`.
+  - Documented the current game matrix in
+    `docs/research/game-matrix-2026-06-16.md`: RDR2, Sons Of The Forest,
+    FragPunk, and People Playground are static launch-ready; Aimlabs and
+    Hogwarts resolve to correct Windows targets but remain repair-required;
+    Black Myth currently has no manifest; Titanfall 2 is protocol-only; several
+    older titles remain update-required or missing their expected Windows
+    targets.
 - Files modified:
   - `task_plan.md`
   - `findings.md`

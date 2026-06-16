@@ -385,6 +385,100 @@ class SteamLaunchDescriptorTests(unittest.TestCase):
         self.assertEqual(selected["entry_id"], "0")
         self.assertEqual(selected["executable"], expected.resolve())
 
+    def test_appinfo_infers_single_exe_without_os_metadata(self):
+        expected = self.write_pe("FragPunk.exe")
+        appinfo = self.write_appinfo(
+            {
+                2943650: {
+                    "config": {
+                        "launch": {
+                            "0": {
+                                "executable": "FragPunk.exe",
+                            }
+                        }
+                    }
+                }
+            }
+        )
+
+        value = descriptor.build_launch_descriptor_from_appinfo(
+            appinfo,
+            expected_appid=2943650,
+            install_path=self.install_path,
+        )
+        selected = descriptor.resolve_launch_descriptor_value(
+            value,
+            expected_appid=2943650,
+            install_path=self.install_path,
+        )
+
+        self.assertEqual(value["selected_entry_id"], "0")
+        self.assertEqual(selected["entry_id"], "0")
+        self.assertEqual(selected["executable"], expected.resolve())
+
+    def test_appinfo_skips_protocol_only_launch_record(self):
+        appinfo = self.write_appinfo(
+            {
+                1237970: {
+                    "config": {
+                        "launch": {
+                            "0": {
+                                "executable": (
+                                    "link2ea://launchgame/1237970"
+                                    "?platform=steam"
+                                ),
+                                "type": "none",
+                            }
+                        }
+                    }
+                }
+            }
+        )
+
+        with self.assertRaisesRegex(
+            descriptor.LaunchDescriptorError,
+            "no usable launch records",
+        ):
+            descriptor.build_launch_descriptor_from_appinfo(
+                appinfo,
+                expected_appid=1237970,
+                install_path=self.install_path,
+            )
+
+    def test_appinfo_preserves_valid_exe_beside_protocol_record(self):
+        expected = self.write_pe("Game.exe")
+        appinfo = self.write_appinfo(
+            {
+                12345: {
+                    "config": {
+                        "launch": {
+                            "0": {
+                                "executable": "custom://launcher",
+                                "type": "default",
+                            },
+                            "1": {
+                                "executable": "Game.exe",
+                            },
+                        }
+                    }
+                }
+            }
+        )
+
+        value = descriptor.build_launch_descriptor_from_appinfo(
+            appinfo,
+            expected_appid=12345,
+            install_path=self.install_path,
+        )
+        selected = descriptor.resolve_launch_descriptor_value(
+            value,
+            expected_appid=12345,
+            install_path=self.install_path,
+        )
+
+        self.assertEqual(selected["entry_id"], "1")
+        self.assertEqual(selected["executable"], expected.resolve())
+
     def test_appinfo_rejects_binary_vdf_hash_mismatch(self):
         appinfo = self.write_appinfo(
             {
