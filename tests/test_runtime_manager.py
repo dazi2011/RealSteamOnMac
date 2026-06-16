@@ -114,6 +114,9 @@ class RuntimeManagerTests(unittest.TestCase):
             wine64.parent.mkdir(parents=True)
             wine64.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             wine64.chmod(0o755)
+            wineconsole = wine64.parent / "wineconsole"
+            wineconsole.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            wineconsole.chmod(0o755)
         dxmt_driver = (
             package
             / "wine"
@@ -952,12 +955,7 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(
             run.call_args.args[1],
-            [
-                "/usr/bin/open",
-                "-a",
-                "Finder",
-                context["prefix"] / "drive_c",
-            ],
+            ["/usr/bin/open", context["prefix"] / "drive_c"],
         )
         native_environment = run.call_args.args[2]
         self.assertEqual(native_environment["HOME"], str(self.root))
@@ -1010,12 +1008,7 @@ class RuntimeManagerTests(unittest.TestCase):
         )
         self.assertEqual(
             run.call_args.args[1],
-            [
-                "/usr/bin/open",
-                "-a",
-                "Finder",
-                context["prefix"] / "drive_c",
-            ],
+            ["/usr/bin/open", context["prefix"] / "drive_c"],
         )
 
     def test_open_c_drive_rejects_a_linked_directory(self):
@@ -1686,7 +1679,10 @@ class RuntimeManagerTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(result["pid"], 1234)
-        self.assertEqual(start.call_args.args[1], [wine64, "cmd.exe"])
+        self.assertEqual(
+            start.call_args.args[1],
+            [wine64.parent / "wineconsole", "cmd.exe"],
+        )
 
     def test_quit_all_does_not_prepare_or_take_the_action_lock(self):
         (
@@ -1732,7 +1728,7 @@ class RuntimeManagerTests(unittest.TestCase):
                 "kind": "builtin",
                 "target": "cmd.exe",
                 "command": [
-                    wine64,
+                    wine64.parent / "wineconsole",
                     "cmd.exe",
                     "/c",
                     "echo",
@@ -1823,7 +1819,7 @@ class RuntimeManagerTests(unittest.TestCase):
                 "kind": "builtin",
                 "target": "cmd.exe",
                 "command": [
-                    wine64,
+                    wine64.parent / "wineconsole",
                     "cmd.exe",
                     "/c",
                     "echo",

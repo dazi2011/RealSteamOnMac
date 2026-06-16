@@ -2120,6 +2120,11 @@ def parse_command_arguments(value):
     return arguments
 
 
+def wineconsole_for(wine64):
+    candidate = Path(wine64).parent / "wineconsole"
+    return candidate if candidate.is_file() else wine64
+
+
 def build_run_command_plan(context, wine64, target, argument_text):
     arguments = parse_command_arguments(argument_text)
     resolved = resolve_command_target(context, target)
@@ -2141,7 +2146,9 @@ def build_run_command_plan(context, wine64, target, argument_text):
 
     kind = resolved["kind"]
     command_target = resolved["target"]
-    if kind in {"pe", "builtin"}:
+    if kind == "builtin" and command_target == "cmd.exe":
+        command = [wineconsole_for(wine64), command_target, *arguments]
+    elif kind in {"pe", "builtin"}:
         command = [wine64, command_target, *arguments]
     elif kind == "control-panel":
         command = [wine64, "control.exe", command_target, *arguments]
@@ -3092,7 +3099,7 @@ def execute_container_action(context, runtime_root, fields, log_path):
             )
         result = run_job_process(
             context,
-            ["/usr/bin/open", "-a", "Finder", drive_c],
+            ["/usr/bin/open", drive_c],
             build_native_helper_environment(environment),
             log_path,
             f"container operation {operation}",

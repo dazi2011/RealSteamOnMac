@@ -86,6 +86,13 @@
   synthetic project tools in RealSteamOnMac's mirrored native-details/config
   layer and reserves the original Steam backend call for real native tools or
   clearing a selection.
+- Container-dependent actions should not disappear merely because a game has
+  not created a PFX yet. The user-facing native sections now remain visible
+  for installed games, while Install Windows Components, Container Operations,
+  and Run Command controls are disabled until `inspect-state` reports an
+  existing non-symlink prefix. The backend still refuses direct action jobs
+  without an existing PFX, so this does not create prefixes for unlaunched
+  games.
 
 ## 2026-06-11 Initial Audit
 

@@ -196,6 +196,17 @@
     Install Windows Components, Container Operations, and Run Command.
   - Re-ran the SteamUI policy/runtime tests after the flicker fix; 80 focused
     JS tests passed.
+  - Changed the native Compatibility page PFX gating from hiding
+    container-dependent sections to showing them disabled for installed games
+    whose `inspect-state` reports `container_exists: false`. The backend still
+    rejects direct container/run/dependency jobs without an existing PFX, so
+    this does not create prefixes for games that have never launched.
+  - Adjusted Run Command's `cmd`/`cmd.exe` plan to use `wineconsole` when the
+    selected Wine tree provides it, which better matches Windows Run behavior
+    for console commands while preserving the `wine64 cmd.exe` fallback.
+  - Simplified Open C Drive's native helper command from
+    `open -a Finder <drive_c>` to `open <drive_c>` while retaining the
+    Wine/DYLD environment scrub.
 - Files modified:
   - `task_plan.md`
   - `findings.md`

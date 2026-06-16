@@ -264,19 +264,20 @@
   }
 
   function nativeActionSectionsVisible(value) {
-    return (
-      value?.installed === true &&
-      value?.container_exists === true
-    );
+    return value?.installed === true;
   }
 
   function nativeContainerActionDisabled({
     compatEnabled,
+    containerExists = true,
     busy,
     operation,
     deleteConfirmed,
   }) {
     if (!compatEnabled) {
+      return true;
+    }
+    if (!containerExists) {
       return true;
     }
     if (busy && operation !== "quit-all") {
@@ -1992,10 +1993,15 @@
       const actionDisabled = !compatEnabled || busy;
       const actionSectionsVisible =
         nativeActionSectionsVisible(actionAvailability);
+      const containerExists =
+        actionAvailability?.container_exists === true;
+      const containerActionDisabled =
+        actionDisabled || !containerExists;
       const deleteNeedsConfirmation =
         containerOperation === "delete-container";
       const containerDisabled = nativeContainerActionDisabled({
         compatEnabled,
+        containerExists,
         busy,
         operation: containerOperation,
         deleteConfirmed,
@@ -2037,6 +2043,7 @@
                   label: dependency.name,
                 })),
                 selectedOption: dependencyId,
+                disabled: !containerExists || busy,
                 onChange: (option) => setDependencyId(option.data),
               }),
               jsx.jsx("div", {
@@ -2052,7 +2059,7 @@
                     `安装 ${selectedDependency.name}`,
                   );
                 }
-              }, actionDisabled || !selectedDependency),
+              }, containerActionDisabled || !selectedDependency),
             ],
             })
             : null,
@@ -2065,6 +2072,7 @@
                 label: "操作",
                 rgOptions: containerActionOptions,
                 selectedOption: containerOperation,
+                disabled: !containerExists || busy,
                 onChange: (option) => {
                   setContainerOperation(option.data);
                   setDeleteConfirmed(false);
@@ -2100,7 +2108,7 @@
             children: [
               nativeButton("运行命令...", () => {
                 setCommandExpanded(true);
-              }, actionDisabled || commandExpanded),
+              }, containerActionDisabled || commandExpanded),
               commandExpanded
                 ? jsx.jsxs(jsx.Fragment, {
                     children: [
@@ -2110,18 +2118,20 @@
                         placeholder:
                           "cmd、regedit、C:\\path\\tool.exe 或文档",
                         spellCheck: false,
+                        disabled: !containerExists || busy,
                         value: target,
                         onChange: (event) =>
                           setTarget(event.target.value),
                       }),
                       nativeButton("浏览...", () => {
                         void browseTarget();
-                      }, actionDisabled),
+                      }, containerActionDisabled),
                       jsx.jsx(components.pd, {
                         className: styles.TopGap,
                         label: "参数",
                         placeholder: '/c echo "hello"',
                         spellCheck: false,
+                        disabled: !containerExists || busy,
                         value: commandArguments,
                         onChange: (event) =>
                           setCommandArguments(event.target.value),
@@ -2131,6 +2141,7 @@
                         label: "环境变量，每行 NAME=VALUE",
                         placeholder: "DXVK_HUD=fps",
                         spellCheck: false,
+                        disabled: !containerExists || busy,
                         value: commandEnvironment,
                         onChange: (event) =>
                           setCommandEnvironment(event.target.value),
@@ -2147,7 +2158,7 @@
                           }),
                           "运行命令",
                         );
-                      }, actionDisabled),
+                      }, containerActionDisabled),
                     ],
                   })
                 : null,

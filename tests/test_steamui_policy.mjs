@@ -213,7 +213,7 @@ test("builds a read-only native action availability request", () => {
   assert.equal(buildInspectStatePayload(), "action=inspect-state");
 });
 
-test("shows container-dependent native sections only for an existing container", () => {
+test("shows installed native sections but disables container actions without a prefix", () => {
   assert.equal(
     nativeActionSectionsVisible({
       installed: true,
@@ -226,7 +226,7 @@ test("shows container-dependent native sections only for an existing container",
       installed: true,
       container_exists: false,
     }),
-    false,
+    true,
   );
   assert.equal(
     nativeActionSectionsVisible({
@@ -241,6 +241,17 @@ test("keeps quit-all available while another native action is running", () => {
   assert.equal(
     nativeContainerActionDisabled({
       compatEnabled: true,
+      containerExists: false,
+      busy: false,
+      operation: "open-c-drive",
+      deleteConfirmed: false,
+    }),
+    true,
+  );
+  assert.equal(
+    nativeContainerActionDisabled({
+      compatEnabled: true,
+      containerExists: true,
       busy: true,
       operation: "quit-all",
       deleteConfirmed: false,
@@ -250,6 +261,7 @@ test("keeps quit-all available while another native action is running", () => {
   assert.equal(
     nativeContainerActionDisabled({
       compatEnabled: true,
+      containerExists: true,
       busy: true,
       operation: "task-manager",
       deleteConfirmed: false,
@@ -259,6 +271,7 @@ test("keeps quit-all available while another native action is running", () => {
   assert.equal(
     nativeContainerActionDisabled({
       compatEnabled: true,
+      containerExists: true,
       busy: false,
       operation: "delete-container",
       deleteConfirmed: false,
