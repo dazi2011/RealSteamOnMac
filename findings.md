@@ -1592,6 +1592,27 @@
   `appmanifest_2358720.acf`. The backend acceptance harness reports manifest
   missing; the remaining work is preventing Steam UI state normalization or
   repair action selection from treating that shell as a completed download.
+- Steam frontend cache fields are not authoritative enough for repair or
+  download dispatch. `details.eDisplayStatus`, `selected.installed`, and
+  `overview.size_on_disk` can be stale or absent; a managed title must not stay
+  launch-ready unless `installed === true` and `size_on_disk` is positive, or
+  unless the backend manifest diagnosis is the explicitly allowed
+  `repair-required`/files-missing case with a verified selected Windows PE.
+- The compatibility-page `inspect-state` action is the correct low-risk bridge
+  for UI repair/download decisions because it is read-only, already flows
+  through the authenticated native action channel, and can inspect
+  appmanifest/installation-directory/depot facts without creating a PFX.
+- `manifest-missing`, `install-directory-missing`, `content-missing`,
+  `installed-depots-missing`, `manifest-invalid`, `state-blocked`, and
+  `download-incomplete` must prevent stale ReadyToLaunch normalization.
+  Missing or empty install shells route to Steam's install wizard;
+  `download-incomplete` routes to `ResumeAppUpdate`; `repair-required` routes
+  to `VerifyApp`.
+- Aimlabs and Hogwarts dry-run resolution remains correct in both source and
+  the currently installed helper. If live Steam still reports `AimLab.app` or
+  `Phoenix-Win64-Test.exe`, the leading causes are spawn bypass before the
+  runtime helper, a live process with stale injected code, or launch before the
+  dynamic 34-AppID allowlist has reached the native hook.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

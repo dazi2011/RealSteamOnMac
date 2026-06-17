@@ -43,6 +43,23 @@
     dxr: false,
     avx: false,
   });
+  const MANIFEST_INSTALL_DIAGNOSTICS = new Set([
+    "manifest-missing",
+    "install-directory-missing",
+    "not-installed",
+  ]);
+  const MANIFEST_RESUME_DIAGNOSTICS = new Set([
+    "download-incomplete",
+  ]);
+  const MANIFEST_VERIFY_DIAGNOSTICS = new Set([
+    "repair-required",
+    "state-blocked",
+    "manifest-invalid",
+  ]);
+  const MANIFEST_STALE_SHELL_DIAGNOSTICS = new Set([
+    "content-missing",
+    "installed-depots-missing",
+  ]);
 
   function normalizeControlConfig(value, fallbackRenderer = "dxmt") {
     const renderers = new Set(["gptk", "dxmt", "dxvk", "wined3d"]);
@@ -496,9 +513,53 @@
     );
   }
 
+  function manifestDiagnosticTargetStatus(diagnostic) {
+    if (
+      MANIFEST_INSTALL_DIAGNOSTICS.has(diagnostic) ||
+      MANIFEST_RESUME_DIAGNOSTICS.has(diagnostic) ||
+      MANIFEST_STALE_SHELL_DIAGNOSTICS.has(diagnostic) ||
+      diagnostic === "manifest-invalid" ||
+      diagnostic === "state-blocked"
+    ) {
+      return READY_TO_INSTALL;
+    }
+    if (MANIFEST_VERIFY_DIAGNOSTICS.has(diagnostic)) {
+      return null;
+    }
+    return null;
+  }
+
+  function manifestDiagnosticRepairAction(diagnostic) {
+    if (
+      MANIFEST_INSTALL_DIAGNOSTICS.has(diagnostic) ||
+      MANIFEST_STALE_SHELL_DIAGNOSTICS.has(diagnostic)
+    ) {
+      return "install";
+    }
+    if (MANIFEST_RESUME_DIAGNOSTICS.has(diagnostic)) {
+      return "resume";
+    }
+    if (MANIFEST_VERIFY_DIAGNOSTICS.has(diagnostic)) {
+      return "verify";
+    }
+    return null;
+  }
+
   function getManagedTargetStatus(state) {
     if (state.allowlisted !== true) {
       return null;
+    }
+    const manifestTarget = manifestDiagnosticTargetStatus(
+      state.manifestDiagnostic,
+    );
+    if (
+      manifestTarget !== null &&
+      (
+        state.detailsStatus === INVALID_PLATFORM ||
+        state.detailsStatus === READY_TO_LAUNCH
+      )
+    ) {
+      return manifestTarget;
     }
     if (state.detailsStatus === INVALID_PLATFORM) {
       return (
@@ -516,13 +577,8 @@
       state.detailsStatus === READY_TO_LAUNCH &&
       (
         state.hasAnyLocalContent !== true ||
-        state.installed === false ||
-        state.sizeOnDisk === 0 ||
-        state.sizeOnDisk === 0n ||
-        (
-          typeof state.sizeOnDisk === "string" &&
-          /^0+$/.test(state.sizeOnDisk)
-        )
+        state.installed !== true ||
+        !hasPositiveSize(state.sizeOnDisk)
       )
     ) {
       return READY_TO_INSTALL;
@@ -548,6 +604,12 @@
       )
     ) {
       return "active";
+    }
+    const manifestAction = manifestDiagnosticRepairAction(
+      state.manifestDiagnostic,
+    );
+    if (manifestAction) {
+      return manifestAction;
     }
     if (
       state.detailsStatus === READY_TO_LAUNCH &&
@@ -587,6 +649,7 @@
     hasAnyLocalContent,
     installed,
     sizeOnDisk,
+    manifestDiagnostic,
     clientid,
   }) {
     if (
@@ -601,6 +664,7 @@
       hasAnyLocalContent,
       installed,
       sizeOnDisk,
+      manifestDiagnostic,
     });
     if (!action) {
       throw new Error(
@@ -1477,6 +1541,12 @@
         job.message || "native action availability is invalid",
       );
     }
+    if (
+      "manifest_diagnostic" in job.result &&
+      typeof job.result.manifest_diagnostic !== "string"
+    ) {
+      throw new Error("native action manifest diagnostic is invalid");
+    }
     return job.result;
   }
 
@@ -1682,14 +1752,23 @@
     if (!overview || !details || !selected) {
       throw new Error(`Steam app state is unavailable for AppID ${appid}`);
     }
+    if (!managedAppids.has(appid)) {
+      throw new Error(`AppID ${appid} is not managed`);
+    }
+    const actionState = await inspectNativeActionState(appid);
     return requestNativeRepair({
       steamClient: globalObject.SteamClient,
       appid,
-      allowlisted: managedAppids.has(appid),
+      allowlisted: true,
       detailsStatus: details.eDisplayStatus,
-      hasAnyLocalContent: details.bHasAnyLocalContent,
-      installed: selected.installed,
-      sizeOnDisk: overview.size_on_disk,
+      hasAnyLocalContent:
+        typeof actionState.install_path_nonempty === "boolean"
+          ? actionState.install_path_nonempty
+          : details.bHasAnyLocalContent,
+      installed: actionState.installed,
+      sizeOnDisk:
+        actionState.size_on_disk ?? overview.size_on_disk,
+      manifestDiagnostic: actionState.manifest_diagnostic,
       clientid: overview.selected_clientid ?? selected.clientid ?? "0",
     });
   };

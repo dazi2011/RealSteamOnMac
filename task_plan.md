@@ -258,6 +258,14 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   marker exists, records `stable` or the beta channel in installation state,
   and refuses a channel change against a clean backup. Stable and public-beta
   fixtures pass, including a newer downloaded but inactive manifest.
+- **Download/repair diagnostics checkpoint:** native repair dispatch now
+  fetches the backend `inspect-state` job before choosing Steam's install,
+  resume, or verify APIs. Missing manifests, missing install directories,
+  empty content shells, zero installed depots, invalid manifests, and blocked
+  states cannot remain normalized as ReadyToLaunch; only the verified
+  files-missing repair state remains launchable as a warning. Automated
+  coverage passes, but Black Myth's fresh native install/download path still
+  needs live acceptance.
 - **Restart/language checkpoint:** after authenticated native registry sync,
   the browser policy now derives Steam's native ready-to-launch or
   ready-to-install state from installed, local-content, and positive-size

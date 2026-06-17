@@ -47,7 +47,15 @@ async function waitFor(predicate) {
 
 test("installs the predicate before dynamically replacing the bootstrap registry", async () => {
   const overviews = [
-    overview(1118200),
+    overview(1118200, {
+      size_on_disk: "455945761",
+      selected_per_client_data: {
+        display_status: 14,
+        is_available_on_current_platform: false,
+        is_invalid_os_type: true,
+        installed: true,
+      },
+    }),
     overview(990080),
     overview(4000),
   ];
@@ -64,14 +72,32 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   const nativeRepairCalls = [];
   const registryRequests = [];
   const controlRequests = [];
+  const actionRequests = [];
+  const actionJobs = new Map();
+  let nextActionJob = 0;
   const intervalCallbacks = new Map();
   const storage = new Map();
+  function allocateActionJob(appid, action, result) {
+    nextActionJob += 1;
+    const jobId = nextActionJob.toString(16).padStart(32, "0");
+    actionJobs.set(jobId, {
+      schema: 1,
+      appid,
+      job_id: jobId,
+      action,
+      state: "completed",
+      result,
+    });
+    return jobId;
+  }
   const context = vm.createContext({
     __REALSTEAMONMAC_CONFIG__: Object.freeze({
       appids: [1118200],
       defaultCompatTool: "realsteamonmac-dxmt",
       registryEndpoint: "http://127.0.0.1:57344/registry",
       controlEndpoint: "http://127.0.0.1:57344/config",
+      actionEndpoint: "http://127.0.0.1:57344/action",
+      jobEndpoint: "http://127.0.0.1:57344/job",
       registryToken: "0123456789abcdef0123456789abcdef",
       compatTools: [
         {
@@ -195,6 +221,45 @@ test("installs the predicate before dynamically replacing the bootstrap registry
       return 1;
     },
     async fetch(url, options) {
+      if (url.startsWith("http://127.0.0.1:57344/action")) {
+        actionRequests.push({ url, options });
+        const appid = Number(new URL(url).searchParams.get("appid"));
+        const fields = new URLSearchParams(options.body);
+        assert.equal(fields.get("action"), "inspect-state");
+        const result =
+          appid === 1118200
+            ? {
+                installed: true,
+                container_exists: true,
+                manifest_diagnostic: "ready",
+                install_path_nonempty: true,
+                size_on_disk: 455945761,
+              }
+            : {
+                installed: false,
+                container_exists: false,
+                manifest_diagnostic: "manifest-missing",
+                install_path_nonempty: false,
+                size_on_disk: 0,
+              };
+        const jobId = allocateActionJob(appid, "inspect-state", result);
+        return {
+          ok: true,
+          async json() {
+            return { job_id: jobId };
+          },
+        };
+      }
+      if (url.startsWith("http://127.0.0.1:57344/job")) {
+        const jobId = new URL(url).searchParams.get("job");
+        const job = actionJobs.get(jobId);
+        return {
+          ok: true,
+          async json() {
+            return job;
+          },
+        };
+      }
       if (url.startsWith("http://127.0.0.1:57344/config")) {
         controlRequests.push({ url, options });
         if (options.method === "GET") {
@@ -334,6 +399,16 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     ["install", [990080]],
     ["verify", 1118200],
   ]);
+  assert.deepEqual(
+    actionRequests.map((request) => [
+      Number(new URL(request.url).searchParams.get("appid")),
+      request.options.body,
+    ]),
+    [
+      [990080, "action=inspect-state"],
+      [1118200, "action=inspect-state"],
+    ],
+  );
   await assert.rejects(
     context.__REALSTEAMONMAC_REQUEST_REPAIR__(4000),
     /not managed/,

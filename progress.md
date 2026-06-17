@@ -2296,3 +2296,26 @@
   uninstall/reinstall was not performed. All three PKGs remain unsigned at the
   Apple installer layer because no Developer ID Installer identity is
   available; release-manifest authenticity remains independently verified.
+- Re-read `progress.md`, `findings.md`, `task_plan.md`, and both root
+  `codex LOOKLOOK ITTTTT!!!!!!!*.rtf` notes after resuming on `main` at
+  `e35023e`; the RTF files remain untracked and must not be committed.
+- Extended the read-only `inspect-state` action to report Steam manifest
+  diagnostics without creating a PFX. It now distinguishes `manifest-missing`,
+  invalid manifests, missing install directories, empty content shells,
+  installed-depot loss, download-incomplete states, ready installs, and
+  repair-required installs.
+- Changed SteamUI repair/download dispatch to call backend `inspect-state`
+  before choosing `VerifyApp`, `ResumeAppUpdate`, or `OpenInstallWizard`.
+  Backend diagnostics now override stale Steam frontend cache fields, and
+  `ReadyToLaunch` requires explicit `installed=true` plus positive size.
+- Missing manifests and stale empty shells now normalize to Steam
+  Ready-to-Install instead of launch-ready; `files-missing`/verified
+  repair-required installs remain launchable warnings, preserving the
+  Aimlabs/Hogwarts repair-state launch fix.
+- Added coverage proving `__REALSTEAMONMAC_REQUEST_REPAIR__` fetches
+  `inspect-state`, routes missing manifests and zero-depot shells through
+  Steam's install path, routes `download-incomplete` through resume, routes
+  `repair-required` through verify, and rejects unmanaged AppIDs before
+  starting any native action job.
+- Verification for this batch passed all 88 Node tests, all 162 Python
+  unittest tests, JavaScript/Python syntax checks, and `git diff --check`.

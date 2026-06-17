@@ -410,21 +410,65 @@ def steam_library_roots(steam_root=None):
 
 
 def inspect_action_state(appid, steam_root=None):
-    try:
-        installation = find_app_installation(appid, steam_root)
-    except RuntimeErrorWithContext:
-        return {"installed": False, "container_exists": False}
-    compat_data = (
-        installation["steamapps"]
-        / "compatdata"
-        / str(installation["appid"])
-    )
-    if compat_data.is_symlink():
-        return {"installed": True, "container_exists": False}
-    prefix = compat_data / "pfx"
+    appid = parse_appid(appid)
+    for library_root in steam_library_roots(steam_root):
+        steamapps = library_root / "steamapps"
+        manifest = steamapps / f"appmanifest_{appid}.acf"
+        if not manifest.is_file():
+            continue
+        try:
+            installdir = manifest_install_directory(manifest, appid)
+            install_path = (steamapps / "common" / installdir).resolve()
+        except SteamAppStateError as error:
+            return {
+                "installed": False,
+                "container_exists": False,
+                "manifest_diagnostic": "manifest-invalid",
+                "manifest_message": str(error),
+            }
+        if not install_path.is_dir():
+            return {
+                "installed": False,
+                "container_exists": False,
+                "manifest_diagnostic": "install-directory-missing",
+            }
+        try:
+            install_state = inspect_app_manifest(
+                manifest, appid, install_path
+            )
+        except SteamAppStateError as error:
+            return {
+                "installed": False,
+                "container_exists": False,
+                "manifest_diagnostic": "manifest-invalid",
+                "manifest_message": str(error),
+            }
+        installed = install_state["diagnostic"] in {
+            "ready",
+            "repair-required",
+        }
+        compat_data = steamapps / "compatdata" / str(appid)
+        if not installed or compat_data.is_symlink():
+            container_exists = False
+        else:
+            prefix = compat_data / "pfx"
+            container_exists = prefix.is_dir() and not prefix.is_symlink()
+        return {
+            "installed": installed,
+            "container_exists": container_exists,
+            "manifest_diagnostic": install_state["diagnostic"],
+            "state_flags": install_state["state_flags"],
+            "size_on_disk": install_state["size_on_disk"],
+            "installed_depot_count": install_state[
+                "installed_depot_count"
+            ],
+            "staged_depot_count": install_state["staged_depot_count"],
+            "install_path_nonempty": install_state["install_path_nonempty"],
+        }
     return {
-        "installed": True,
-        "container_exists": prefix.is_dir() and not prefix.is_symlink(),
+        "installed": False,
+        "container_exists": False,
+        "manifest_diagnostic": "manifest-missing",
     }
 
 

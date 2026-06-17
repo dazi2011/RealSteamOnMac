@@ -756,6 +756,73 @@ test("maps staged-only local content back to Steam ready-to-install", () => {
   );
 });
 
+test("uses backend manifest diagnostics to avoid stale launch readiness", () => {
+  assert.equal(
+    getManagedTargetStatus({
+      allowlisted: true,
+      detailsStatus: 11,
+      hasAnyLocalContent: true,
+      installed: undefined,
+      sizeOnDisk: "4096",
+    }),
+    9,
+  );
+  assert.equal(
+    getManagedTargetStatus({
+      allowlisted: true,
+      detailsStatus: 11,
+      hasAnyLocalContent: true,
+      installed: true,
+      sizeOnDisk: undefined,
+    }),
+    9,
+  );
+  assert.equal(
+    getManagedTargetStatus({
+      allowlisted: true,
+      detailsStatus: 11,
+      hasAnyLocalContent: true,
+      installed: true,
+      sizeOnDisk: "149800000000",
+      manifestDiagnostic: "content-missing",
+    }),
+    9,
+  );
+  assert.equal(
+    getManagedTargetStatus({
+      allowlisted: true,
+      detailsStatus: 14,
+      hasAnyLocalContent: true,
+      installed: true,
+      sizeOnDisk: "4096",
+      manifestDiagnostic: "installed-depots-missing",
+    }),
+    9,
+  );
+  assert.equal(
+    getManagedTargetStatus({
+      allowlisted: true,
+      detailsStatus: 11,
+      hasAnyLocalContent: true,
+      installed: true,
+      sizeOnDisk: "4096",
+      manifestDiagnostic: "repair-required",
+    }),
+    11,
+  );
+  assert.equal(
+    getManagedTargetStatus({
+      allowlisted: true,
+      detailsStatus: 11,
+      hasAnyLocalContent: true,
+      installed: true,
+      sizeOnDisk: "4096",
+      manifestDiagnostic: "manifest-invalid",
+    }),
+    9,
+  );
+});
+
 test("derives launch readiness after the native platform gate is synchronized", () => {
   assert.equal(
     getManagedTargetStatus({
@@ -867,6 +934,46 @@ test("chooses bounded Steam-owned repair actions", () => {
       "active",
     );
   }
+  assert.equal(
+    chooseNativeRepairAction({
+      detailsStatus: 11,
+      hasAnyLocalContent: true,
+      installed: true,
+      sizeOnDisk: "4096",
+      manifestDiagnostic: "manifest-missing",
+    }),
+    "install",
+  );
+  assert.equal(
+    chooseNativeRepairAction({
+      detailsStatus: 11,
+      hasAnyLocalContent: true,
+      installed: false,
+      sizeOnDisk: "0",
+      manifestDiagnostic: "download-incomplete",
+    }),
+    "resume",
+  );
+  assert.equal(
+    chooseNativeRepairAction({
+      detailsStatus: 11,
+      hasAnyLocalContent: true,
+      installed: true,
+      sizeOnDisk: "4096",
+      manifestDiagnostic: "repair-required",
+    }),
+    "verify",
+  );
+  assert.equal(
+    chooseNativeRepairAction({
+      detailsStatus: 11,
+      hasAnyLocalContent: false,
+      installed: false,
+      sizeOnDisk: "0",
+      manifestDiagnostic: "content-missing",
+    }),
+    "install",
+  );
 });
 
 test("executes repair through fixed SteamClient methods", async () => {
@@ -934,6 +1041,38 @@ test("executes repair through fixed SteamClient methods", async () => {
     ["verify", 990080],
     ["install", [714010]],
   ]);
+
+  assert.equal(
+    await requestNativeRepair({
+      steamClient,
+      appid: 2358720,
+      allowlisted: true,
+      detailsStatus: 11,
+      hasAnyLocalContent: true,
+      installed: true,
+      sizeOnDisk: "4096",
+      manifestDiagnostic: "manifest-missing",
+      clientid: "0",
+    }),
+    "install",
+  );
+  assert.deepEqual(calls.at(-1), ["install", [2358720]]);
+
+  assert.equal(
+    await requestNativeRepair({
+      steamClient,
+      appid: 2358720,
+      allowlisted: true,
+      detailsStatus: 11,
+      hasAnyLocalContent: false,
+      installed: false,
+      sizeOnDisk: "0",
+      manifestDiagnostic: "installed-depots-missing",
+      clientid: "0",
+    }),
+    "install",
+  );
+  assert.deepEqual(calls.at(-1), ["install", [2358720]]);
 
   await assert.rejects(
     requestNativeRepair({

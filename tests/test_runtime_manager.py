@@ -1586,7 +1586,11 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(status["state"], "completed")
         self.assertEqual(
             status["result"],
-            {"container_exists": False, "installed": False},
+            {
+                "container_exists": False,
+                "installed": False,
+                "manifest_diagnostic": "manifest-missing",
+            },
         )
         self.assertFalse(
             (
@@ -1596,6 +1600,32 @@ class RuntimeManagerTests(unittest.TestCase):
                 / "pfx"
             ).exists()
         )
+
+    def test_inspect_state_reports_stale_empty_shell_as_uninstalled(self):
+        shell = self.steamapps / "common" / "Empty Shell"
+        shell.mkdir()
+        (self.steamapps / "appmanifest_2358720.acf").write_text(
+            '"AppState"\n{\n'
+            '\t"appid"\t\t"2358720"\n'
+            '\t"StateFlags"\t\t"4"\n'
+            '\t"installdir"\t\t"Empty Shell"\n'
+            '\t"SizeOnDisk"\t\t"0"\n'
+            '\t"UpdateResult"\t\t"0"\n'
+            '\t"InstalledDepots"\n'
+            "\t{\n"
+            "\t}\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        result = runtime.inspect_action_state("2358720")
+
+        self.assertEqual(result["installed"], False)
+        self.assertEqual(result["container_exists"], False)
+        self.assertEqual(result["manifest_diagnostic"], "content-missing")
+        self.assertEqual(result["state_flags"], 4)
+        self.assertEqual(result["size_on_disk"], 0)
+        self.assertEqual(result["installed_depot_count"], 0)
+        self.assertEqual(result["install_path_nonempty"], False)
 
     def test_action_job_rejects_an_installed_app_without_a_container(self):
         arguments = SimpleNamespace(
