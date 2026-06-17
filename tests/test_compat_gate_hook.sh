@@ -27,6 +27,7 @@ grep -q '0xD101C3FF' "$SOURCE"
 grep -q '0xA9054FF4' "$SOURCE"
 grep -q 'REALSTEAMONMAC_APPIDS' "$SOURCE"
 grep -q 'allowlist.txt' "$SOURCE"
+grep -q 'managed-appids-cache.txt' "$SOURCE"
 grep -q 'PLATFORM_INVALID_BIT' "$SOURCE"
 grep -q 'unsetenv("DYLD_INSERT_LIBRARIES")' "$SOURCE"
 grep -q 'realsteamonmac_apply_data_overrides' "$SOURCE"
@@ -101,6 +102,8 @@ grep -q 'gAllowlistGeneration' "$SOURCE"
 grep -q 'finish_install_gate_update' "$SOURCE"
 grep -q 'memory_order_release' "$SOURCE"
 grep -q 'registry: accepted %zu managed AppID(s)' "$SOURCE"
+grep -q 'registry: persisted managed AppID seed' "$SOURCE"
+grep -q 'persist_registry_cache(appids, count)' "$SOURCE"
 
 # The launch bridge replaces only the resolved steamclient posix_spawn pointer.
 # It redirects verified PE targets plus recoverable missing/.app launch targets

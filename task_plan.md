@@ -266,6 +266,13 @@ Phase 8: 2026-06-11 field regression remediation and verified release
   files-missing repair state remains launchable as a warning. Automated
   coverage passes, but Black Myth's fresh native install/download path still
   needs live acceptance.
+- **Startup allowlist seed checkpoint:** the native hook now persists each
+  successful authenticated dynamic registry to a private
+  `managed-appids-cache.txt` seed and merges it with the static bootstrap
+  allowlist on the next Steam start. This should let early Aimlabs/Hogwarts
+  Play clicks reach the missing-target spawn redirect before the browser
+  registry scan completes. Automated hook and spawn contracts pass; live
+  launch acceptance remains required.
 - **Restart/language checkpoint:** after authenticated native registry sync,
   the browser policy now derives Steam's native ready-to-launch or
   ready-to-install state from installed, local-content, and positive-size

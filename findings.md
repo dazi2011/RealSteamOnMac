@@ -1613,6 +1613,13 @@
   `Phoenix-Win64-Test.exe`, the leading causes are spawn bypass before the
   runtime helper, a live process with stale injected code, or launch before the
   dynamic 34-AppID allowlist has reached the native hook.
+- Persisting the last successful authenticated browser registry is a narrower
+  fix than broadening the native hook. The hook still accepts only bounded
+  positive AppIDs, still starts from the static bootstrap allowlist, and still
+  receives live updates from Steam's decoded owned-library state. The cache
+  only seeds the same allowlist on the next launch so early Play clicks can
+  reach missing-target redirection before the five-second browser scan posts
+  the current registry.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

@@ -758,6 +758,30 @@ static void parse_allowlist_text(char *text) {
   }
 }
 
+static bool support_file_path(
+    const char *filename, char path[1200]) {
+  const char *home = getenv("HOME");
+  if (home == NULL) {
+    return false;
+  }
+  return snprintf(
+             path, 1200,
+             "%s/Library/Application Support/RealSteamOnMac/%s",
+             home, filename) < 1200;
+}
+
+static void parse_allowlist_file(const char *path) {
+  FILE *stream = fopen(path, "r");
+  if (stream == NULL) {
+    return;
+  }
+  char line[256];
+  while (fgets(line, sizeof(line), stream) != NULL) {
+    parse_allowlist_text(line);
+  }
+  fclose(stream);
+}
+
 static void load_allowlist(void) {
   (void)pthread_mutex_lock(&gAllowlistLock);
   if (atomic_load_explicit(&gAllowlistLoaded, memory_order_acquire)) {
@@ -775,21 +799,12 @@ static void load_allowlist(void) {
     }
   }
 
-  const char *home = getenv("HOME");
-  if (home != NULL) {
-    char path[1200];
-    if (snprintf(path, sizeof(path),
-                 "%s/Library/Application Support/RealSteamOnMac/allowlist.txt",
-                 home) < (int)sizeof(path)) {
-      FILE *stream = fopen(path, "r");
-      if (stream != NULL) {
-        char line[256];
-        while (fgets(line, sizeof(line), stream) != NULL) {
-          parse_allowlist_text(line);
-        }
-        fclose(stream);
-      }
-    }
+  char path[1200];
+  if (support_file_path("allowlist.txt", path)) {
+    parse_allowlist_file(path);
+  }
+  if (support_file_path("managed-appids-cache.txt", path)) {
+    parse_allowlist_file(path);
   }
 
   char message[128];
@@ -1487,6 +1502,74 @@ static bool parse_registry_payload(
   }
 }
 
+static bool persist_registry_cache(
+    const uint32_t *appids, size_t count) {
+  const char *home = getenv("HOME");
+  if (home == NULL) {
+    return false;
+  }
+  char root[1024];
+  char path[1200];
+  char temporary[1250];
+  if (
+      snprintf(
+          root, sizeof(root),
+          "%s/Library/Application Support/RealSteamOnMac",
+          home) >= (int)sizeof(root) ||
+      snprintf(
+          path, sizeof(path),
+          "%s/managed-appids-cache.txt", root) >=
+          (int)sizeof(path) ||
+      snprintf(
+          temporary, sizeof(temporary),
+          "%s/.managed-appids-cache.txt.XXXXXX", root) >=
+          (int)sizeof(temporary)
+  ) {
+    return false;
+  }
+  if (mkdir(root, 0700) != 0 && errno != EEXIST) {
+    return false;
+  }
+  struct stat root_stat;
+  if (
+      lstat(root, &root_stat) != 0 ||
+      !S_ISDIR(root_stat.st_mode) ||
+      S_ISLNK(root_stat.st_mode) ||
+      chmod(root, 0700) != 0
+  ) {
+    return false;
+  }
+
+  int descriptor = mkstemp(temporary);
+  if (descriptor < 0) {
+    return false;
+  }
+  bool success = fchmod(descriptor, 0600) == 0;
+  for (size_t index = 0; success && index < count; ++index) {
+    char line[32];
+    int length = snprintf(
+        line, sizeof(line), "%u\n", (unsigned int)appids[index]);
+    if (
+        length <= 0 ||
+        length >= (int)sizeof(line) ||
+        write(descriptor, line, (size_t)length) != (ssize_t)length
+    ) {
+      success = false;
+    }
+  }
+  success = success && fsync(descriptor) == 0;
+  if (close(descriptor) != 0) {
+    success = false;
+  }
+  if (success) {
+    success = rename(temporary, path) == 0;
+  }
+  if (!success) {
+    (void)unlink(temporary);
+  }
+  return success;
+}
+
 static void publish_registry(
     const uint32_t *appids, size_t count) {
   (void)pthread_mutex_lock(&gAllowlistLock);
@@ -1507,6 +1590,11 @@ static void publish_registry(
       message, sizeof(message),
       "registry: accepted %zu managed AppID(s)", count);
   log_line(message);
+  if (persist_registry_cache(appids, count)) {
+    log_line("registry: persisted managed AppID seed");
+  } else {
+    log_line("registry: failed to persist managed AppID seed");
+  }
 }
 
 __attribute__((visibility("default")))

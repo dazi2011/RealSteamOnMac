@@ -2319,3 +2319,15 @@
   starting any native action job.
 - Verification for this batch passed all 88 Node tests, all 162 Python
   unittest tests, JavaScript/Python syntax checks, and `git diff --check`.
+- Added a native hook startup seed for dynamically managed AppIDs. Each
+  successful authenticated `/registry` update is now persisted to
+  `~/Library/Application Support/RealSteamOnMac/managed-appids-cache.txt`
+  with mode `0600` through a temporary file and `rename`; the next Steam
+  startup merges that cache with the static bootstrap allowlist before the
+  browser registry sync completes.
+- This reduces the early-launch window where Aimlabs or Hogwarts can be
+  clicked before the native hook knows they are managed, which would bypass
+  missing-target redirection and surface stale `.app` or test-executable
+  errors from Steam itself.
+- Verification for the native seed batch passed `tests/test_compat_gate_hook.sh`,
+  `tests/test_spawn_redirect.sh`, and `git diff --check`.
