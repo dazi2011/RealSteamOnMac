@@ -195,6 +195,18 @@ def inspect_app_manifest(path, expected_appid, install_path):
     update_result = _parse_nonnegative_integer(
         app_state.get("UpdateResult", "0"), "UpdateResult", path
     )
+    bytes_to_download = _parse_nonnegative_integer(
+        app_state.get("BytesToDownload", "0"), "BytesToDownload", path
+    )
+    bytes_downloaded = _parse_nonnegative_integer(
+        app_state.get("BytesDownloaded", "0"), "BytesDownloaded", path
+    )
+    bytes_to_stage = _parse_nonnegative_integer(
+        app_state.get("BytesToStage", "0"), "BytesToStage", path
+    )
+    bytes_staged = _parse_nonnegative_integer(
+        app_state.get("BytesStaged", "0"), "BytesStaged", path
+    )
     installed_count, installed_bytes = _summarize_depots(
         app_state, "InstalledDepots", path
     )
@@ -226,6 +238,10 @@ def inspect_app_manifest(path, expected_appid, install_path):
             "size_on_disk": size_on_disk,
             "build_id": app_state.get("buildid", ""),
             "update_result": update_result,
+            "bytes_to_download": bytes_to_download,
+            "bytes_downloaded": bytes_downloaded,
+            "bytes_to_stage": bytes_to_stage,
+            "bytes_staged": bytes_staged,
             "installed_depot_count": installed_count,
             "installed_depot_bytes": installed_bytes,
             "staged_depot_count": staged_count,

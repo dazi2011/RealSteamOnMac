@@ -306,7 +306,10 @@ class SteamLaunchDescriptorTests(unittest.TestCase):
                         "installdir": "Hogwarts Legacy",
                         "launch": {
                             "0": {
-                                "executable": "Phoenix-Win64-Test.exe",
+                                "executable": (
+                                    "Phoenix/Binaries/Win64/"
+                                    "Phoenix-Win64-Test.exe"
+                                ),
                                 "arguments": "-development",
                                 "type": "option1",
                                 "config": {
@@ -333,7 +336,13 @@ class SteamLaunchDescriptorTests(unittest.TestCase):
             appinfo,
             expected_appid=990080,
             install_path=self.install_path,
-            requested_target=self.install_path / "Phoenix-Win64-Test.exe",
+            requested_target=(
+                self.install_path
+                / "Phoenix"
+                / "Binaries"
+                / "Win64"
+                / "Phoenix-Win64-Test.exe"
+            ),
         )
         selected = descriptor.resolve_launch_descriptor_value(
             value,

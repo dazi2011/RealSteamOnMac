@@ -30,6 +30,10 @@ class SteamAppStateTests(unittest.TestCase):
         installed_depots="",
         staged_depots="",
         update_result="0",
+        bytes_to_download="0",
+        bytes_downloaded="0",
+        bytes_to_stage="0",
+        bytes_staged="0",
     ):
         installed_section = (
             f'\t"InstalledDepots"\n\t{{\n{installed_depots}\t}}\n'
@@ -51,6 +55,10 @@ class SteamAppStateTests(unittest.TestCase):
             f'\t"SizeOnDisk"\t\t"{size_on_disk}"\n'
             '\t"buildid"\t\t"12345"\n'
             f'\t"UpdateResult"\t\t"{update_result}"\n'
+            f'\t"BytesToDownload"\t\t"{bytes_to_download}"\n'
+            f'\t"BytesDownloaded"\t\t"{bytes_downloaded}"\n'
+            f'\t"BytesToStage"\t\t"{bytes_to_stage}"\n'
+            f'\t"BytesStaged"\t\t"{bytes_staged}"\n'
             f"{installed_section}"
             f"{staged_section}"
             "}\n",
@@ -79,6 +87,8 @@ class SteamAppStateTests(unittest.TestCase):
         self.assertTrue(state["launchable"])
         self.assertEqual(state["installed_depot_count"], 1)
         self.assertEqual(state["installed_depot_bytes"], 128281011495)
+        self.assertEqual(state["bytes_to_download"], 0)
+        self.assertEqual(state["bytes_to_stage"], 0)
         self.assertEqual(state["diagnostic"], "ready")
 
     def test_files_missing_state_requires_repair(self):
@@ -89,6 +99,7 @@ class SteamAppStateTests(unittest.TestCase):
         self.write_manifest(
             state_flags=36,
             size_on_disk=74056715310,
+            bytes_to_download="123",
             installed_depots=(
                 '\t\t"990081"\n'
                 "\t\t{\n"
@@ -105,6 +116,7 @@ class SteamAppStateTests(unittest.TestCase):
 
         self.assertFalse(state["launchable"])
         self.assertIn("files-missing", state["blocking_states"])
+        self.assertEqual(state["bytes_to_download"], 123)
         self.assertEqual(state["diagnostic"], "repair-required")
 
     def test_staged_only_download_is_not_installed(self):

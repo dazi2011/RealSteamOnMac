@@ -34,6 +34,7 @@ from steam_launch_descriptor import (
     resolve_launch_descriptor_value,
 )
 from steam_app_state import (
+    FULLY_INSTALLED,
     SteamAppStateError,
     inspect_app_manifest,
     manifest_install_directory,
@@ -63,6 +64,7 @@ CONTAINER_OPERATIONS = frozenset(
         "delete-container",
     )
 )
+RECOVERABLE_REPAIR_STATES = frozenset(("files-missing",))
 WINDOWS_RUN_BUILTINS = {
     "cmd": "cmd.exe",
     "cmd.exe": "cmd.exe",
@@ -490,12 +492,6 @@ def find_app_installation(appid, steam_root=None):
             )
         except SteamAppStateError as error:
             raise RuntimeErrorWithContext(str(error)) from error
-        if not install_state["launchable"]:
-            raise RuntimeErrorWithContext(
-                "Steam app installation is incomplete "
-                f"({install_state['diagnostic']}): AppID {appid}; "
-                "use Steam's install or repair action"
-            )
         return {
             "appid": appid,
             "steamapps": steamapps.resolve(),
@@ -508,6 +504,52 @@ def find_app_installation(appid, steam_root=None):
         }
     raise RuntimeErrorWithContext(
         f"Steam app manifest was not found for AppID {appid}"
+    )
+
+
+def install_state_error_message(appid, install_state):
+    return (
+        "Steam app installation is incomplete "
+        f"({install_state['diagnostic']}): AppID {appid}; "
+        "use Steam's install or repair action"
+    )
+
+
+def install_state_allows_verified_launch(install_state):
+    if install_state["launchable"]:
+        return True, None
+    if install_state["diagnostic"] != "repair-required":
+        return False, None
+    blocking_states = set(install_state["blocking_states"])
+    if not blocking_states or blocking_states - RECOVERABLE_REPAIR_STATES:
+        return False, None
+    if not install_state["state_flags"] & FULLY_INSTALLED:
+        return False, None
+    if install_state["size_on_disk"] <= 0:
+        return False, None
+    if install_state["installed_depot_count"] <= 0:
+        return False, None
+    if install_state["installed_depot_bytes"] <= 0:
+        return False, None
+    if install_state["staged_depot_count"] != 0:
+        return False, None
+    if install_state["staged_depot_bytes"] != 0:
+        return False, None
+    for key in (
+        "bytes_to_download",
+        "bytes_downloaded",
+        "bytes_to_stage",
+        "bytes_staged",
+    ):
+        if install_state.get(key, 0) != 0:
+            return False, None
+    if not install_state["install_path_nonempty"]:
+        return False, None
+    return (
+        True,
+        "Steam manifest reports files-missing, but the selected Windows "
+        "executable exists and the depot has no pending download or staging "
+        "bytes",
     )
 
 
@@ -563,6 +605,15 @@ def resolve_app_context(
     appid, steam_root=None, requested_target=None
 ):
     installation = find_app_installation(appid, steam_root)
+    if (
+        not installation["install_state"]["launchable"]
+        and installation["install_state"]["diagnostic"] != "repair-required"
+    ):
+        raise RuntimeErrorWithContext(
+            install_state_error_message(
+                installation["appid"], installation["install_state"]
+            )
+        )
     try:
         descriptor = build_launch_descriptor_from_appinfo(
             default_appinfo_path(steam_root),
@@ -593,7 +644,19 @@ def resolve_app_context(
         str(installation["appid"]),
         str(installation["compat_data"]),
     )
+    allowed, warning = install_state_allows_verified_launch(
+        installation["install_state"]
+    )
+    if not allowed:
+        raise RuntimeErrorWithContext(
+            install_state_error_message(
+                installation["appid"], installation["install_state"]
+            )
+        )
     context["install_path"] = installation["install_path"]
+    context["install_state"] = installation["install_state"]
+    if warning is not None:
+        context["install_warning"] = warning
     context["working_directory"] = launch["working_directory"]
     context["launch_entry_id"] = launch["entry_id"]
     context["launch_arguments"] = launch["arguments"]
@@ -3388,6 +3451,14 @@ def plan(context, runtime_root, config, arguments):
             )
         ),
         "arguments": list(arguments),
+        "install_warning": context.get("install_warning"),
+        "launch_entry_id": context.get("launch_entry_id"),
+        "launch_arguments": context.get("launch_arguments", ""),
+        "requested_target": (
+            str(context["requested_target"])
+            if context.get("requested_target") is not None
+            else None
+        ),
         "steamapps": str(context["steamapps"]),
         "compat_data": str(context["compat_data"]),
         "prefix": str(context["prefix"]),
@@ -3508,6 +3579,14 @@ def launch(args):
             "renderer": config["renderer"],
             "command": command,
             "prefix": str(context["prefix"]),
+            "launch_entry_id": context.get("launch_entry_id"),
+            "launch_arguments": context.get("launch_arguments", ""),
+            "requested_target": (
+                str(context["requested_target"])
+                if context.get("requested_target") is not None
+                else None
+            ),
+            "install_warning": context.get("install_warning"),
         },
     )
     return run_game_process(

@@ -222,11 +222,11 @@ class RuntimeManagerTests(unittest.TestCase):
         entry.update(overrides)
         return entry
 
-    def write_appinfo(self, launch):
+    def write_appinfo(self, launch, *, appid=1118200, installdir="Fixture Game"):
         value = {
             "appinfo": {
                 "config": {
-                    "installdir": "Fixture Game",
+                    "installdir": installdir,
                     "launch": launch,
                 }
             }
@@ -272,7 +272,7 @@ class RuntimeManagerTests(unittest.TestCase):
             + hashlib.sha1(binary_vdf).digest()
         )
         entry = (
-            struct.pack("<II", 1118200, len(metadata) + len(binary_vdf))
+            struct.pack("<II", appid, len(metadata) + len(binary_vdf))
             + metadata
             + binary_vdf
             + struct.pack("<I", 0)
@@ -485,6 +485,94 @@ class RuntimeManagerTests(unittest.TestCase):
         with self.assertRaisesRegex(
             runtime.RuntimeErrorWithContext,
             "download-incomplete.*install or repair",
+        ):
+            runtime.resolve_app_context("1118200")
+
+    def test_allows_verified_files_missing_launch_context(self):
+        (self.steamapps / "appmanifest_1118200.acf").write_text(
+            '"AppState"\n{\n'
+            '\t"appid"\t\t"1118200"\n'
+            '\t"StateFlags"\t\t"36"\n'
+            '\t"installdir"\t\t"Fixture Game"\n'
+            '\t"SizeOnDisk"\t\t"9"\n'
+            '\t"UpdateResult"\t\t"0"\n'
+            '\t"BytesToDownload"\t\t"0"\n'
+            '\t"BytesDownloaded"\t\t"0"\n'
+            '\t"BytesToStage"\t\t"0"\n'
+            '\t"BytesStaged"\t\t"0"\n'
+            '\t"InstalledDepots"\n'
+            "\t{\n"
+            '\t\t"1118201"\n'
+            "\t\t{\n"
+            '\t\t\t"manifest"\t\t"12345"\n'
+            '\t\t\t"size"\t\t"9"\n'
+            "\t\t}\n"
+            "\t}\n"
+            "}\n",
+            encoding="utf-8",
+        )
+
+        context = runtime.resolve_app_context("1118200")
+
+        self.assertEqual(context["executable"], self.executable.resolve())
+        self.assertEqual(
+            context["install_state"]["diagnostic"], "repair-required"
+        )
+        self.assertIn("files-missing", context["install_warning"])
+
+    def test_files_corrupt_state_still_requires_repair(self):
+        (self.steamapps / "appmanifest_1118200.acf").write_text(
+            '"AppState"\n{\n'
+            '\t"appid"\t\t"1118200"\n'
+            '\t"StateFlags"\t\t"132"\n'
+            '\t"installdir"\t\t"Fixture Game"\n'
+            '\t"SizeOnDisk"\t\t"9"\n'
+            '\t"UpdateResult"\t\t"0"\n'
+            '\t"InstalledDepots"\n'
+            "\t{\n"
+            '\t\t"1118201"\n'
+            "\t\t{\n"
+            '\t\t\t"manifest"\t\t"12345"\n'
+            '\t\t\t"size"\t\t"9"\n'
+            "\t\t}\n"
+            "\t}\n"
+            "}\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(
+            runtime.RuntimeErrorWithContext,
+            "repair-required.*install or repair",
+        ):
+            runtime.resolve_app_context("1118200")
+
+    def test_pending_download_bytes_still_require_repair(self):
+        (self.steamapps / "appmanifest_1118200.acf").write_text(
+            '"AppState"\n{\n'
+            '\t"appid"\t\t"1118200"\n'
+            '\t"StateFlags"\t\t"36"\n'
+            '\t"installdir"\t\t"Fixture Game"\n'
+            '\t"SizeOnDisk"\t\t"9"\n'
+            '\t"UpdateResult"\t\t"0"\n'
+            '\t"BytesToDownload"\t\t"1"\n'
+            '\t"BytesDownloaded"\t\t"0"\n'
+            '\t"BytesToStage"\t\t"0"\n'
+            '\t"BytesStaged"\t\t"0"\n'
+            '\t"InstalledDepots"\n'
+            "\t{\n"
+            '\t\t"1118201"\n'
+            "\t\t{\n"
+            '\t\t\t"manifest"\t\t"12345"\n'
+            '\t\t\t"size"\t\t"9"\n'
+            "\t\t}\n"
+            "\t}\n"
+            "}\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(
+            runtime.RuntimeErrorWithContext,
+            "repair-required.*install or repair",
         ):
             runtime.resolve_app_context("1118200")
 
@@ -3432,6 +3520,166 @@ class RuntimeManagerTests(unittest.TestCase):
             str(working_directory.resolve()),
         )
         self.assertEqual(value["arguments"], ["-release", "two words"])
+        self.assertEqual(
+            value["requested_target"], str(self.game / "Missing-Test.exe")
+        )
+        self.assertEqual(value["launch_entry_id"], "0")
+        self.assertEqual(value["launch_arguments"], '-release "two words"')
+
+    def test_aimlabs_dry_run_ignores_macos_app_target(self):
+        appid = 714010
+        install_dir = "Aim Lab"
+        install_path = self.steamapps / "common" / install_dir
+        install_path.mkdir(parents=True)
+        expected = install_path / "AimLab_tb.exe"
+        expected.write_bytes(b"MZaimlabs")
+        (install_path / "AimLab.app").mkdir()
+        (self.steamapps / f"appmanifest_{appid}.acf").write_text(
+            '"AppState"\n{\n'
+            f'\t"appid"\t\t"{appid}"\n'
+            '\t"StateFlags"\t\t"36"\n'
+            f'\t"installdir"\t\t"{install_dir}"\n'
+            '\t"SizeOnDisk"\t\t"19731876148"\n'
+            '\t"UpdateResult"\t\t"0"\n'
+            '\t"BytesToDownload"\t\t"0"\n'
+            '\t"BytesDownloaded"\t\t"0"\n'
+            '\t"BytesToStage"\t\t"0"\n'
+            '\t"BytesStaged"\t\t"0"\n'
+            '\t"InstalledDepots"\n'
+            "\t{\n"
+            '\t\t"714011"\n'
+            "\t\t{\n"
+            '\t\t\t"manifest"\t\t"3280265244216468903"\n'
+            '\t\t\t"size"\t\t"19731876148"\n'
+            "\t\t}\n"
+            "\t}\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        self.write_appinfo(
+            {
+                "0": {
+                    "executable": "AimLab_tb.exe",
+                    "type": "default",
+                    "config": {"oslist": "windows"},
+                },
+                "1": {
+                    "executable": "AimLab.app",
+                    "type": "default",
+                    "config": {"oslist": "macos"},
+                },
+            },
+            appid=appid,
+            installdir=install_dir,
+        )
+        arguments = SimpleNamespace(
+            appid=str(appid),
+            compat_data=None,
+            runtime_root=str(self.runtime_root),
+            executable=str(install_path / "AimLab.app"),
+            dry_run=True,
+            arguments=[],
+        )
+        output = io.StringIO()
+
+        with mock.patch("sys.stdout", output):
+            self.assertEqual(runtime.launch(arguments), 0)
+
+        value = json.loads(output.getvalue())
+        self.assertEqual(value["executable"], str(expected.resolve()))
+        self.assertEqual(
+            value["requested_target"], str(install_path / "AimLab.app")
+        )
+        self.assertEqual(value["launch_entry_id"], "0")
+        self.assertIn("files-missing", value["install_warning"])
+
+    def test_hogwarts_dry_run_ignores_stale_test_executable(self):
+        appid = 990080
+        install_dir = "Hogwarts Legacy"
+        install_path = self.steamapps / "common" / install_dir
+        (install_path / "Phoenix" / "Binaries" / "Win64").mkdir(
+            parents=True
+        )
+        expected = install_path / "HogwartsLegacy.exe"
+        expected.write_bytes(b"MZhogwarts")
+        stale = (
+            install_path
+            / "Phoenix"
+            / "Binaries"
+            / "Win64"
+            / "Phoenix-Win64-Test.exe"
+        )
+        (self.steamapps / f"appmanifest_{appid}.acf").write_text(
+            '"AppState"\n{\n'
+            f'\t"appid"\t\t"{appid}"\n'
+            '\t"StateFlags"\t\t"36"\n'
+            f'\t"installdir"\t\t"{install_dir}"\n'
+            '\t"SizeOnDisk"\t\t"74056715310"\n'
+            '\t"UpdateResult"\t\t"0"\n'
+            '\t"BytesToDownload"\t\t"0"\n'
+            '\t"BytesDownloaded"\t\t"0"\n'
+            '\t"BytesToStage"\t\t"0"\n'
+            '\t"BytesStaged"\t\t"0"\n'
+            '\t"InstalledDepots"\n'
+            "\t{\n"
+            '\t\t"990081"\n'
+            "\t\t{\n"
+            '\t\t\t"manifest"\t\t"5198899101792588169"\n'
+            '\t\t\t"size"\t\t"74056715310"\n'
+            "\t\t}\n"
+            "\t}\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        self.write_appinfo(
+            {
+                "0": {
+                    "executable": (
+                        "Phoenix/Binaries/Win64/"
+                        "Phoenix-Win64-Test.exe"
+                    ),
+                    "arguments": "-development",
+                    "type": "option1",
+                    "config": {"oslist": "windows"},
+                },
+                "13": {
+                    "executable": "HogwartsLegacy.exe",
+                    "arguments": (
+                        '-SaveToUserDir -UserDir="Hogwarts Legacy"'
+                    ),
+                    "type": "default",
+                    "config": {"oslist": "windows"},
+                },
+            },
+            appid=appid,
+            installdir=install_dir,
+        )
+        arguments = SimpleNamespace(
+            appid=str(appid),
+            compat_data=None,
+            runtime_root=str(self.runtime_root),
+            executable=str(stale),
+            dry_run=True,
+            arguments=[],
+        )
+        output = io.StringIO()
+
+        with mock.patch("sys.stdout", output):
+            self.assertEqual(runtime.launch(arguments), 0)
+
+        value = json.loads(output.getvalue())
+        self.assertEqual(value["executable"], str(expected.resolve()))
+        self.assertEqual(value["requested_target"], str(stale))
+        self.assertEqual(value["launch_entry_id"], "13")
+        self.assertEqual(
+            value["launch_arguments"],
+            '-SaveToUserDir -UserDir="Hogwarts Legacy"',
+        )
+        self.assertEqual(
+            value["arguments"],
+            ["-SaveToUserDir", "-UserDir=Hogwarts Legacy"],
+        )
+        self.assertIn("files-missing", value["install_warning"])
 
     def test_launch_recovers_configured_launcher_before_game_process(self):
         context = runtime.resolve_app_context("1118200")

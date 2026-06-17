@@ -1579,6 +1579,19 @@
   Ed25519 key, but this machine has no Developer ID Installer identity. The
   three PKGs report `Status: no signature`; publishing them as notarized Apple
   installer packages remains a separate release-credential gate.
+- Aimlabs and Hogwarts are not empty-depot cases on this machine. Their
+  manifests report `StateFlags=36` (`fully-installed` + `files-missing`) with
+  nonzero installed depot bytes and no pending download/staging bytes, and the
+  target Windows PE files exist. Runtime launch now treats that exact pattern
+  as a recoverable warning after descriptor resolution, so a stale Steam
+  `.app` target resolves to `AimLab_tb.exe` and a stale
+  `Phoenix-Win64-Test.exe` target resolves to `HogwartsLegacy.exe`. This does
+  not relax staged-only, corrupt, empty, zero-byte, or missing-manifest games.
+- Black Myth remains a separate UI/download-state problem: the current library
+  has a residual `common/BlackMythWukong` directory but no
+  `appmanifest_2358720.acf`. The backend acceptance harness reports manifest
+  missing; the remaining work is preventing Steam UI state normalization or
+  repair action selection from treating that shell as a completed download.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

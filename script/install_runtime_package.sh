@@ -439,8 +439,10 @@ if [ "$WITHOUT_GPTK" = false ]; then
 fi
 for renderer in $RENDERERS; do
     test -x "$PACKAGE/wine/$renderer/bin/wine64"
-    test -x "$PACKAGE/wine/$renderer/bin/wineconsole"
     test -x "$PACKAGE/wine/$renderer/bin/wineserver"
+done
+for renderer in dxmt dxvk wined3d; do
+    test -x "$PACKAGE/wine/$renderer/bin/wineconsole"
 done
 if [ "$WITHOUT_GPTK" = false ]; then
     test -f "$PACKAGE/wine/gptk/lib/external/D3DMetal.framework/Versions/A/D3DMetal"
@@ -586,8 +588,11 @@ PY
     if [ "$WITHOUT_GPTK" = false ]; then
         CHECKSUM_FILES="$CHECKSUM_FILES \
             wine/gptk/bin/wine64 \
-            wine/gptk/bin/wineconsole \
             wine/gptk/lib/external/D3DMetal.framework/Versions/A/D3DMetal"
+        if [ -x "$PACKAGE/wine/gptk/bin/wineconsole" ]; then
+            CHECKSUM_FILES="$CHECKSUM_FILES \
+                wine/gptk/bin/wineconsole"
+        fi
     fi
     # shellcheck disable=SC2086
     shasum -a 256 $CHECKSUM_FILES >SHA256SUMS

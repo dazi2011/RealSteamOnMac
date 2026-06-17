@@ -211,17 +211,40 @@
     confirmation checkbox now follows the same existing-PFX disabled state as
     the Execute button, and every container operation is covered by a
     fail-closed no-PFX backend test.
-  - Added `wineconsole` to runtime package validation and SHA coverage so
-    Windows Run-style `cmd` launches do not silently fall back to an invisible
-    `wine64 cmd.exe` path because a package omitted the console helper.
+  - Added `wineconsole` to Wine 11 renderer package validation and SHA
+    coverage so Windows Run-style `cmd` launches do not silently fall back to
+    an invisible `wine64 cmd.exe` path because a package omitted the console
+    helper. GPTK's official Wine 7.7 tree does not ship `wineconsole`, so that
+    helper is checksum-covered only when present instead of making GPTK package
+    installation impossible.
   - Kept the Steam library Play button semantics separate from utility
     actions: first game launch may create the PFX, while compatibility-page
     component/container/run-command utilities require an already created PFX.
+  - Moved Steam app install-state launch gating from manifest discovery to
+    resolved launch context. `files-missing` now remains visible as a warning,
+    but launch is allowed when the selected Windows PE exists, the game is
+    fully installed, installed depots have nonzero bytes, and there are no
+    pending download/staging bytes. `files-corrupt`, staged-only, empty,
+    zero-byte, and missing-manifest states still fail closed.
+  - Added dry-run evidence fields for `requested_target`, `launch_entry_id`,
+    and `launch_arguments`, and mirrored those into launch logs for field
+    diagnosis.
+  - Synced the installed runtime helper, then verified with the actual helper:
+    Aimlabs launched from Steam's stale `.app` target resolves to
+    `/Volumes/990pro/games/steam/steamapps/common/Aim Lab/AimLab_tb.exe`;
+    Hogwarts launched from `Phoenix/Binaries/Win64/Phoenix-Win64-Test.exe`
+    resolves to `/Volumes/990pro/games/steam/steamapps/common/Hogwarts Legacy/HogwartsLegacy.exe`.
+    Both dry-runs preserve the `files-missing` warning instead of pretending
+    Steam's manifest state is clean.
 - Files modified:
   - `script/install_runtime_package.sh`
   - `task_plan.md`
   - `findings.md`
   - `progress.md`
+  - `runtime/realsteamonmac_runtime.py`
+  - `runtime/steam_app_state.py`
+  - `tests/test_steam_app_state.py`
+  - `tests/test_steam_launch_descriptor.py`
   - `tests/test_runtime_manager.py`
   - `tests/test_runtime_package_installer.sh`
   - `tests/test_steamui_policy.mjs`
