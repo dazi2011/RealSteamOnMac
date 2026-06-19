@@ -17,7 +17,7 @@ printf '%s' \
     '<!doctype html><html style="width: 100%; height: 100%"><head><title>SharedJSContext</title><meta charset="utf-8"><script defer="defer" src="/libraries/libraries~00299a408.js"></script><script defer="defer" src="/library.js"></script><link href="/css/library.css" rel="stylesheet"></head><body style="width: 100%; height: 100%; margin: 0; overflow: hidden;"><div id="root" style="height:100%; width: 100%"></div><div style="display:none"></div></body></html>' \
     >"$STEAMUI/index.html"
 printf '%s' \
-    'before(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")middle(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")controlsr=(0,s.q3)(()=>u.rV.settings.bCompatEnabled),a=vt(t.unAppID,r),o=r&&!!t.strCompatToolName&&t.nCompatToolPriority==h.JNdropdownselectedOption:t.strCompatToolName,onChange:native(0,i.jsx)(wt,{...e})]})});function vtafter' \
+    'before(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")middle(0,f.CI)()&&o.push({title:(0,A.we)("#AppProperties_CompatibilityPage")controlsr=(0,s.q3)(()=>u.rV.settings.bCompatEnabled),a=vt(t.unAppID,r),o=r&&!!t.strCompatToolName&&t.nCompatToolPriority==h.JNdropdownselectedOption:t.strCompatToolName,onChange:native(0,i.jsx)(wt,{...e})]})});function vtpickercase"macos":return[{strFileTypeName:(0,a.we)("#AddNonSteam_Filter_Exe_MacOS"),rFilePatterns:["*.app"],bUseAsDefault:!0}after' \
     >"$STEAMUI/chunk~2dcc5aaf7.js"
 printf '%s\n' 1118200 >"$TMP_ROOT/allowlist.txt"
 printf '%s\n' 0123456789abcdef0123456789abcdef \
@@ -75,6 +75,6 @@ test ! -e "$STEAMUI/realsteamonmac"
 test "$(shasum -a 256 "$STEAMUI/index.html" | awk '{print $1}')" = \
     "55ced284314dbc65bff38fb1333d4f4bd617635895e2c0e2197b05028c243282"
 test "$(shasum -a 256 "$STEAMUI/chunk~2dcc5aaf7.js" | awk '{print $1}')" = \
-    "8fb392221299eea6b5326f8e3ed351d4cf4456fa2c56a32e752e057fb34d49df"
+    "143e81017bebc619bc94cf7f7bab2d6945541c07c21df966d2aca24377b63b35"
 
 echo "Steam UI resource patch contract: PASS"

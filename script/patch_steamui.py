@@ -28,7 +28,7 @@ KNOWN_COMPAT_CHUNK_SHA256 = {
 }
 if os.environ.get("REALSTEAMONMAC_ALLOW_TEST_FIXTURES") == "1":
     KNOWN_COMPAT_CHUNK_SHA256.add(
-        "8fb392221299eea6b5326f8e3ed351d4cf4456fa2c56a32e752e057fb34d49df"
+        "143e81017bebc619bc94cf7f7bab2d6945541c07c21df966d2aca24377b63b35"
     )
 INDEX_NAME = "index.html"
 BACKUP_NAME = "index.html.realsteamonmac.original"
@@ -105,6 +105,16 @@ NATIVE_CONTROLS_DYNAMIC_GATE = (
     '?.({details:t,React:n,jsx:i,components:c,styles:K()})'
     ']})});function vt'
 )
+NON_STEAM_PICKER_ANCHOR = (
+    'case"macos":return[{strFileTypeName:(0,a.we)'
+    '("#AddNonSteam_Filter_Exe_MacOS"),'
+    'rFilePatterns:["*.app"],bUseAsDefault:!0}'
+)
+NON_STEAM_PICKER_DYNAMIC_GATE = (
+    'case"macos":return[{strFileTypeName:(0,a.we)'
+    '("#AddNonSteam_Filter_Exe_MacOS"),'
+    'rFilePatterns:["*.app","*.exe"],bUseAsDefault:!0}'
+)
 
 
 def sha256_bytes(content):
@@ -160,6 +170,11 @@ def build_patched_compat_chunk(original):
             "compatibility chunk does not contain one supported native controls "
             "anchor"
         )
+    if original.count(NON_STEAM_PICKER_ANCHOR) != 1:
+        raise ValueError(
+            "compatibility chunk does not contain exactly one supported "
+            "non-Steam picker anchor"
+        )
     if (
         COMPAT_PAGE_DYNAMIC_GATE in original
         or COMPAT_PAGE_ALLOWLIST_GATE in original
@@ -167,6 +182,7 @@ def build_patched_compat_chunk(original):
         or COMPAT_ENABLE_PREVIOUS_DYNAMIC_GATE in original
         or COMPAT_SELECTED_OPTION_DYNAMIC_GATE in original
         or NATIVE_CONTROLS_DYNAMIC_GATE in original
+        or NON_STEAM_PICKER_DYNAMIC_GATE in original
     ):
         raise ValueError("compatibility chunk is already partially patched")
     patched = original.replace(
@@ -183,9 +199,14 @@ def build_patched_compat_chunk(original):
         COMPAT_SELECTED_OPTION_DYNAMIC_GATE,
         1,
     )
-    return patched.replace(
+    patched = patched.replace(
         NATIVE_CONTROLS_ANCHOR,
         NATIVE_CONTROLS_DYNAMIC_GATE,
+        1,
+    )
+    return patched.replace(
+        NON_STEAM_PICKER_ANCHOR,
+        NON_STEAM_PICKER_DYNAMIC_GATE,
         1,
     )
 
@@ -233,6 +254,25 @@ def build_previous_selected_compat_chunk(original):
     return patched.replace(
         COMPAT_SELECTED_OPTION_ANCHOR,
         COMPAT_SELECTED_OPTION_DYNAMIC_GATE,
+        1,
+    )
+
+
+def build_previous_native_controls_without_non_steam_picker_chunk(original):
+    patched = build_previous_selected_compat_chunk(original)
+    if patched.count(NATIVE_CONTROLS_ANCHOR) != 1:
+        raise ValueError(
+            "compatibility chunk does not contain one supported native controls "
+            "anchor"
+        )
+    if patched.count(NON_STEAM_PICKER_ANCHOR) != 1:
+        raise ValueError(
+            "compatibility chunk does not contain exactly one supported "
+            "non-Steam picker anchor"
+        )
+    return patched.replace(
+        NATIVE_CONTROLS_ANCHOR,
+        NATIVE_CONTROLS_DYNAMIC_GATE,
         1,
     )
 
@@ -416,28 +456,31 @@ def prepare_compat_chunk(paths):
     current_text = current.decode("utf-8")
     if COMPAT_PAGE_DYNAMIC_GATE in current_text:
         original = validated_compat_original(paths["compat_backup"])
-        expected = build_patched_compat_chunk(
-            original.decode("utf-8")
-        ).encode("utf-8")
-        previous = build_previous_dynamic_compat_chunk(
-            original.decode("utf-8")
-        ).encode("utf-8")
-        previous_native = build_previous_native_compat_chunk(
-            original.decode("utf-8")
-        ).encode("utf-8")
-        previous_selected = build_previous_selected_compat_chunk(
-            original.decode("utf-8")
-        ).encode("utf-8")
-        if current not in (
-            expected,
-            previous,
-            previous_native,
-            previous_selected,
-        ):
+        original_text = original.decode("utf-8")
+        supported_patches = {
+            "current": build_patched_compat_chunk(
+                original_text
+            ).encode("utf-8"),
+            "dynamic page only": build_previous_dynamic_compat_chunk(
+                original_text
+            ).encode("utf-8"),
+            "native control": build_previous_native_compat_chunk(
+                original_text
+            ).encode("utf-8"),
+            "selected option": build_previous_selected_compat_chunk(
+                original_text
+            ).encode("utf-8"),
+            "native controls without non-Steam picker": (
+                build_previous_native_controls_without_non_steam_picker_chunk(
+                    original_text
+                ).encode("utf-8")
+            ),
+        }
+        if current not in supported_patches.values():
             raise ValueError(
                 "existing compatibility chunk patch is inconsistent"
             )
-        return original, expected, False
+        return original, supported_patches["current"], False
     if COMPAT_PAGE_ALLOWLIST_GATE in current_text:
         original = validated_compat_original(paths["compat_backup"])
         return (
@@ -518,6 +561,13 @@ def verify_steamui(steamui_root):
         != 1
     ):
         raise ValueError("native compatibility controls gate count is invalid")
+    if (
+        current_compat.count(
+            NON_STEAM_PICKER_DYNAMIC_GATE.encode("utf-8")
+        )
+        != 1
+    ):
+        raise ValueError("non-Steam picker gate count is invalid")
     if not paths["ui"].is_file() or paths["ui"].stat().st_size == 0:
         raise ValueError("Steam UI asset is missing")
     if not paths["config"].is_file():

@@ -32,11 +32,22 @@ COMPAT_SELECTED_OPTION_ANCHOR = (
 NATIVE_CONTROLS_ANCHOR = (
     '(0,i.jsx)(wt,{...e})]})});function vt'
 )
+NON_STEAM_PICKER_ANCHOR = (
+    'case"macos":return[{strFileTypeName:(0,a.we)'
+    '("#AddNonSteam_Filter_Exe_MacOS"),'
+    'rFilePatterns:["*.app"],bUseAsDefault:!0}'
+)
+NON_STEAM_PICKER_DYNAMIC_GATE = (
+    'case"macos":return[{strFileTypeName:(0,a.we)'
+    '("#AddNonSteam_Filter_Exe_MacOS"),'
+    'rFilePatterns:["*.app","*.exe"],bUseAsDefault:!0}'
+)
 CURRENT_COMPAT_CHUNK = (
     f"before{COMPAT_PAGE_ANCHOR}middle{COMPAT_PAGE_ANCHOR}"
     f"controls{COMPAT_ENABLE_ANCHOR}"
     f"dropdown{COMPAT_SELECTED_OPTION_ANCHOR}"
-    f"native{NATIVE_CONTROLS_ANCHOR}after"
+    f"native{NATIVE_CONTROLS_ANCHOR}"
+    f"picker{NON_STEAM_PICKER_ANCHOR}after"
 )
 
 
@@ -234,6 +245,18 @@ class SteamUIPatchTests(unittest.TestCase):
             ),
             1,
         )
+        self.assertEqual(
+            patched_compat_chunk.count(
+                self.patcher.NON_STEAM_PICKER_DYNAMIC_GATE
+            ),
+            1,
+        )
+        self.assertEqual(
+            patched_compat_chunk.count(
+                self.patcher.NON_STEAM_PICKER_ANCHOR
+            ),
+            0,
+        )
         self.assertIn(
             "__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__",
             patched_compat_chunk,
@@ -348,6 +371,33 @@ class SteamUIPatchTests(unittest.TestCase):
         ):
             self.patcher.build_patched_compat_chunk(unsupported)
 
+    def test_non_steam_picker_allows_app_and_exe_once(self):
+        patched = self.patcher.build_patched_compat_chunk(
+            CURRENT_COMPAT_CHUNK
+        )
+
+        self.assertEqual(
+            patched.count(NON_STEAM_PICKER_DYNAMIC_GATE),
+            1,
+        )
+        self.assertEqual(patched.count(NON_STEAM_PICKER_ANCHOR), 0)
+
+    def test_non_steam_picker_anchor_is_required_exactly_once(self):
+        missing = CURRENT_COMPAT_CHUNK.replace(
+            NON_STEAM_PICKER_ANCHOR,
+            "missing-non-steam-picker-anchor",
+        )
+        repeated = CURRENT_COMPAT_CHUNK + NON_STEAM_PICKER_ANCHOR
+
+        for unsupported in (missing, repeated):
+            with self.subTest(anchor_count=unsupported.count(
+                NON_STEAM_PICKER_ANCHOR
+            )):
+                with self.assertRaisesRegex(
+                    ValueError, "non-Steam picker"
+                ):
+                    self.patcher.build_patched_compat_chunk(unsupported)
+
     def test_allowlist_parser_filters_invalid_and_duplicate_values(self):
         self.allowlist.write_text(
             "# selected games\n1118200, 1118200\n0\ninvalid\n4294967296\n42\n",
@@ -412,6 +462,10 @@ class SteamUIPatchTests(unittest.TestCase):
             self.patcher.COMPAT_PAGE_ALLOWLIST_GATE,
             current,
         )
+        self.assertEqual(
+            current.count(self.patcher.NON_STEAM_PICKER_DYNAMIC_GATE),
+            1,
+        )
         self.patcher.verify_steamui(self.steamui)
 
     def test_install_migrates_the_previous_dynamic_page_only_patch(self):
@@ -442,6 +496,10 @@ class SteamUIPatchTests(unittest.TestCase):
         )
         self.assertEqual(
             current.count(self.patcher.COMPAT_ENABLE_DYNAMIC_GATE),
+            1,
+        )
+        self.assertEqual(
+            current.count(self.patcher.NON_STEAM_PICKER_DYNAMIC_GATE),
             1,
         )
         self.patcher.verify_steamui(self.steamui)
@@ -482,6 +540,115 @@ class SteamUIPatchTests(unittest.TestCase):
             self.patcher.COMPAT_ENABLE_PREVIOUS_DYNAMIC_GATE,
             current,
         )
+        self.assertEqual(
+            current.count(self.patcher.NON_STEAM_PICKER_DYNAMIC_GATE),
+            1,
+        )
+        self.patcher.verify_steamui(self.steamui)
+
+    def test_install_migrates_the_previous_selected_option_patch(self):
+        self.patcher.install_steamui(
+            self.steamui,
+            self.ui_source,
+            self.allowlist,
+        )
+        backup = (
+            self.steamui
+            / "chunk~2dcc5aaf7.js.realsteamonmac.original"
+        ).read_text(encoding="utf-8")
+        previous = self.patcher.build_previous_selected_compat_chunk(
+            backup
+        )
+        self.compat_chunk.write_text(previous, encoding="utf-8")
+
+        self.patcher.install_steamui(
+            self.steamui,
+            self.ui_source,
+            self.allowlist,
+        )
+
+        current = self.compat_chunk.read_text(encoding="utf-8")
+        self.assertEqual(
+            current.count(
+                self.patcher.COMPAT_SELECTED_OPTION_DYNAMIC_GATE
+            ),
+            1,
+        )
+        self.assertEqual(
+            current.count(self.patcher.NATIVE_CONTROLS_DYNAMIC_GATE),
+            1,
+        )
+        self.assertEqual(
+            current.count(self.patcher.NON_STEAM_PICKER_DYNAMIC_GATE),
+            1,
+        )
+        self.patcher.verify_steamui(self.steamui)
+
+    def test_install_migrates_previous_native_controls_without_picker(self):
+        self.patcher.install_steamui(
+            self.steamui,
+            self.ui_source,
+            self.allowlist,
+        )
+        backup = (
+            self.steamui
+            / "chunk~2dcc5aaf7.js.realsteamonmac.original"
+        ).read_text(encoding="utf-8")
+        previous = backup.replace(
+            self.patcher.COMPAT_PAGE_ANCHOR,
+            self.patcher.COMPAT_PAGE_DYNAMIC_GATE,
+        )
+        previous = previous.replace(
+            self.patcher.COMPAT_ENABLE_ANCHOR,
+            self.patcher.COMPAT_ENABLE_DYNAMIC_GATE,
+            1,
+        )
+        previous = previous.replace(
+            self.patcher.COMPAT_SELECTED_OPTION_ANCHOR,
+            self.patcher.COMPAT_SELECTED_OPTION_DYNAMIC_GATE,
+            1,
+        )
+        previous = previous.replace(
+            self.patcher.NATIVE_CONTROLS_ANCHOR,
+            self.patcher.NATIVE_CONTROLS_DYNAMIC_GATE,
+            1,
+        )
+        self.assertEqual(
+            previous.count(self.patcher.NATIVE_CONTROLS_DYNAMIC_GATE),
+            1,
+        )
+        self.assertEqual(
+            previous.count(self.patcher.NON_STEAM_PICKER_ANCHOR),
+            1,
+        )
+        self.assertNotIn(
+            self.patcher.NON_STEAM_PICKER_DYNAMIC_GATE,
+            previous,
+        )
+        previous_from_helper = (
+            self.patcher
+            .build_previous_native_controls_without_non_steam_picker_chunk(
+                backup
+            )
+        )
+        self.assertEqual(
+            previous_from_helper,
+            previous,
+        )
+        self.compat_chunk.write_text(previous, encoding="utf-8")
+
+        self.patcher.install_steamui(
+            self.steamui,
+            self.ui_source,
+            self.allowlist,
+        )
+
+        current = self.compat_chunk.read_text(encoding="utf-8")
+        self.assertEqual(
+            current.count(self.patcher.NON_STEAM_PICKER_DYNAMIC_GATE),
+            1,
+        )
+        self.assertNotIn(self.patcher.NON_STEAM_PICKER_ANCHOR, current)
         self.patcher.verify_steamui(self.steamui)
 
     def test_install_rotates_a_stale_backup_for_a_known_clean_chunk(self):
@@ -565,6 +732,22 @@ class SteamUIPatchTests(unittest.TestCase):
         (self.steamui / "realsteamonmac" / "ui.js").unlink()
 
         with self.assertRaisesRegex(ValueError, "UI asset is missing"):
+            self.patcher.verify_steamui(self.steamui)
+
+    def test_verify_rejects_tampered_non_steam_picker_gate(self):
+        self.patcher.install_steamui(
+            self.steamui,
+            self.ui_source,
+            self.allowlist,
+        )
+        tampered = self.compat_chunk.read_text(encoding="utf-8").replace(
+            NON_STEAM_PICKER_DYNAMIC_GATE,
+            "missing-non-steam-picker-gate",
+            1,
+        )
+        self.compat_chunk.write_text(tampered, encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "guarded patch"):
             self.patcher.verify_steamui(self.steamui)
 
     def test_install_rejects_an_invalid_registry_token(self):

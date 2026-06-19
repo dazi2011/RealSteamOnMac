@@ -150,6 +150,10 @@ Phase 8: 2026-06-11 field regression remediation and verified release
 - [ ] Allow Steam's add-non-Steam-game flow to accept `.exe` files while
       preserving native `.app` behavior and applying compatibility only to PE
       executables.
+  - [x] Extend Steam's existing guarded macOS picker filter to keep `.app` and
+        add `.exe`, with migration and restore coverage.
+  - [ ] Add typed shortcut discovery, canonical PE target binding, an external
+        non-Steam prefix, and shortcut-only spawn redirection.
 - [ ] Make Run Command behave like Windows Run, fix EXE selection persistence,
       and open the selected prefix drive in Finder.
 - [x] Merge Windows component installation into Install Application To

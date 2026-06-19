@@ -2394,3 +2394,20 @@
   pending-byte runtime contract. Verification passed all 170 Python tests, all
   88 Node tests, the runtime package installer contract, and
   `git diff --check`.
+- Extended Steam's existing Add a Non-Steam Game picker without replacing its
+  dialog. The guarded current macOS filter now keeps `*.app` and adds `*.exe`
+  as a second default pattern; shortcut creation still flows through Valve's
+  `GetShortcutDataForPath` and `AddShortcut` APIs.
+- Added exact clean/patched anchor counts, fail-closed missing/duplicate
+  handling, explicit verification, clean restore, and migration from every
+  previously shipped intermediate patch plus the immediately previous full
+  native-controls patch.
+- Updated every SteamUI fixture, including the launcher contract, to carry the
+  real clean picker anchor and an exact fixture hash. Verification passed 21
+  SteamUI Python tests, SteamUI patch/restore/injection/launcher shell
+  contracts, `git diff --check`, and a read-only transform of the installed
+  clean build `1781212412` chunk.
+- This batch intentionally completes only native `.exe` selection. Typed
+  shortcut identity, exact PE target binding, external-prefix resolution, and
+  launch redirection remain required before a selected shortcut can use a
+  compatibility tool safely.

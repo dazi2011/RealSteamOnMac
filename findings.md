@@ -1665,6 +1665,20 @@
   depot bytes, zero download/staging counters, and an existing selected PE.
   It remains eligible for the narrowly bounded files-missing warning path,
   while stale `Phoenix-Win64-Test.exe` is replaced by `HogwartsLegacy.exe`.
+- Steam's macOS Add a Non-Steam Game implementation already uses its native
+  `OpenFileDialog`, `GetShortcutDataForPath`, and `AddShortcut` chain. The only
+  picker-level restriction in build `1781212412` is the default macOS pattern
+  `["*.app"]`; adding `*.exe` does not require a replacement dialog or direct
+  `shortcuts.vdf` serialization.
+- Picker access is not sufficient launch support. Shortcut AppIDs use
+  `k_EAppTypeShortcut` (`0x40000000`), while the current registry admits only
+  subscribed store games and the native hook stores only numeric AppIDs.
+  Secure support must keep store AppIDs separate from shortcut records and
+  bind each shortcut ID to one canonical, verified PE target.
+- Reusing the existing numeric allowlist for shortcuts would be unsafe:
+  `realsteamonmac_should_redirect_spawn` currently accepts any PE, missing
+  `.exe`, or `.app` target carrying an allowlisted ID. Shortcut redirection
+  must instead reject `.app`, missing targets, symlinks, and target changes.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
