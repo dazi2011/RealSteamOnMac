@@ -1620,6 +1620,22 @@
   only seeds the same allowlist on the next launch so early Play clicks can
   reach missing-target redirection before the five-second browser scan posts
   the current registry.
+- GPTK/Wine registry queries can return an empty stdout with either status 0
+  or 1 when a DWORD is absent. Treating every such response as malformed made
+  the Wine Game Controllers readability adjustment fail before `joy.cpl`
+  started.
+- Restoring controller DPI after `quit-all` cannot be allowed to hold the job
+  open indefinitely. A five-second best-effort restore preserves the original
+  value when Wine is responsive and records a warning when the server has
+  already exited.
+- `wineserver -k` status 1 after an earlier successful kill means there is no
+  remaining server, not that recovery failed. Two bounded passes close late
+  children; the final already-stopped result must normalize to success.
+- Live native-page acceptance now contradicts the earlier flicker report on
+  the deployed build: a five-second 250 ms trace recorded zero force-tool
+  checkbox transitions, and `DXMT 0.80` survived disable/re-enable. This is
+  evidence for the current build only, not a guarantee across future Steam
+  client updates.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

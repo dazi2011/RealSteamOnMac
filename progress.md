@@ -2331,3 +2331,25 @@
   errors from Steam itself.
 - Verification for the native seed batch passed `tests/test_compat_gate_hook.sh`,
   `tests/test_spawn_redirect.sh`, and `git diff --check`.
+- Repeated live acceptance on Steam's native compatibility page after the
+  dynamic seed deployment. The force-tool checkbox had zero state transitions
+  across a five-second 250 ms trace, disabling and re-enabling preserved
+  `DXMT 0.80`, and all compatibility options plus the three lower sections
+  remained Valve-owned native controls in the required order.
+- Exercised the RDR2 prefix through the authenticated native action service:
+  `cmd /c exit 0`, environment injection, Open C Drive, Wine configuration,
+  Task Manager, and `quit-all` completed. The selected executable remained
+  `PlayRDR2.exe`.
+- Hardened Wine Game Controllers for GPTK/Wine registry behavior. Empty
+  registry-query output is now treated as an absent `LogPixels` value, the
+  panel runs at 192 DPI, restore is bounded and best-effort, and `quit-all`
+  performs two bounded wineserver passes while treating an already-stopped
+  server as success.
+- Live controller recovery passed: `joy.cpl` remained running until
+  `quit-all`, then both jobs completed with exit code 0 and reported
+  `controller_dpi=192`. A second `quit-all` against an already stopped prefix
+  also completed successfully.
+- A real `delete-container` action was intentionally not run because it moves
+  the user's live prefix. The recoverable move behavior and UI confirmation
+  remain covered by automated tests; destructive live acceptance still
+  requires explicit approval.

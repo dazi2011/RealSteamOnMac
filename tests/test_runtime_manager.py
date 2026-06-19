@@ -904,6 +904,46 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(set_dword.call_args.args[5], 192)
         delete_value.assert_called_once()
 
+    def test_controller_panel_warns_when_dpi_restore_fails(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        with mock.patch.object(
+            runtime,
+            "query_wine_registry_dword",
+            return_value=None,
+        ), mock.patch.object(
+            runtime,
+            "set_wine_registry_dword",
+        ), mock.patch.object(
+            runtime,
+            "delete_wine_registry_value",
+            side_effect=runtime.RuntimeErrorWithContext(
+                "restore timed out"
+            ),
+        ), mock.patch.object(
+            runtime,
+            "warn_job_log",
+        ) as warn, mock.patch.object(
+            runtime,
+            "run_job_process",
+            return_value=mock.Mock(returncode=0),
+        ):
+            result, dpi = runtime.run_wine_controller_panel(
+                context,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+                self.root / "controllers.log",
+            )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(dpi, 192)
+        self.assertIn(
+            "controller DPI restore failed",
+            warn.call_args.args[1],
+        )
+
     def test_controller_panel_never_reduces_an_existing_dpi(self):
         context = self.context()
         wine64 = (
@@ -974,6 +1014,48 @@ class RuntimeManagerTests(unittest.TestCase):
                     "reg: Unable to find the specified registry value\n"
                 ),
             ),
+        ):
+            value = runtime.query_wine_registry_dword(
+                context,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+                runtime.WINE_DESKTOP_REGISTRY_KEY,
+                runtime.WINE_LOGPIXELS_VALUE,
+                self.root / "controllers.log",
+            )
+
+        self.assertIsNone(value)
+
+    def test_query_wine_registry_dword_accepts_empty_missing_value(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        with mock.patch.object(
+            runtime,
+            "run_job_process_capture",
+            return_value=SimpleNamespace(returncode=1, stdout=""),
+        ):
+            value = runtime.query_wine_registry_dword(
+                context,
+                wine64,
+                {"WINEPREFIX": str(context["prefix"])},
+                runtime.WINE_DESKTOP_REGISTRY_KEY,
+                runtime.WINE_LOGPIXELS_VALUE,
+                self.root / "controllers.log",
+            )
+
+        self.assertIsNone(value)
+
+    def test_query_wine_registry_dword_accepts_empty_success_value(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        with mock.patch.object(
+            runtime,
+            "run_job_process_capture",
+            return_value=SimpleNamespace(returncode=0, stdout=""),
         ):
             value = runtime.query_wine_registry_dword(
                 context,
@@ -1857,6 +1939,49 @@ class RuntimeManagerTests(unittest.TestCase):
 
         execute.assert_called_once()
         flock.assert_not_called()
+
+    def test_quit_all_uses_two_wineserver_kill_passes(self):
+        context = self.context()
+        wine64 = (
+            self.package / "wine" / "dxmt" / "bin" / "wine64"
+        ).resolve()
+        wine_root = wine64.parent.parent
+        with mock.patch.object(
+            runtime,
+            "load_selected_package",
+            return_value=(
+                self.package,
+                {"package_id": "fixture"},
+                wine_root,
+                wine64,
+                {},
+            ),
+        ), mock.patch.object(
+            runtime,
+            "build_environment",
+            return_value={"WINEPREFIX": str(context["prefix"])},
+        ), mock.patch.object(
+            runtime,
+            "run_job_process",
+            side_effect=[
+                mock.Mock(returncode=0, args=["wineserver", "-k"]),
+                mock.Mock(returncode=1, args=["wineserver", "-k"]),
+            ],
+        ) as run, mock.patch.object(runtime.time, "sleep"):
+            exit_code, result = runtime.execute_container_action(
+                context,
+                self.runtime_root,
+                {"operation": "quit-all"},
+                self.root / "quit-all.log",
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(result["operation"], "quit-all")
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(
+            run.call_args_list[0].args[1],
+            [wine_root / "bin" / "wineserver", "-k"],
+        )
 
     def test_run_command_builds_builtin_batch_and_association_plans(self):
         context = self.context()

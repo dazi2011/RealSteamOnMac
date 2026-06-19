@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -51,6 +52,7 @@ STEAMWORKS_UNIX_INSTALL_NAMES = frozenset(
 POST_EXIT_PREFIX_KILL_APPIDS = frozenset((1118200,))
 ACTION_JOB_ID_PATTERN = re.compile(r"[0-9a-f]{32}")
 CONTROLLER_READABILITY_DPI = 192
+CONTROLLER_REGISTRY_RESTORE_TIMEOUT_SECONDS = 5
 WINE_DESKTOP_REGISTRY_KEY = r"HKCU\Control Panel\Desktop"
 WINE_LOGPIXELS_VALUE = "LogPixels"
 CONTAINER_OPERATIONS = frozenset(
@@ -2354,19 +2356,31 @@ def open_private_log(path):
     return os.fdopen(descriptor, "a", encoding="utf-8")
 
 
-def run_job_process(context, command, environment, log_path, description):
+def run_job_process(
+    context, command, environment, log_path, description, timeout=None
+):
     with open_private_log(log_path) as stream:
         stream.write(f"\n[{utc_timestamp()}] {description}\n")
         stream.write(f"$ {shlex.join(str(part) for part in command)}\n")
         stream.flush()
-        return subprocess.run(
-            [str(part) for part in command],
-            cwd=str(context["install_path"]),
-            env=environment,
-            stdout=stream,
-            stderr=subprocess.STDOUT,
-            check=False,
-        )
+        try:
+            return subprocess.run(
+                [str(part) for part in command],
+                cwd=str(context["install_path"]),
+                env=environment,
+                stdout=stream,
+                stderr=subprocess.STDOUT,
+                check=False,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            stream.write(
+                f"[{utc_timestamp()}] timed out after {timeout}s\n"
+            )
+            stream.flush()
+            return subprocess.CompletedProcess(
+                [str(part) for part in command], -9
+            )
 
 
 def start_job_process(context, command, environment, log_path, description):
@@ -2424,10 +2438,15 @@ def query_wine_registry_dword(
     )
     if result.returncode == 0 and match:
         return int(match.group(1), 16)
-    if result.returncode != 0 and re.search(
-        r"(unable to find|not found)",
-        result.stdout,
-        flags=re.IGNORECASE,
+    if result.returncode == 0 and not result.stdout.strip():
+        return None
+    if result.returncode != 0 and (
+        not result.stdout.strip()
+        or re.search(
+            r"(unable to find|not found)",
+            result.stdout,
+            flags=re.IGNORECASE,
+        )
     ):
         return None
     raise RuntimeErrorWithContext(
@@ -2437,7 +2456,14 @@ def query_wine_registry_dword(
 
 
 def set_wine_registry_dword(
-    context, wine64, environment, key, name, value, log_path
+    context,
+    wine64,
+    environment,
+    key,
+    name,
+    value,
+    log_path,
+    timeout=None,
 ):
     result = run_job_process(
         context,
@@ -2457,6 +2483,7 @@ def set_wine_registry_dword(
         environment,
         log_path,
         f"set Wine registry value {key}\\{name}",
+        timeout=timeout,
     )
     if result.returncode != 0:
         raise RuntimeErrorWithContext(
@@ -2466,7 +2493,7 @@ def set_wine_registry_dword(
 
 
 def delete_wine_registry_value(
-    context, wine64, environment, key, name, log_path
+    context, wine64, environment, key, name, log_path, timeout=None
 ):
     result = run_job_process(
         context,
@@ -2474,12 +2501,18 @@ def delete_wine_registry_value(
         environment,
         log_path,
         f"delete Wine registry value {key}\\{name}",
+        timeout=timeout,
     )
     if result.returncode != 0:
         raise RuntimeErrorWithContext(
             f"cannot restore absent Wine registry value {key}\\{name}; "
             f"see {log_path}"
         )
+
+
+def warn_job_log(log_path, message):
+    with open_private_log(log_path) as stream:
+        stream.write(f"[{utc_timestamp()}] WARNING: {message}\n")
 
 
 def run_wine_controller_panel(
@@ -2515,26 +2548,73 @@ def run_wine_controller_panel(
         )
     finally:
         if override_applied:
-            if previous_dpi is None:
-                delete_wine_registry_value(
-                    context,
-                    wine64,
-                    environment,
-                    WINE_DESKTOP_REGISTRY_KEY,
-                    WINE_LOGPIXELS_VALUE,
+            try:
+                if previous_dpi is None:
+                    delete_wine_registry_value(
+                        context,
+                        wine64,
+                        environment,
+                        WINE_DESKTOP_REGISTRY_KEY,
+                        WINE_LOGPIXELS_VALUE,
+                        log_path,
+                        timeout=(
+                            CONTROLLER_REGISTRY_RESTORE_TIMEOUT_SECONDS
+                        ),
+                    )
+                else:
+                    set_wine_registry_dword(
+                        context,
+                        wine64,
+                        environment,
+                        WINE_DESKTOP_REGISTRY_KEY,
+                        WINE_LOGPIXELS_VALUE,
+                        previous_dpi,
+                        log_path,
+                        timeout=(
+                            CONTROLLER_REGISTRY_RESTORE_TIMEOUT_SECONDS
+                        ),
+                    )
+            except RuntimeErrorWithContext as error:
+                warn_job_log(
                     log_path,
-                )
-            else:
-                set_wine_registry_dword(
-                    context,
-                    wine64,
-                    environment,
-                    WINE_DESKTOP_REGISTRY_KEY,
-                    WINE_LOGPIXELS_VALUE,
-                    previous_dpi,
-                    log_path,
+                    "controller DPI restore failed after panel exit: "
+                    f"{error}",
                 )
     return result, target_dpi
+
+
+def run_wineserver_kill(
+    context,
+    wine_root,
+    environment,
+    log_path,
+    description,
+    passes=1,
+):
+    result = None
+    for index in range(passes):
+        result = run_job_process(
+            context,
+            [wine_root / "bin" / "wineserver", "-k"],
+            environment,
+            log_path,
+            (
+                description
+                if passes == 1
+                else f"{description} ({index + 1}/{passes})"
+            ),
+            timeout=10,
+        )
+        if index + 1 < passes:
+            time.sleep(1)
+    if result is not None and result.returncode == 1:
+        warn_job_log(
+            log_path,
+            "wineserver kill reported no active server; treating as "
+            "already stopped",
+        )
+        return subprocess.CompletedProcess(result.args, 0)
+    return result
 
 
 def build_native_helper_environment(environment):
@@ -3226,12 +3306,13 @@ def execute_container_action(context, runtime_root, fields, log_path):
             context, config, wine_root
         )
         if context["prefix"].exists():
-            run_job_process(
+            run_wineserver_kill(
                 context,
-                [wine_root / "bin" / "wineserver", "-k"],
+                wine_root,
                 environment,
                 log_path,
                 "stop container processes",
+                passes=2,
             )
             recovery_root = context["state"] / "recovery"
             recovery_root.mkdir(parents=True, exist_ok=True)
@@ -3266,12 +3347,13 @@ def execute_container_action(context, runtime_root, fields, log_path):
         environment = build_environment(
             context, config, wine_root
         )
-        result = run_job_process(
+        result = run_wineserver_kill(
             context,
-            [wine_root / "bin" / "wineserver", "-k"],
+            wine_root,
             environment,
             log_path,
             f"container operation {operation}",
+            passes=2,
         )
         return result.returncode, {
             "operation": operation,

@@ -438,6 +438,28 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
   rollback snapshot is available; do not destroy the current installation
   without explicit approval.
 
+## Native Controls And Actions Checkpoint
+
+- [x] Prevent missing manifests and empty install shells from being treated as
+  completed downloads.
+- [x] Seed dynamically managed AppIDs before the first browser registry sync
+  so Aimlabs/Hogwarts launch redirection is available on early Play clicks.
+- [x] Verify the native force-tool checkbox does not flicker on the deployed
+  build and that disable/re-enable preserves the selected tool.
+- [x] Verify all compatibility options and lower sections use Steam-native
+  controls without an overlay or replacement page.
+- [x] Live-test Run Command, EXE resolution, environment variables, Open C
+  Drive, Wine configuration, Task Manager, Wine Game Controllers, and
+  `quit-all` against an existing prefix.
+- [x] Raise Wine Game Controllers to readable 192 DPI with bounded,
+  best-effort registry restoration.
+- [ ] Run a destructive live `delete-container` acceptance only after explicit
+  approval. Automated recoverable-move and confirmation tests remain the
+  current evidence.
+- [ ] Implement and live-verify standard raw `compatibilitytools.d` GPTK,
+  DXMT, DXVK, Wine, and CrossOver-style directory discovery with multi-version
+  coexistence and capability detection.
+
 ## Errors Encountered
 
 | Error | Attempt | Resolution |
