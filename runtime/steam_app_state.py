@@ -159,14 +159,16 @@ def _diagnostic(
     installed_depot_bytes,
     staged_depot_count,
     install_path_nonempty,
+    bytes_to_download,
+    bytes_downloaded,
+    bytes_to_stage,
+    bytes_staged,
 ):
     if (
         staged_depot_count > 0
         or state_flags & (2 | 256 | 512 | 1024 | 1048576 | 2097152)
-    ) and (
-        installed_depot_count == 0
-        or size_on_disk == 0
-        or not state_flags & FULLY_INSTALLED
+        or bytes_to_download > bytes_downloaded
+        or bytes_to_stage > bytes_staged
     ):
         return "download-incomplete"
     if "files-missing" in blocking_states or "files-corrupt" in blocking_states:
@@ -230,6 +232,10 @@ def inspect_app_manifest(path, expected_appid, install_path):
         installed_bytes,
         staged_count,
         install_path_nonempty,
+        bytes_to_download,
+        bytes_downloaded,
+        bytes_to_stage,
+        bytes_staged,
     )
     return MappingProxyType(
         {

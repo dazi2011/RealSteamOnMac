@@ -459,6 +459,9 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 - [x] Implement and live-verify standard raw `compatibilitytools.d` GPTK,
   DXMT, DXVK, Wine, and CrossOver-style directory discovery with multi-version
   coexistence and capability detection.
+- [x] Distinguish an installed game with a real pending update from a
+  zero-byte files-missing warning. Aimlabs now routes to Steam's native resume
+  action while Hogwarts retains verified stale-target recovery.
 
 ## Errors Encountered
 

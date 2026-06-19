@@ -546,7 +546,7 @@ class RuntimeManagerTests(unittest.TestCase):
         ):
             runtime.resolve_app_context("1118200")
 
-    def test_pending_download_bytes_still_require_repair(self):
+    def test_pending_download_bytes_require_resume(self):
         (self.steamapps / "appmanifest_1118200.acf").write_text(
             '"AppState"\n{\n'
             '\t"appid"\t\t"1118200"\n'
@@ -572,7 +572,7 @@ class RuntimeManagerTests(unittest.TestCase):
 
         with self.assertRaisesRegex(
             runtime.RuntimeErrorWithContext,
-            "repair-required.*install or repair",
+            "download-incomplete.*install or repair",
         ):
             runtime.resolve_app_context("1118200")
 

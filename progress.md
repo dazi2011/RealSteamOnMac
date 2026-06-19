@@ -2380,3 +2380,17 @@
 - Verification for the raw-tool batch passed all 169 Python tests, all 88 Node
   tests, Steam launcher, Steam injection installer, SteamUI resource patch,
   runtime package installer, and `git diff --check`.
+- Corrected installed-update diagnosis after the live Aimlabs manifest changed
+  from a zero-byte `files-missing` state to `StateFlags=38` with 47,530,849
+  bytes still pending. Installed depots no longer hide active update flags or
+  incomplete download/staging byte counters behind `repair-required`.
+- The source runtime now reports Aimlabs as `download-incomplete`, so Steam's
+  existing native repair dispatcher selects `ResumeAppUpdate` instead of
+  `VerifyApp`; the launch path remains fail closed until Steam finishes the
+  update. Hogwarts remains a verified `repair-required` warning and both the
+  source and installed helper resolve its stale Test target to
+  `HogwartsLegacy.exe`.
+- Added a regression fixture matching the real Aimlabs state and updated the
+  pending-byte runtime contract. Verification passed all 170 Python tests, all
+  88 Node tests, the runtime package installer contract, and
+  `git diff --check`.

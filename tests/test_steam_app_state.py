@@ -99,7 +99,6 @@ class SteamAppStateTests(unittest.TestCase):
         self.write_manifest(
             state_flags=36,
             size_on_disk=74056715310,
-            bytes_to_download="123",
             installed_depots=(
                 '\t\t"990081"\n'
                 "\t\t{\n"
@@ -116,8 +115,34 @@ class SteamAppStateTests(unittest.TestCase):
 
         self.assertFalse(state["launchable"])
         self.assertIn("files-missing", state["blocking_states"])
-        self.assertEqual(state["bytes_to_download"], 123)
+        self.assertEqual(state["bytes_to_download"], 0)
         self.assertEqual(state["diagnostic"], "repair-required")
+
+    def test_installed_update_with_pending_bytes_is_download_incomplete(self):
+        (self.install_path / "AimLab_tb.exe").write_bytes(b"MZfixture")
+        self.write_manifest(
+            state_flags=38,
+            size_on_disk=19731876148,
+            bytes_to_download="47530849",
+            installed_depots=(
+                '\t\t"714011"\n'
+                "\t\t{\n"
+                '\t\t\t"manifest"\t\t"3280265244216468903"\n'
+                '\t\t\t"size"\t\t"19731876148"\n'
+                "\t\t}\n"
+            ),
+            staged_depots=None,
+        )
+
+        state = steam_app_state.inspect_app_manifest(
+            self.manifest, 1118200, self.install_path
+        )
+
+        self.assertFalse(state["launchable"])
+        self.assertIn("update-required", state["blocking_states"])
+        self.assertIn("files-missing", state["blocking_states"])
+        self.assertEqual(state["bytes_to_download"], 47530849)
+        self.assertEqual(state["diagnostic"], "download-incomplete")
 
     def test_staged_only_download_is_not_installed(self):
         self.write_manifest(

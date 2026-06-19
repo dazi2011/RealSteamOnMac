@@ -1656,6 +1656,15 @@
   `config.js`, and the existing Steam-owned `GetAvailableCompatTools` bridge
   inserts the entry into the original native selector without generating
   files inside the user source directory.
+- `files-missing` is not by itself enough to choose verification or permit a
+  verified-warning launch. Aimlabs currently has an installed depot and a
+  valid `AimLab_tb.exe`, but its manifest also has `update-required` plus
+  47,530,849 undownloaded bytes. Update flags and pending transfer counters
+  must take precedence and classify that state as `download-incomplete`.
+- Hogwarts is the contrasting safe case: `StateFlags=36`, positive installed
+  depot bytes, zero download/staging counters, and an existing selected PE.
+  It remains eligible for the narrowly bounded files-missing warning path,
+  while stale `Phoenix-Win64-Test.exe` is replaced by `HogwartsLegacy.exe`.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
