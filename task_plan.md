@@ -152,8 +152,10 @@ Phase 8: 2026-06-11 field regression remediation and verified release
       executables.
   - [x] Extend Steam's existing guarded macOS picker filter to keep `.app` and
         add `.exe`, with migration and restore coverage.
-  - [ ] Add typed shortcut discovery, canonical PE target binding, an external
-        non-Steam prefix, and shortcut-only spawn redirection.
+  - [x] Add a side-effect-free canonical PE target and
+        `compatdata/nonsteam-<id>` context resolver.
+  - [ ] Add typed shortcut discovery/registry and shortcut-only spawn
+        redirection.
 - [ ] Make Run Command behave like Windows Run, fix EXE selection persistence,
       and open the selected prefix drive in Finder.
 - [x] Merge Windows component installation into Install Application To

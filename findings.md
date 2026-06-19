@@ -1679,6 +1679,18 @@
   `realsteamonmac_should_redirect_spawn` currently accepts any PE, missing
   `.exe`, or `.app` target carrying an allowlisted ID. Shortcut redirection
   must instead reject `.app`, missing targets, symlinks, and target changes.
+- A non-Steam prefix can preserve the familiar Proton layout without a fake
+  store manifest by using
+  `steamapps/compatdata/nonsteam-<shortcut-id>/pfx`. Its persistent config key
+  must be `shortcut-<id>.json`, separate from store AppID configs.
+- Path validation must inspect both the raw path and its lexical normalized
+  form before resolving. Otherwise a path such as
+  `missing/../LinkedSteam` can hide an existing symlink behind the missing
+  component and then resolve through it.
+- Parent checks are insufficient for future writable state. Existing
+  symlinks at `nonsteam-<id>`, `pfx`, `realsteamonmac`, `config.json`, `logs`,
+  the config root, or `shortcut-<id>.json` must all fail before runtime
+  preparation.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

@@ -2411,3 +2411,18 @@
   shortcut identity, exact PE target binding, external-prefix resolution, and
   launch redirection remain required before a selected shortcut can use a
   compatibility tool safely.
+- Added a side-effect-free non-Steam PE context resolver as the next isolated
+  shortcut foundation. It accepts a positive uint32 shortcut ID and one
+  canonical absolute `MZ` `.exe`, without requiring the target to live below
+  `steamapps`.
+- The resolver assigns
+  `steamapps/compatdata/nonsteam-<shortcut-id>/pfx` and
+  `shortcut-<shortcut-id>.json`, while rejecting target, Steam-root,
+  compatdata, prefix, state, config, log, config-root, and global-config
+  symlink escapes. Lexical `..` aliases, missing-component symlink bypasses,
+  NUL paths, noncanonical explicit compatdata, non-PE files, and invalid IDs
+  fail closed without creating files.
+- The pure resolver passed 22 targeted tests, the complete 197-test Python
+  suite, specification review, code-quality review, and `git diff --check`.
+  Runtime CLI and native hook integration remain deliberately outside this
+  batch.
