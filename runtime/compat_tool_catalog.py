@@ -38,6 +38,7 @@ METADATA_KEYS = frozenset(
 )
 MAX_METADATA_BYTES = 64 * 1024
 MAX_PLIST_BYTES = 64 * 1024
+MAX_PAYLOAD_PROBE_BYTES = 64 * 1024 * 1024
 MAX_VDF_BYTES = 256 * 1024
 MAX_VDF_TOKENS = 4096
 MAX_VDF_DEPTH = 32
@@ -381,6 +382,65 @@ def _version_from_name(name, label, directory):
     return matches[-1]
 
 
+def _read_payload_probe(path, root, label):
+    resolved = _require_internal_file(path, root, label)
+    try:
+        size = resolved.stat().st_size
+    except OSError as exc:
+        raise CatalogError(f"cannot inspect {label}: {path}") from exc
+    if size > MAX_PAYLOAD_PROBE_BYTES:
+        return b""
+    try:
+        return resolved.read_bytes()
+    except OSError as exc:
+        raise CatalogError(f"cannot read {label}: {path}") from exc
+
+
+def _version_from_payload(
+    directory, candidates, patterns, label
+):
+    for relative, candidate_label in candidates:
+        path = directory / relative
+        if not path.exists() and not path.is_symlink():
+            continue
+        payload = _read_payload_probe(
+            path, directory, candidate_label
+        )
+        for pattern in patterns:
+            match = re.search(pattern, payload)
+            if match is not None:
+                return match.group(1).decode("ascii")
+    return None
+
+
+def _version_from_name_or_payload(
+    name,
+    label,
+    directory,
+    candidates,
+    patterns,
+    *,
+    prefer_payload=False,
+):
+    payload_version = _version_from_payload(
+        directory, candidates, patterns, label
+    )
+    if prefer_payload and payload_version is not None:
+        return payload_version
+    try:
+        return _version_from_name(name, label, directory)
+    except CatalogError:
+        if payload_version is not None:
+            return payload_version
+        raise
+
+
+def _payload_contains(path, root, label, marker):
+    if not path.exists() and not path.is_symlink():
+        return False
+    return marker in _read_payload_probe(path, root, label)
+
+
 def _raw_capabilities(**updates):
     capabilities = {
         "msync": True,
@@ -548,7 +608,23 @@ def _scan_raw_dxmt(directory):
         raise CatalogError(
             f"DXMT payload is incomplete: {directory}: {exc}"
         ) from exc
-    version = _version_from_name(directory.name, "DXMT", directory)
+    version = _version_from_name_or_payload(
+        directory.name,
+        "DXMT",
+        directory,
+        (
+            (
+                "x86_64-windows/d3d11.dll",
+                "DXMT Windows D3D11 module",
+            ),
+            (
+                "x86_64-unix/winemetal.so",
+                "DXMT Wine Metal module",
+            ),
+        ),
+        (rb"\bDXMT D3D\x00*v([0-9]+\.[0-9]+(?:\.[0-9]+)?)",),
+        prefer_payload=True,
+    )
     has_metalfx = _internal_file_exists(
         windows / "nvapi64.dll", directory, "DXMT NVAPI module"
     ) and any(
@@ -588,7 +664,26 @@ def _scan_raw_dxvk(directory):
         raise CatalogError(
             f"DXVK payload is incomplete: {directory}: {exc}"
         ) from exc
-    version = _version_from_name(directory.name, "DXVK", directory)
+    version = _version_from_name_or_payload(
+        directory.name,
+        "DXVK",
+        directory,
+        (
+            (
+                "x86_64-windows/d3d11.dll",
+                "DXVK D3D11 module",
+            ),
+            (
+                "x86_64-windows/d3d9.dll",
+                "DXVK D3D9 module",
+            ),
+        ),
+        (
+            rb"\bcxaddon-([0-9]+\.[0-9]+(?:\.[0-9]+)?)",
+            rb"\bDXVK[ :_-]+v?([0-9]+\.[0-9]+(?:\.[0-9]+)?)",
+        ),
+        prefer_payload=True,
+    )
     return _raw_tool_record(
         directory,
         kind="dxvk",
@@ -617,11 +712,15 @@ def _scan_raw_wine(directory):
     )
     if wine is None:
         raise CatalogError(f"Wine payload is incomplete: {directory}: wine is missing")
+    wineserver = bin_directory / "wineserver"
+    unix_ntdll = (
+        directory / "lib" / "wine" / "x86_64-unix" / "ntdll.so"
+    )
     required = (
         (wine, "Wine launcher", True),
-        (bin_directory / "wineserver", "Wine server", True),
+        (wineserver, "Wine server", True),
         (
-            directory / "lib" / "wine" / "x86_64-unix" / "ntdll.so",
+            unix_ntdll,
             "Wine Unix NTDLL module",
             False,
         ),
@@ -643,17 +742,67 @@ def _scan_raw_wine(directory):
         raise CatalogError(
             f"Wine payload is incomplete: {directory}: {exc}"
         ) from exc
-    version = _version_from_name(directory.name, "Wine", directory)
+    version = _version_from_name_or_payload(
+        directory.name,
+        "Wine",
+        directory,
+        (
+            ("bin/wineserver", "Wine server"),
+            (
+                "lib/wine/x86_64-unix/ntdll.so",
+                "Wine Unix NTDLL module",
+            ),
+        ),
+        (rb"\bWine ([0-9]+\.[0-9]+(?:\.[0-9]+)?)\x00",),
+        prefer_payload=True,
+    )
+    crossover_hosted = directory / "CrossOver-Hosted Application"
+    is_crossover = crossover_hosted.exists()
+    if is_crossover:
+        _resolve_internal_path(
+            crossover_hosted,
+            directory,
+            "CrossOver hosted application directory",
+            directory=True,
+        )
+    has_msync = _payload_contains(
+        wineserver,
+        directory,
+        "Wine server",
+        b"WINEMSYNC",
+    ) and _payload_contains(
+        unix_ntdll,
+        directory,
+        "Wine Unix NTDLL module",
+        b"WINEMSYNC",
+    )
+    has_retina = _internal_file_exists(
+        directory / "lib" / "wine" / "x86_64-unix" / "winemac.so",
+        directory,
+        "Wine macOS driver",
+    )
+    has_avx = _payload_contains(
+        wine,
+        directory,
+        "Wine launcher",
+        b"ROSETTA_ADVERTISE_AVX",
+    ) or _payload_contains(
+        unix_ntdll,
+        directory,
+        "Wine Unix NTDLL module",
+        b"ROSETTA_ADVERTISE_AVX",
+    )
     return _raw_tool_record(
         directory,
         kind="wine",
-        label="Wine",
+        label="CrossOver Wine" if is_crossover else "Wine",
         renderer="wined3d",
         version=version,
         capabilities=_raw_capabilities(
-            msync=False,
-            retina=False,
+            msync=has_msync,
+            retina=has_retina,
             metal_hud=False,
+            avx=has_avx,
         ),
     )
 

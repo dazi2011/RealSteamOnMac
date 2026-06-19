@@ -456,7 +456,7 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 - [ ] Run a destructive live `delete-container` acceptance only after explicit
   approval. Automated recoverable-move and confirmation tests remain the
   current evidence.
-- [ ] Implement and live-verify standard raw `compatibilitytools.d` GPTK,
+- [x] Implement and live-verify standard raw `compatibilitytools.d` GPTK,
   DXMT, DXVK, Wine, and CrossOver-style directory discovery with multi-version
   coexistence and capability detection.
 

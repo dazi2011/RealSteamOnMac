@@ -358,6 +358,51 @@ class CompatToolCatalogTests(unittest.TestCase):
             {"dxmt", "dxvk"},
         )
 
+    def test_reads_unversioned_crossover_component_payload_versions(self):
+        dxmt = self.root / "dxmt"
+        (dxmt / "x86_64-unix").mkdir(parents=True)
+        (dxmt / "x86_64-windows").mkdir()
+        (dxmt / "x86_64-unix" / "winemetal.so").write_bytes(
+            b"Mach-O"
+        )
+        (dxmt / "x86_64-windows" / "d3d11.dll").write_bytes(
+            b"MZ\0DXMT D3D\0v0.80-29-g2c8d6f8\0"
+        )
+        (dxmt / "x86_64-windows" / "dxgi.dll").write_bytes(b"MZ")
+
+        dxvk = self.root / "dxvk"
+        (dxvk / "x86_64-windows").mkdir(parents=True)
+        (dxvk / "x86_64-windows" / "d3d9.dll").write_bytes(b"MZ")
+        (dxvk / "x86_64-windows" / "d3d11.dll").write_bytes(
+            b"MZ\0DXVK:\0cxaddon-1.10.3-1-25-g737aacd\0"
+        )
+
+        tools = catalog.scan_compat_tools(self.root)
+
+        self.assertEqual(
+            {
+                tool["sourceKind"]: tool["version"]
+                for tool in tools
+            },
+            {"dxmt": "0.80", "dxvk": "1.10.3"},
+        )
+
+    def test_payload_version_overrides_a_misleading_component_name(self):
+        dxmt = self.root / "DXMT-9.9"
+        (dxmt / "x86_64-unix").mkdir(parents=True)
+        (dxmt / "x86_64-windows").mkdir()
+        (dxmt / "x86_64-unix" / "winemetal.so").write_bytes(
+            b"Mach-O"
+        )
+        (dxmt / "x86_64-windows" / "d3d11.dll").write_bytes(
+            b"MZ\0DXMT D3D\0v0.80-29-g2c8d6f8\0"
+        )
+        (dxmt / "x86_64-windows" / "dxgi.dll").write_bytes(b"MZ")
+
+        [tool] = catalog.scan_compat_tools(self.root)
+
+        self.assertEqual(tool["version"], "0.80")
+
     def test_discovers_a_complete_raw_wine_tree_conservatively(self):
         directory = self.root / "wine11.1.2"
         (directory / "bin").mkdir(parents=True)
@@ -379,6 +424,48 @@ class CompatToolCatalogTests(unittest.TestCase):
         self.assertEqual(tool["sourceKind"], "wine")
         self.assertFalse(tool["capabilities"]["msync"])
         self.assertFalse(tool["capabilities"]["retina"])
+        self.assertFalse(tool["capabilities"]["metal_hud"])
+        self.assertFalse(tool["capabilities"]["avx"])
+
+    def test_discovers_complete_crossover_wine_root_by_payload_evidence(
+        self,
+    ):
+        directory = self.root / "CrossOver Preview"
+        hosted = directory / "CrossOver-Hosted Application"
+        hosted.mkdir(parents=True)
+        wine = hosted / "wine"
+        wine.write_text(
+            "#!/usr/bin/perl\n"
+            "# ROSETTA_ADVERTISE_AVX\n",
+            encoding="utf-8",
+        )
+        wine.chmod(0o755)
+        wineserver = hosted / "wineserver"
+        wineserver.write_bytes(b"Mach-O\0Wine 11.7\0WINEMSYNC\0")
+        wineserver.chmod(0o755)
+        (directory / "bin").symlink_to(
+            "CrossOver-Hosted Application",
+            target_is_directory=True,
+        )
+        unix = directory / "lib" / "wine" / "x86_64-unix"
+        windows = directory / "lib" / "wine" / "x86_64-windows"
+        unix.mkdir(parents=True)
+        windows.mkdir()
+        (unix / "ntdll.so").write_bytes(b"Mach-O\0WINEMSYNC\0")
+        (unix / "winemac.so").write_bytes(b"Mach-O")
+        (windows / "ntdll.dll").write_bytes(b"MZ")
+
+        [tool] = catalog.scan_compat_tools(self.root)
+
+        self.assertEqual(tool["renderer"], "wined3d")
+        self.assertEqual(tool["version"], "11.7")
+        self.assertEqual(
+            tool["strDisplayName"],
+            "CrossOver Wine 11.7 - CrossOver Preview",
+        )
+        self.assertTrue(tool["capabilities"]["msync"])
+        self.assertTrue(tool["capabilities"]["retina"])
+        self.assertTrue(tool["capabilities"]["avx"])
         self.assertFalse(tool["capabilities"]["metal_hud"])
 
     def test_rejects_an_incomplete_raw_component_tree(self):

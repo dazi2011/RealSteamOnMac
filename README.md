@@ -83,6 +83,16 @@ then select a tool from the normal Steam dropdown. Settings and actions appear
 as compact rows below it. Different games can use different tool versions and
 users may install additional validated tool folders side by side.
 
+User-added tools are immediate child directories of
+`~/Library/Application Support/Steam/compatibilitytools.d/`. Supported raw
+layouts include an Apple/CrossOver-style GPTK tree (`external/` plus `wine/`),
+DXMT or DXVK component trees (`x86_64-*` and optional `i386-windows`), and a
+complete Wine or CrossOver runtime root (`bin/wine`, `bin/wineserver`, and
+`lib/wine`). Put each version in its own directory and restart Steam; no
+project `run`, VDF, or JSON file is required. The scanner does not execute or
+rewrite raw tools. Embedded payload versions and files determine the displayed
+version and whether MSync, Retina, MetalFX, DXR, and Rosetta AVX are enabled.
+
 ## Update
 
 The installed updater verifies the release manifest signature, Steam build,

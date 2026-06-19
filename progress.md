@@ -2353,3 +2353,30 @@
   the user's live prefix. The recoverable move behavior and UI confirmation
   remain covered by automated tests; destructive live acceptance still
   requires explicit approval.
+- Extended raw compatibility-tool discovery with bounded, read-only payload
+  evidence. Unversioned CrossOver `dxmt` and `dxvk` component directories now
+  report embedded DXMT `0.80` and DXVK `1.10.3`, and payload versions override
+  misleading directory names.
+- Complete Wine/CrossOver roots now derive the actual Wine ABI from
+  `wineserver`; MSync requires matching server and NTDLL markers, Retina
+  requires the macOS Wine driver, and Rosetta AVX requires an explicit
+  launcher/NTDLL marker. Generic Wine trees no longer claim AVX by default.
+- Read-only acceptance against the installed CrossOver Preview payload found
+  GPTK `3.0`, DXMT `0.80`, DXVK `1.10.3`, and CrossOver Wine `11.7` with the
+  expected DXR/MetalFX/MSync/Retina/AVX capability matrix.
+- Deployed the scanner with a rollback copy under
+  `backups/compat-catalog-20260619T024801Z` and copied CrossOver's raw `dxmt`
+  component into the standard user `compatibilitytools.d/dxmt` directory.
+  Steam's regenerated `config.js`, SharedJSContext API, and native Properties
+  dropdown all exposed `DXMT 0.80 - dxmt`.
+- Selected the raw entry in Steam's native dropdown. The backend persisted
+  `realsteamonmac-user-dxmt-dxmt`, the DXR row was disabled while supported
+  capabilities remained available, and installed runtime dry-run generated
+  content-addressed package `composed-0b251f111cb00f175ec82ae13ea5942d`.
+- Live launch through that composed raw DXMT runtime started
+  `People Playground.exe`, UnityCrashHandler64, and PPGModCompiler with D3D11
+  feature level 11_1. The follow-up native `quit-all` job completed with exit
+  code 0.
+- Verification for the raw-tool batch passed all 169 Python tests, all 88 Node
+  tests, Steam launcher, Steam injection installer, SteamUI resource patch,
+  runtime package installer, and `git diff --check`.

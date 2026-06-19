@@ -78,6 +78,15 @@ WineD3D 11.10。公开包不会重新分发 Apple D3DMetal。
 兼容性工具，然后在 Steam 原生下拉菜单中选择工具。紧凑设置和操作会纵向
 显示在下方。不同游戏可以选择不同工具和版本。
 
+用户添加的工具应作为
+`~/Library/Application Support/Steam/compatibilitytools.d/` 的直接子目录。
+支持 Apple/CrossOver 风格的 GPTK 目录（`external/` 和 `wine/`）、DXMT 或
+DXVK 组件目录（`x86_64-*`，可带 `i386-windows`），以及完整 Wine 或
+CrossOver 运行时根目录（`bin/wine`、`bin/wineserver` 和 `lib/wine`）。
+每个版本放在独立目录中并重启 Steam；不需要项目专用的 `run`、VDF 或 JSON
+文件。扫描器不会执行或改写用户工具，而是根据载荷内版本与实际文件决定显示
+版本，并只启用载荷确实支持的 MSync、Retina、MetalFX、DXR 和 Rosetta AVX。
+
 ## 更新
 
 已安装的更新器会验证发布清单签名、Steam build、文件大小和 SHA-256，

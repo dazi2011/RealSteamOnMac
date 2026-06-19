@@ -1636,6 +1636,26 @@
   checkbox transitions, and `DXMT 0.80` survived disable/re-enable. This is
   evidence for the current build only, not a guarantee across future Steam
   client updates.
+- CrossOver component directory names are not authoritative version metadata:
+  its real folders are simply named `dxmt` and `dxvk`, while their payloads
+  identify DXMT `v0.80-29-g2c8d6f8` and DXVK
+  `cxaddon-1.10.3-1-25-g737aacd`. Payload evidence must win over a user-chosen
+  folder name.
+- A complete CrossOver root is a valid self-contained Wine layout because its
+  `bin` symlink resolves internally to `CrossOver-Hosted Application`, while
+  `lib/wine` contains the paired Unix and Windows modules. Its product version
+  (`27.0.0.40479`) is not the Wine ABI; the embedded server string reports
+  Wine `11.7`.
+- Capability inference must require paired implementation evidence. The live
+  CrossOver root exposes `WINEMSYNC` in both `wineserver` and Unix NTDLL,
+  `winemac.so` for the macOS driver, and `ROSETTA_ADVERTISE_AVX` in its Wine
+  launcher. A plain complete Wine tree without those markers must leave the
+  corresponding native switches disabled.
+- Steam's launcher-time regeneration is sufficient for standard local-tool
+  behavior: after a raw child directory is added, restarting Steam rebuilds
+  `config.js`, and the existing Steam-owned `GetAvailableCompatTools` bridge
+  inserts the entry into the original native selector without generating
+  files inside the user source directory.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered
