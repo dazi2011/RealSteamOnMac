@@ -1691,6 +1691,27 @@
   symlinks at `nonsteam-<id>`, `pfx`, `realsteamonmac`, `config.json`, `logs`,
   the config root, or `shortcut-<id>.json` must all fail before runtime
   preparation.
+- A runtime module imported at process startup is part of the installed helper
+  ABI, not merely a source-tree dependency. Adding `nonsteam_shortcut.py`
+  without copying it into `runtimes/bin` would make source tests pass while
+  every installed helper failed during import.
+- Acceptance must fingerprint required Python helper modules as well as the
+  executable entry point. This detects partial updates where
+  `realsteamonmac-runtime` is current but its resolver or descriptor module is
+  missing or stale.
+- A shortcut ID is numerically AppID-shaped but must never inherit store-game
+  policy. Launcher-recovery recipes and AppID-specific post-exit cleanup must
+  require the typed `steam-app` identity, not merely a matching integer.
+- Replacing the runtime entry point last prevents many interrupted-update
+  failures, but it is not a crash-atomic transaction across `bin`, `current`,
+  and the dependency catalog. Correctly solving that requires one immutable
+  generation containing all three and one atomic generation pointer; a lock
+  added only to the runtime installer would not cover injection, update,
+  rollback, uninstall, or unlocked readers.
+- A clean rollback directory is not sufficient rollback evidence. Its
+  SteamRuntime package must identify the same stable/publicbeta channel and
+  exact build as the client being modified, and that comparison must be
+  repeated after Steam exits because the client may update while quitting.
 | Keep a thin fail-fast top-level installer over verified component installers | Users need one repeatable command, while checksum, signature, atomic package, and rollback ownership remain in the already tested lower layers. |
 
 ## Issues Encountered

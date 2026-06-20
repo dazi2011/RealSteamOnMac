@@ -29,6 +29,7 @@ from launcher_recovery import (
     execute_launcher_recovery,
     load_launcher_recovery_catalog,
 )
+from nonsteam_shortcut import resolve_shortcut_context
 from steam_launch_descriptor import (
     LaunchDescriptorError,
     build_launch_descriptor_from_appinfo,
@@ -354,6 +355,7 @@ def resolve_context(executable, explicit_appid=None, explicit_compat_data=None):
 
     state = compat_data / "realsteamonmac"
     return {
+        "identity_kind": "steam-app",
         "appid": appid,
         "executable": executable,
         "working_directory": executable.parent,
@@ -3186,6 +3188,13 @@ def execute_dependency_action(context, runtime_root, fields, log_path):
 def execute_configured_launcher_recovery(
     context, wine64, environment, catalog_path=None
 ):
+    if context.get("identity_kind") != "steam-app":
+        return {
+            "state": "not-configured",
+            "snapshot_path": "",
+            "report_path": "",
+            "steps": [],
+        }
     path = (
         Path(catalog_path).expanduser()
         if catalog_path is not None
@@ -3569,6 +3578,8 @@ def plan(context, runtime_root, config, arguments):
         }
     }
     return {
+        "identity_kind": context.get("identity_kind", "steam-app"),
+        "shortcut_id": context.get("shortcut_id"),
         "appid": context["appid"],
         "executable": str(context["executable"]),
         "working_directory": str(
@@ -3625,7 +3636,10 @@ def run_game_process(context, wine_root, command, environment):
         env=environment,
         check=False,
     )
-    if context["appid"] not in POST_EXIT_PREFIX_KILL_APPIDS:
+    if (
+        context.get("identity_kind") != "steam-app"
+        or context["appid"] not in POST_EXIT_PREFIX_KILL_APPIDS
+    ):
         return result.returncode
 
     wineserver = wine_root / "bin" / "wineserver"
@@ -3653,7 +3667,19 @@ def run_game_process(context, wine_root, command, environment):
 
 
 def launch(args):
-    if args.appid:
+    shortcut_id = getattr(args, "shortcut_id", None)
+    if shortcut_id is not None:
+        try:
+            context = resolve_shortcut_context(
+                shortcut_id,
+                Path(args.executable),
+                default_steam_root(),
+                explicit_compat_data=args.compat_data,
+                config_root=default_app_config_root(),
+            )
+        except ValueError as error:
+            raise RuntimeErrorWithContext(str(error)) from error
+    elif args.appid:
         context = resolve_app_context(
             args.appid,
             requested_target=Path(args.executable),
@@ -3691,9 +3717,10 @@ def launch(args):
     _, _, wine_root, wine64, environment = prepare(
         context, runtime_root, config
     )
-    execute_configured_launcher_recovery(
-        context, wine64, environment
-    )
+    if context.get("identity_kind") == "steam-app":
+        execute_configured_launcher_recovery(
+            context, wine64, environment
+        )
     command = (
         [str(wine64), str(context["executable"])]
         + launch_arguments
@@ -3787,8 +3814,9 @@ def show_config(args):
     return 0
 
 
-def add_context_arguments(parser):
-    parser.add_argument("--appid")
+def add_context_arguments(parser, include_appid=True):
+    if include_appid:
+        parser.add_argument("--appid")
     parser.add_argument("--compat-data")
     parser.add_argument(
         "--runtime-root", default=str(default_runtime_root())
@@ -3803,7 +3831,10 @@ def build_parser():
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     launch_parser = subparsers.add_parser("launch")
-    add_context_arguments(launch_parser)
+    launch_identity = launch_parser.add_mutually_exclusive_group()
+    launch_identity.add_argument("--appid")
+    launch_identity.add_argument("--shortcut-id")
+    add_context_arguments(launch_parser, include_appid=False)
     launch_parser.add_argument("--dry-run", action="store_true")
     launch_parser.add_argument(
         "arguments", nargs=argparse.REMAINDER

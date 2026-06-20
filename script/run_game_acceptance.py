@@ -41,6 +41,10 @@ MAX_PROBE_ARGUMENT_BYTES = 16 * 1024
 MAX_PROBE_OUTPUT_BYTES = 1024 * 1024
 RUNTIME_FINGERPRINT_FILES = (
     "realsteamonmac-runtime",
+    "compat_tool_catalog.py",
+    "launcher_recovery.py",
+    "nonsteam_shortcut.py",
+    "steam_app_state.py",
     "steam_launch_descriptor.py",
 )
 

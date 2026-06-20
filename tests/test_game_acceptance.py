@@ -17,6 +17,25 @@ for directory in (SCRIPT, RUNTIME):
 import run_game_acceptance as acceptance
 
 
+RUNTIME_FINGERPRINT_SOURCES = {
+    "realsteamonmac-runtime": RUNTIME / "realsteamonmac_runtime.py",
+    "compat_tool_catalog.py": RUNTIME / "compat_tool_catalog.py",
+    "launcher_recovery.py": RUNTIME / "launcher_recovery.py",
+    "nonsteam_shortcut.py": RUNTIME / "nonsteam_shortcut.py",
+    "steam_app_state.py": RUNTIME / "steam_app_state.py",
+    "steam_launch_descriptor.py": RUNTIME / "steam_launch_descriptor.py",
+}
+
+
+def write_runtime_fingerprint_fixture(path, *, missing=None, stale=None):
+    path.mkdir()
+    for name, source in RUNTIME_FINGERPRINT_SOURCES.items():
+        if name == missing:
+            continue
+        payload = b"stale runtime module\n" if name == stale else source.read_bytes()
+        (path / name).write_bytes(payload)
+
+
 def write_manifest(
     path,
     appid,
@@ -477,6 +496,41 @@ class GameAcceptanceTests(unittest.TestCase):
             report["games"][0]["launch"]["executable"],
             "AimLab_tb.exe",
         )
+
+    def test_runtime_fingerprint_covers_installed_python_module_set(self):
+        runtime_bin = self.root / "installed-runtime"
+        write_runtime_fingerprint_fixture(runtime_bin)
+
+        result = acceptance.collect_runtime_fingerprints(runtime_bin)
+
+        self.assertEqual(
+            set(result["files"]),
+            set(RUNTIME_FINGERPRINT_SOURCES),
+        )
+        self.assertTrue(result["matches_source"])
+
+    def test_runtime_fingerprint_aggregate_is_false_when_module_missing(self):
+        runtime_bin = self.root / "installed-runtime"
+        missing = "compat_tool_catalog.py"
+        write_runtime_fingerprint_fixture(runtime_bin, missing=missing)
+
+        result = acceptance.collect_runtime_fingerprints(runtime_bin)
+
+        self.assertIn(missing, result["files"])
+        self.assertFalse(result["matches_source"])
+        self.assertFalse(result["files"][missing]["matches_source"])
+        self.assertIsNone(result["files"][missing]["installed_sha256"])
+
+    def test_runtime_fingerprint_aggregate_is_false_when_module_is_stale(self):
+        runtime_bin = self.root / "installed-runtime"
+        stale = "launcher_recovery.py"
+        write_runtime_fingerprint_fixture(runtime_bin, stale=stale)
+
+        result = acceptance.collect_runtime_fingerprints(runtime_bin)
+
+        self.assertIn(stale, result["files"])
+        self.assertFalse(result["matches_source"])
+        self.assertFalse(result["files"][stale]["matches_source"])
 
 
 if __name__ == "__main__":

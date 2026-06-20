@@ -22,7 +22,7 @@ SPEC.loader.exec_module(runtime)
 class RuntimeManagerTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.environment = mock.patch.dict(
             os.environ,
             {
@@ -202,6 +202,19 @@ class RuntimeManagerTests(unittest.TestCase):
 
     def context(self):
         return runtime.resolve_context(self.executable, "1118200")
+
+    def shortcut_context(self, shortcut_id):
+        external = self.root / f"External Games {shortcut_id}"
+        external.mkdir()
+        target = external / "Portable.exe"
+        target.write_bytes(b"MZportable")
+        context = runtime.resolve_shortcut_context(
+            str(shortcut_id),
+            target,
+            self.root,
+            config_root=self.root / "app-configs",
+        )
+        return target, context
 
     def dependency_entry(self, dependency_id, **overrides):
         entry = {
@@ -426,6 +439,7 @@ class RuntimeManagerTests(unittest.TestCase):
 
     def test_resolves_exact_proton_prefix(self):
         context = self.context()
+        self.assertEqual(context["identity_kind"], "steam-app")
         self.assertEqual(context["appid"], 1118200)
         self.assertEqual(
             context["prefix"],
@@ -3680,6 +3694,77 @@ class RuntimeManagerTests(unittest.TestCase):
         )
         self.assertEqual(value["launch_entry_id"], "0")
         self.assertEqual(value["launch_arguments"], '-release "two words"')
+        self.assertEqual(value["identity_kind"], "steam-app")
+        self.assertIsNone(value["shortcut_id"])
+
+    def test_launch_dry_run_supports_external_nonsteam_pe_shortcut(self):
+        external = self.root / "External Games"
+        external.mkdir()
+        target = external / "Portable.exe"
+        target.write_bytes(b"MZportable")
+        arguments = SimpleNamespace(
+            appid=None,
+            shortcut_id="4294967295",
+            compat_data=None,
+            runtime_root=str(self.runtime_root),
+            executable=str(target),
+            dry_run=True,
+            arguments=["-windowed"],
+        )
+        output = io.StringIO()
+
+        with mock.patch("sys.stdout", output):
+            self.assertEqual(runtime.launch(arguments), 0)
+
+        value = json.loads(output.getvalue())
+        compat_data = (
+            self.steamapps / "compatdata" / "nonsteam-4294967295"
+        )
+        self.assertEqual(value["identity_kind"], "nonsteam-pe")
+        self.assertEqual(value["shortcut_id"], 4294967295)
+        self.assertEqual(value["appid"], 4294967295)
+        self.assertEqual(value["executable"], str(target.resolve()))
+        self.assertEqual(value["working_directory"], str(external.resolve()))
+        self.assertEqual(value["compat_data"], str(compat_data))
+        self.assertEqual(value["prefix"], str(compat_data / "pfx"))
+        self.assertEqual(value["arguments"], ["-windowed"])
+        self.assertFalse(compat_data.exists())
+
+    def test_nonsteam_shortcut_rejects_wrong_compatdata(self):
+        external = self.root / "External Games"
+        external.mkdir()
+        target = external / "Portable.exe"
+        target.write_bytes(b"MZportable")
+        arguments = SimpleNamespace(
+            appid=None,
+            shortcut_id="7",
+            compat_data=str(self.root / "wrong"),
+            runtime_root=str(self.runtime_root),
+            executable=str(target),
+            dry_run=True,
+            arguments=[],
+        )
+
+        with self.assertRaisesRegex(
+            runtime.RuntimeErrorWithContext,
+            "compat data",
+        ):
+            runtime.launch(arguments)
+
+    def test_launch_parser_rejects_appid_and_shortcut_id_together(self):
+        parser = runtime.build_parser()
+
+        with self.assertRaises(SystemExit):
+            parser.parse_args(
+                [
+                    "launch",
+                    "--appid",
+                    "1118200",
+                    "--shortcut-id",
+                    "7",
+                    str(self.executable),
+                ]
+            )
 
     def test_aimlabs_dry_run_ignores_macos_app_target(self):
         appid = 714010
@@ -3877,6 +3962,81 @@ class RuntimeManagerTests(unittest.TestCase):
 
         self.assertEqual(order, ["recovery", "game"])
 
+    def test_nonsteam_shortcut_conflict_does_not_load_launcher_recovery(self):
+        _, context = self.shortcut_context(1118200)
+        recovery_result = {
+            "state": "completed",
+            "snapshot_path": "",
+            "report_path": "",
+            "steps": [],
+        }
+        with mock.patch.object(
+            runtime,
+            "load_launcher_recovery_catalog",
+            return_value={1118200: {"id": "steam-only"}},
+        ) as load, mock.patch.object(
+            runtime,
+            "execute_launcher_recovery",
+            return_value=recovery_result,
+        ) as execute:
+            result = runtime.execute_configured_launcher_recovery(
+                context,
+                self.package / "wine" / "dxmt" / "bin" / "wine64",
+                {"WINEPREFIX": str(context["prefix"])},
+            )
+
+        self.assertEqual(result["state"], "not-configured")
+        load.assert_not_called()
+        execute.assert_not_called()
+
+    def test_nonsteam_shortcut_conflict_skips_recovery_for_launch_and_dry_run(
+        self,
+    ):
+        target, context = self.shortcut_context(1118200)
+        _, _, wine_root, wine64 = runtime.load_package(
+            self.runtime_root, "dxmt"
+        )
+        for dry_run in (True, False):
+            with self.subTest(dry_run=dry_run):
+                arguments = SimpleNamespace(
+                    appid=None,
+                    shortcut_id="1118200",
+                    compat_data=None,
+                    runtime_root=str(self.runtime_root),
+                    executable=str(target),
+                    dry_run=dry_run,
+                    arguments=[],
+                )
+                output = io.StringIO()
+                with mock.patch.object(
+                    runtime,
+                    "resolve_shortcut_context",
+                    return_value=context,
+                ), mock.patch.object(
+                    runtime,
+                    "prepare",
+                    return_value=(
+                        self.package,
+                        {"package_id": "fixture"},
+                        wine_root,
+                        wine64,
+                        {"WINEPREFIX": str(context["prefix"])},
+                    ),
+                ), mock.patch.object(
+                    runtime,
+                    "execute_configured_launcher_recovery",
+                ) as recovery, mock.patch.object(
+                    runtime,
+                    "run_game_process",
+                    return_value=0,
+                ), mock.patch(
+                    "sys.stdout",
+                    output,
+                ):
+                    self.assertEqual(runtime.launch(arguments), 0)
+
+                recovery.assert_not_called()
+
     def test_launcher_recovery_failure_blocks_game_process(self):
         context = runtime.resolve_app_context("1118200")
         _, _, wine_root, wine64 = runtime.load_package(
@@ -3962,6 +4122,30 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(
             cleanup_event["event"], "post-exit-prefix-cleanup"
         )
+
+    def test_nonsteam_shortcut_does_not_use_matching_appid_cleanup_policy(self):
+        _, context = self.shortcut_context(383120)
+        _, _, wine_root, wine64 = runtime.load_package(
+            self.runtime_root, "dxvk"
+        )
+        with mock.patch.object(
+            runtime,
+            "POST_EXIT_PREFIX_KILL_APPIDS",
+            frozenset((383120,)),
+        ), mock.patch.object(
+            runtime.subprocess,
+            "run",
+            return_value=mock.Mock(returncode=0),
+        ) as run:
+            result = runtime.run_game_process(
+                context,
+                wine_root,
+                [wine64, context["executable"]],
+                {"WINEPREFIX": str(context["prefix"])},
+            )
+
+        self.assertEqual(result, 0)
+        run.assert_called_once()
 
     def test_other_games_do_not_force_prefix_cleanup(self):
         other = self.steamapps / "common" / "Other Game" / "Other.exe"

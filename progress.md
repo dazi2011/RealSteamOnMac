@@ -2426,3 +2426,32 @@
   suite, specification review, code-quality review, and `git diff --check`.
   Runtime CLI and native hook integration remain deliberately outside this
   batch.
+- Integrated the validated non-Steam PE identity into the runtime `launch`
+  command. `--appid` and `--shortcut-id` are mutually exclusive, legacy
+  launches without either identity retain their previous path, and shortcut
+  dry-runs expose `identity_kind=nonsteam-pe` plus the bounded shortcut ID.
+- The installed runtime package now atomically deploys
+  `nonsteam_shortcut.py` with mode `0644`. Game acceptance fingerprints include
+  the helper, so an updated launcher cannot be reported as current while its
+  required shortcut resolver is missing or stale.
+- Store-AppID-only launcher recovery and post-exit prefix cleanup are now
+  gated by `identity_kind=steam-app`; a colliding shortcut ID cannot select a
+  store recovery recipe or trigger a store game's cleanup policy.
+- Runtime package installation now deploys `nonsteam_shortcut.py` alongside
+  the existing helper modules, and acceptance fingerprints cover the runtime
+  plus all five installed Python helpers. Missing or stale modules can no
+  longer masquerade as a complete update.
+- The shortcut CLI/deployment batch passed all 206 Python tests, all 88 Node
+  tests, installed content/permission/import fixtures, the transactional
+  updater contract, Python and shell syntax checks, and `git diff --check`.
+- Hardened first-install rollback ownership for both regular Steam and
+  `publicbeta`. Explicit, automatically created, and legacy clean backups must
+  contain a readable SteamRuntime package whose channel and build match the
+  current client before any installer component runs.
+- The installer rereads current Steam metadata after Steam has stopped and
+  repeats the snapshot comparison, closing the update-on-exit race. Invalid
+  beta or manifest encodings now fail closed with stable rollback-specific
+  errors rather than Python tracebacks.
+- The rollback-identity batch passed its expanded one-click installer
+  contract, shell syntax checks, independent quality review, and
+  `git diff --check`; commit `1f7ba3b` is pushed on `main`.

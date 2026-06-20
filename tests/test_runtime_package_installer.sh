@@ -10,6 +10,7 @@ MAKEFILE_GENERATOR="$ROOT/script/generate_lsteamclient_makefile.py"
 RUNTIME="$ROOT/runtime/realsteamonmac_runtime.py"
 COMPAT_CATALOG="$ROOT/runtime/compat_tool_catalog.py"
 LAUNCHER_RECOVERY="$ROOT/runtime/launcher_recovery.py"
+NONSTEAM_SHORTCUT="$ROOT/runtime/nonsteam_shortcut.py"
 STEAM_APP_STATE="$ROOT/runtime/steam_app_state.py"
 STEAM_LAUNCH_DESCRIPTOR="$ROOT/runtime/steam_launch_descriptor.py"
 
@@ -21,6 +22,7 @@ test -f "$MAKEFILE_GENERATOR"
 test -f "$RUNTIME"
 test -f "$COMPAT_CATALOG"
 test -f "$LAUNCHER_RECOVERY"
+test -f "$NONSTEAM_SHORTCUT"
 test -f "$STEAM_APP_STATE"
 test -f "$STEAM_LAUNCH_DESCRIPTOR"
 
@@ -41,6 +43,15 @@ grep -q 'DEPENDENCY_CATALOG_SOURCE' "$INSTALLER"
 grep -q 'COMPAT_CATALOG_SOURCE' "$INSTALLER"
 grep -q 'bin/compat_tool_catalog.py' "$INSTALLER"
 grep -q 'bin/launcher_recovery.py' "$INSTALLER"
+grep -q 'NONSTEAM_SHORTCUT_SOURCE' "$INSTALLER"
+grep -q 'test -f "$NONSTEAM_SHORTCUT_SOURCE"' "$INSTALLER"
+grep -q 'NONSTEAM_SHORTCUT_TEMP="$RUNTIME_ROOT/bin/.nonsteam_shortcut.py.$$"' \
+    "$INSTALLER"
+grep -q 'cp "$NONSTEAM_SHORTCUT_SOURCE" "$NONSTEAM_SHORTCUT_TEMP"' \
+    "$INSTALLER"
+grep -q '"$NONSTEAM_SHORTCUT_TEMP" \\' "$INSTALLER"
+grep -q 'mv "$NONSTEAM_SHORTCUT_TEMP" "$RUNTIME_ROOT/bin/nonsteam_shortcut.py"' \
+    "$INSTALLER"
 grep -q 'bin/steam_app_state.py' "$INSTALLER"
 grep -q 'bin/steam_launch_descriptor.py' "$INSTALLER"
 grep -q 'dependencies/.catalog.json' "$INSTALLER"
@@ -112,5 +123,39 @@ grep -q 'load_dxmt_winemac_compat' "$RUNTIME"
 grep -q 'refusing to replace an unmanaged Steamworks file' "$RUNTIME"
 grep -q 'POST_EXIT_PREFIX_KILL_APPIDS' "$RUNTIME"
 grep -q 'wineserver.*\"-k\"' "$RUNTIME"
+
+TMP_ROOT=$(mktemp -d)
+trap 'rm -rf "$TMP_ROOT"' EXIT
+PACKAGE_ID="wine11.10-dxmt0.80-dxmtmac1-dxvkmacos1.10.3"
+PACKAGE="$TMP_ROOT/runtimes/packages/$PACKAGE_ID"
+mkdir -p "$PACKAGE"
+printf '{"schema":1,"package_id":"%s"}\n' "$PACKAGE_ID" \
+    >"$PACKAGE/manifest.json"
+(
+    cd "$PACKAGE"
+    shasum -a 256 manifest.json >SHA256SUMS
+)
+"$INSTALLER" \
+    --without-gptk \
+    --runtime-root "$TMP_ROOT/runtimes" \
+    --support-root "$TMP_ROOT/support" \
+    --cache-dir "$TMP_ROOT/cache" \
+    --dxmt-winemac-compat "$ROOT/artifacts/dxmt-winemac-compat" \
+    >/dev/null
+RUNTIME_BIN="$TMP_ROOT/runtimes/bin"
+test "$(stat -f '%OLp' "$RUNTIME_BIN/realsteamonmac-runtime")" = 755
+cmp "$RUNTIME" "$RUNTIME_BIN/realsteamonmac-runtime"
+for helper in \
+    compat_tool_catalog.py \
+    launcher_recovery.py \
+    nonsteam_shortcut.py \
+    steam_app_state.py \
+    steam_launch_descriptor.py; do
+    test "$(stat -f '%OLp' "$RUNTIME_BIN/$helper")" = 644
+    cmp "$ROOT/runtime/$helper" "$RUNTIME_BIN/$helper"
+done
+PYTHONPATH="$RUNTIME_BIN" /usr/bin/python3 -c \
+    'import compat_tool_catalog, launcher_recovery, nonsteam_shortcut, steam_app_state, steam_launch_descriptor'
+"$RUNTIME_BIN/realsteamonmac-runtime" --help >/dev/null
 
 echo "runtime package installer contract: PASS"

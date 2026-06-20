@@ -468,6 +468,15 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 - [x] Distinguish an installed game with a real pending update from a
   zero-byte files-missing warning. Aimlabs now routes to Steam's native resume
   action while Hogwarts retains verified stale-target recovery.
+- [x] Add a side-effect-free non-Steam PE shortcut context resolver.
+- [x] Integrate `--shortcut-id` into the runtime launch CLI and deploy the
+  required resolver with installed runtime packages.
+- [ ] Publish typed store-app/shortcut registry records and redirect only the
+  exact canonical shortcut target through the native hook.
+- [x] Validate first-install clean rollback snapshots against the current
+  Steam stable/publicbeta channel and build, including a post-stop recheck.
+- [ ] Migrate runtime helpers, active package pointer, and dependency catalog
+  to one immutable generation with a single atomic publish/recovery point.
 
 ## Errors Encountered
 
