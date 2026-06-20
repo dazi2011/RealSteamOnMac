@@ -471,12 +471,34 @@ CrossOver and reducing the amount of Steam binary/UI code that must be patched.
 - [x] Add a side-effect-free non-Steam PE shortcut context resolver.
 - [x] Integrate `--shortcut-id` into the runtime launch CLI and deploy the
   required resolver with installed runtime packages.
-- [ ] Publish typed store-app/shortcut registry records and redirect only the
+- [x] Publish typed store-app/shortcut registry records and redirect only the
   exact canonical shortcut target through the native hook.
 - [x] Validate first-install clean rollback snapshots against the current
   Steam stable/publicbeta channel and build, including a post-stop recheck.
 - [ ] Migrate runtime helpers, active package pointer, and dependency catalog
   to one immutable generation with a single atomic publish/recovery point.
+
+## Typed Shortcut Follow-up Checkpoint
+
+- [x] Keep store AppIDs and shortcut IDs separate in native registry, config,
+  UI state, permissions, status, and spawn identity.
+- [x] Require an absolute, existing, regular, non-symlink `MZ` `.exe` and
+  redirect only the exact canonical registered shortcut target.
+- [x] Reject in-process file replacement and retain an immutable shortcut-ID
+  path binding across deletion and restart.
+- [x] Exclude shortcuts from store manifest, install, repair, download,
+  Rockstar recovery, AppID-specific cleanup, and native action logic.
+- [x] Preserve the previous registry on failed authenticated publication and
+  atomically recover the typed cache after restart.
+- [x] Verify the batch with 206 Python tests, 96 Node tests, strict C warnings,
+  syntax checks, and the directly relevant shell contracts.
+- [ ] Run the controlled real-Steam non-Steam `.exe` smoke after deploying the
+  committed batch; do not disturb the user's current Steam session.
+- [ ] Add descriptor-through-Wine execution or an equivalent capability model
+  to close the final path-open race.
+- [ ] Decide whether shortcut target updates require a user-approved content
+  hash rebinding workflow.
+- [ ] Add corrupt/oversized typed-cache and native Unicode restart fixtures.
 
 ## Errors Encountered
 

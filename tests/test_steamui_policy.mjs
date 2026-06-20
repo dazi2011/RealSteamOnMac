@@ -16,26 +16,31 @@ const {
   buildInspectStatePayload,
   buildJobUrl,
   buildManagedAppSet,
+  buildManagedRegistryBody,
   buildControlPayload,
   buildControlUrl,
+  buildShortcutControlUrl,
   buildRunCommandPayload,
   chooseWindowsExecutableWithSteam,
   applyToolCapabilities,
   chooseNativeRepairAction,
   compatToolForRenderer,
   decideOverviewPatch,
-  discoverManagedApps,
+  discoverTypedRegistry,
   findAppActionComponents,
   getManagedTargetStatus,
   getSteamUIDocuments,
   isNativeCompatToolboxSupported,
+  isManagedShortcut,
   isOwnedWindowsOnlyGame,
+  managedIdentityStorageKey,
   mergeCompatTools,
   normalizeControlConfig,
   normalizeDependencyCatalog,
   nativeActionSectionsVisible,
   nativeContainerActionDisabled,
   NATIVE_COMPAT_SECTION_LABELS,
+  normalizeShortcutTargetCandidate,
   refreshAppActionComponents,
   reconcileCompatDetails,
   reconcileAppState,
@@ -584,6 +589,21 @@ function gameDetails(appid, platforms = ["windows"]) {
   };
 }
 
+function shortcutOverview(appid, overrides = {}) {
+  return gameOverview(appid, {
+    app_type: 0x40000000,
+    subscribed_to: false,
+    ...overrides,
+  });
+}
+
+function shortcutDetails(appid, target) {
+  return {
+    unAppID: appid,
+    strShortcutExe: target,
+  };
+}
+
 test("identifies an owned visible Windows-only game", () => {
   assert.equal(
     isOwnedWindowsOnlyGame(
@@ -655,7 +675,7 @@ test("builds a managed registry and removes entries that stop qualifying", () =>
 
 test("discovers newly added Windows-only games through the detail loader", async () => {
   const loaded = [];
-  const result = await discoverManagedApps({
+  const result = await discoverTypedRegistry({
     overviews: [
       gameOverview(1118200),
       gameOverview(990080),
@@ -672,17 +692,214 @@ test("discovers newly added Windows-only games through the detail loader", async
   });
 
   assert.deepEqual(loaded, [1118200, 990080, 4000]);
-  assert.deepEqual(result, new Set([1118200, 990080]));
+  assert.deepEqual(result, {
+    apps: new Set([1118200, 990080]),
+    shortcuts: new Map(),
+  });
 });
 
 test("rejects an incomplete discovery scan instead of removing known apps", async () => {
   await assert.rejects(
-    discoverManagedApps({
+    discoverTypedRegistry({
       overviews: [gameOverview(1118200), gameOverview(990080)],
       loadDetails: async (appid) =>
         appid === 1118200 ? gameDetails(appid) : null,
     }),
     /missing Steam app details for AppID 990080/,
+  );
+});
+
+test("discovers visible shortcuts without requiring a subscription", async () => {
+  const result = await discoverTypedRegistry({
+    overviews: [
+      gameOverview(1118200),
+      shortcutOverview(700, { subscribed_to: false }),
+    ],
+    loadDetails: async (appid) =>
+      appid === 700
+        ? shortcutDetails(700, '"/Volumes/Games/Demo/PLAY.EXE"')
+        : gameDetails(appid),
+  });
+
+  assert.deepEqual(result, {
+    apps: new Set([1118200]),
+    shortcuts: new Map([[700, "/Volumes/Games/Demo/PLAY.EXE"]]),
+  });
+  assert.equal(
+    isManagedShortcut(
+      shortcutOverview(701),
+      shortcutDetails(701, "/Games/Demo/play.exe"),
+    ),
+    true,
+  );
+});
+
+test("strips exactly one paired quote layer from shortcut targets", () => {
+  assert.equal(
+    normalizeShortcutTargetCandidate('"/Volumes/Games/Demo/play.exe"'),
+    "/Volumes/Games/Demo/play.exe",
+  );
+  assert.equal(
+    normalizeShortcutTargetCandidate(
+      '""/Volumes/Games/Demo/play.exe""',
+    ),
+    null,
+  );
+});
+
+test("rejects unsafe or non-executable shortcut targets", () => {
+  for (const target of [
+    "",
+    "relative\\play.exe",
+    "C:\\Games\\play.exe",
+    "\\\\server\\share\\play.exe",
+    "./play.exe",
+    "~/play.exe",
+    "$HOME/play.exe",
+    "file:///Games/play.exe",
+    "/Games/play.com",
+    "/Games/play.exe\n--flag",
+    "/Games/play.exe\r--flag",
+    "/Games/play\t.exe",
+    "/Games/play\u007F.exe",
+    "/Games/play.exe\0--flag",
+    "/Games/\uD800.exe",
+  ]) {
+    assert.equal(
+      normalizeShortcutTargetCandidate(target),
+      null,
+      target,
+    );
+  }
+});
+
+test("rejects store and shortcut numeric collisions as one batch", async () => {
+  await assert.rejects(
+    discoverTypedRegistry({
+      overviews: [
+        gameOverview(1118200),
+        shortcutOverview(1118200),
+      ],
+      loadDetails: async (appid) =>
+        shortcutDetails(appid, "/Games/Demo/play.exe"),
+    }),
+    /identity|collision/i,
+  );
+});
+
+test("builds deterministic typed managed registry wire", () => {
+  assert.equal(
+    buildManagedRegistryBody({
+      apps: new Set([10, 2]),
+      shortcuts: new Map([
+        [9, "/Games/Ünicode.EXE"],
+        [3, "/Volumes/Games/Demo.exe"],
+      ]),
+    }),
+    "RSMREG\t1\n" +
+      "A\t2\n" +
+      "A\t10\n" +
+      "S\t3\t%2F%56%6F%6C%75%6D%65%73%2F%47%61%6D%65%73%2F%44%65%6D%6F%2E%65%78%65\n" +
+      "S\t9\t%2F%47%61%6D%65%73%2F%C3%9C%6E%69%63%6F%64%65%2E%45%58%45\n",
+  );
+});
+
+test("enforces managed registry count and byte capacity boundaries", () => {
+  const fullApps = new Set(
+    Array.from({ length: 256 }, (_, index) => index + 1),
+  );
+  assert.doesNotThrow(() =>
+    buildManagedRegistryBody({
+      apps: fullApps,
+      shortcuts: new Map(),
+    }),
+  );
+  assert.throws(
+    () =>
+      buildManagedRegistryBody({
+        apps: new Set([...fullApps, 257]),
+        shortcuts: new Map(),
+      }),
+    /256|capacity/i,
+  );
+
+  const fullShortcuts = new Map(
+    Array.from({ length: 64 }, (_, index) => [
+      index + 1,
+      `/Games/game-${index + 1}.exe`,
+    ]),
+  );
+  assert.doesNotThrow(() =>
+    buildManagedRegistryBody({
+      apps: new Set(),
+      shortcuts: fullShortcuts,
+    }),
+  );
+  assert.throws(
+    () =>
+      buildManagedRegistryBody({
+        apps: new Set(),
+        shortcuts: new Map([
+          ...fullShortcuts,
+          [65, "/Games/game-65.exe"],
+        ]),
+      }),
+    /64|capacity/i,
+  );
+
+  const largestUnderLimit = `/${"a".repeat(5451)}.exe`;
+  const firstOverLimit = `/${"a".repeat(5452)}.exe`;
+  assert.equal(
+    Buffer.byteLength(
+      buildManagedRegistryBody({
+        apps: new Set(),
+        shortcuts: new Map([[1, largestUnderLimit]]),
+      }),
+    ),
+    16382,
+  );
+  assert.throws(
+    () =>
+      buildManagedRegistryBody({
+        apps: new Set(),
+        shortcuts: new Map([[1, firstOverLimit]]),
+      }),
+    /16384|capacity/i,
+  );
+});
+
+test("builds typed shortcut config URLs without embedding targets", () => {
+  const url = buildShortcutControlUrl(
+    "http://127.0.0.1:57344/config",
+    "0123456789abcdef",
+    700,
+  );
+  assert.equal(
+    url,
+    "http://127.0.0.1:57344/config" +
+      "?token=0123456789abcdef&kind=shortcut&id=700",
+  );
+  assert.equal(url.includes("target"), false);
+});
+
+test("separates store, shortcut, and rebound shortcut UI storage keys", () => {
+  assert.equal(
+    managedIdentityStorageKey("store", 700),
+    "store:700",
+  );
+  assert.notEqual(
+    managedIdentityStorageKey("store", 700),
+    managedIdentityStorageKey(
+      "shortcut", 700, "/Games/First.exe",
+    ),
+  );
+  assert.notEqual(
+    managedIdentityStorageKey(
+      "shortcut", 700, "/Games/First.exe",
+    ),
+    managedIdentityStorageKey(
+      "shortcut", 700, "/Games/Second.exe",
+    ),
   );
 });
 

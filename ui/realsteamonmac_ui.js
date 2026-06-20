@@ -187,6 +187,23 @@
     );
   }
 
+  function buildShortcutControlUrl(endpoint, token, appid) {
+    const canonicalAppid = canonicalizePositiveUint32(appid);
+    if (
+      typeof endpoint !== "string" ||
+      !endpoint ||
+      typeof token !== "string" ||
+      !token ||
+      canonicalAppid === null
+    ) {
+      throw new Error("native control endpoint is unavailable");
+    }
+    return (
+      `${endpoint}?token=${encodeURIComponent(token)}` +
+      `&kind=shortcut&id=${canonicalAppid}`
+    );
+  }
+
   function buildActionUrl(endpoint, token, appid) {
     if (
       typeof endpoint !== "string" ||
@@ -278,6 +295,206 @@
 
   function buildInspectStatePayload() {
     return encodeActionPayload([["action", "inspect-state"]]);
+  }
+
+  function canonicalizePositiveUint32(value) {
+    if (typeof value === "number") {
+      return Number.isInteger(value) &&
+        value > 0 &&
+        value <= 0xFFFFFFFF
+        ? String(value)
+        : null;
+    }
+    if (typeof value === "string" && /^[1-9][0-9]{0,9}$/.test(value)) {
+      const numeric = Number(value);
+      return Number.isInteger(numeric) &&
+        numeric > 0 &&
+        numeric <= 0xFFFFFFFF
+        ? String(numeric)
+        : null;
+    }
+    return null;
+  }
+
+  function encodeAllUtf8Bytes(value) {
+    let encoded = "";
+    for (const character of String(value)) {
+      const codepoint = character.codePointAt(0);
+      const bytes =
+        codepoint <= 0x7F
+          ? [codepoint]
+          : codepoint <= 0x7FF
+            ? [
+                0xC0 | (codepoint >> 6),
+                0x80 | (codepoint & 0x3F),
+              ]
+            : codepoint <= 0xFFFF
+              ? [
+                  0xE0 | (codepoint >> 12),
+                  0x80 | ((codepoint >> 6) & 0x3F),
+                  0x80 | (codepoint & 0x3F),
+                ]
+              : [
+                  0xF0 | (codepoint >> 18),
+                  0x80 | ((codepoint >> 12) & 0x3F),
+                  0x80 | ((codepoint >> 6) & 0x3F),
+                  0x80 | (codepoint & 0x3F),
+                ];
+      for (const byte of bytes) {
+        encoded += `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+      }
+    }
+    return encoded;
+  }
+
+  function isWellFormedUnicode(value) {
+    for (let index = 0; index < value.length; index += 1) {
+      const unit = value.charCodeAt(index);
+      if (unit >= 0xD800 && unit <= 0xDBFF) {
+        const next = value.charCodeAt(index + 1);
+        if (!(next >= 0xDC00 && next <= 0xDFFF)) {
+          return false;
+        }
+        index += 1;
+      } else if (unit >= 0xDC00 && unit <= 0xDFFF) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function normalizeShortcutTargetCandidate(value) {
+    if (typeof value !== "string" || !value) {
+      return null;
+    }
+    if (
+      /[\u0000-\u001F\u007F]/.test(value) ||
+      !isWellFormedUnicode(value)
+    ) {
+      return null;
+    }
+
+    let target = value;
+    if (target.startsWith('"') && target.endsWith('"')) {
+      target = target.slice(1, -1);
+      if (target.startsWith('"') || target.endsWith('"')) {
+        return null;
+      }
+    }
+    if (
+      !target ||
+      /[\u0000-\u001F\u007F]/.test(target) ||
+      !isWellFormedUnicode(target)
+    ) {
+      return null;
+    }
+
+    const lastSlash = Math.max(
+      target.lastIndexOf("/"),
+      target.lastIndexOf("\\"),
+    );
+    const basename =
+      lastSlash >= 0 ? target.slice(lastSlash + 1) : target;
+    if (!basename || !/\.exe$/i.test(basename)) {
+      return null;
+    }
+    if (target.startsWith("/") && !target.startsWith("//")) {
+      return target;
+    }
+    return null;
+  }
+
+  function isManagedShortcut(overview, details) {
+    const overviewAppid = canonicalizePositiveUint32(overview?.appid);
+    return (
+      overview?.app_type === 0x40000000 &&
+      overview?.visible_in_game_list === true &&
+      overviewAppid !== null &&
+      canonicalizePositiveUint32(details?.unAppID) === overviewAppid &&
+      normalizeShortcutTargetCandidate(details?.strShortcutExe) !== null
+    );
+  }
+
+  function buildManagedRegistryBody({ apps, shortcuts } = {}) {
+    const seen = new Set();
+    const storeAppids = [];
+    const shortcutEntries = [];
+
+    for (const appid of apps ?? []) {
+      const canonicalAppid = canonicalizePositiveUint32(appid);
+      if (canonicalAppid === null) {
+        throw new Error("managed registry app ID is invalid");
+      }
+      if (seen.has(canonicalAppid)) {
+        throw new Error("managed registry app ID is duplicated");
+      }
+      seen.add(canonicalAppid);
+      storeAppids.push(canonicalAppid);
+    }
+
+    for (const [appid, target] of shortcuts ?? []) {
+      const canonicalAppid = canonicalizePositiveUint32(appid);
+      if (canonicalAppid === null) {
+        throw new Error("managed registry shortcut ID is invalid");
+      }
+      if (seen.has(canonicalAppid)) {
+        throw new Error("managed registry collision for AppID");
+      }
+      seen.add(canonicalAppid);
+      const normalizedTarget = normalizeShortcutTargetCandidate(target);
+      if (normalizedTarget === null) {
+        throw new Error("managed registry shortcut target is invalid");
+      }
+      shortcutEntries.push([
+        Number(canonicalAppid),
+        canonicalAppid,
+        normalizedTarget,
+      ]);
+    }
+
+    if (shortcutEntries.length > 64) {
+      throw new Error("managed registry shortcut capacity exceeded");
+    }
+    if (storeAppids.length + shortcutEntries.length > 256) {
+      throw new Error("managed registry capacity exceeded");
+    }
+
+    storeAppids.sort((left, right) => Number(left) - Number(right));
+    shortcutEntries.sort((left, right) => left[0] - right[0]);
+
+    let body = "RSMREG\t1\n";
+    for (const appid of storeAppids) {
+      body += `A\t${appid}\n`;
+    }
+    for (const [, canonicalAppid, target] of shortcutEntries) {
+      body += `S\t${canonicalAppid}\t${encodeAllUtf8Bytes(target)}\n`;
+    }
+
+    if (body.length >= 16384) {
+      throw new Error("managed registry body capacity exceeded");
+    }
+    return body;
+  }
+
+  function managedIdentityStorageKey(kind, appid, target = "") {
+    const canonicalAppid = canonicalizePositiveUint32(appid);
+    if (canonicalAppid === null) {
+      throw new Error("managed identity ID is invalid");
+    }
+    if (kind === "store") {
+      return `store:${canonicalAppid}`;
+    }
+    if (kind !== "shortcut") {
+      throw new Error("managed identity kind is invalid");
+    }
+    const normalizedTarget = normalizeShortcutTargetCandidate(target);
+    if (normalizedTarget === null) {
+      throw new Error("managed shortcut target is invalid");
+    }
+    return (
+      `shortcut:${canonicalAppid}:` +
+      encodeAllUtf8Bytes(normalizedTarget)
+    );
   }
 
   function nativeActionSectionsVisible(value) {
@@ -464,13 +681,85 @@
     return managed;
   }
 
-  async function discoverManagedApps({ overviews, loadDetails }) {
-    const candidates = (overviews ?? []).filter(
+  async function discoverTypedRegistry({ overviews, loadDetails }) {
+    if (typeof loadDetails !== "function") {
+      throw new Error("Steam app detail loader is unavailable");
+    }
+
+    const apps = new Set();
+    const shortcuts = new Map();
+    const seenAppids = new Set();
+    for (const overview of overviews ?? []) {
+      if (overview?.visible_in_game_list !== true) {
+        continue;
+      }
+      const canonicalAppid = canonicalizePositiveUint32(
+        overview?.appid,
+      );
+      if (canonicalAppid === null) {
+        continue;
+      }
+      const appid = Number(canonicalAppid);
+      if (seenAppids.has(appid)) {
+        throw new Error(
+          `managed registry collision for AppID ${canonicalAppid}`,
+        );
+      }
+      seenAppids.add(appid);
+      if (
+        overview?.app_type !== GAME_APP_TYPE &&
+        overview?.app_type !== 0x40000000
+      ) {
+        continue;
+      }
+
+      const details = await loadDetails(appid);
+      if (!details) {
+        throw new Error(
+          `missing Steam app details for AppID ${canonicalAppid}`,
+        );
+      }
+
+      const storeQualified = isOwnedWindowsOnlyGame(
+        overview,
+        details,
+      );
+      const shortcutQualified = isManagedShortcut(
+        overview,
+        details,
+      );
+      if (!storeQualified && !shortcutQualified) {
+        continue;
+      }
+      if (storeQualified && shortcutQualified) {
+        throw new Error(
+          `managed registry collision for AppID ${canonicalAppid}`,
+        );
+      }
+      if (apps.has(appid) || shortcuts.has(appid)) {
+        throw new Error(
+          `managed registry collision for AppID ${canonicalAppid}`,
+        );
+      }
+      if (storeQualified) {
+        apps.add(appid);
+      } else {
+        shortcuts.set(
+          appid,
+          normalizeShortcutTargetCandidate(details.strShortcutExe),
+        );
+      }
+    }
+    return { apps, shortcuts };
+  }
+
+  async function discoverManagedApps(options) {
+    const candidates = (options?.overviews ?? []).filter(
       isOwnedVisibleGameOverview,
     );
     const entries = await Promise.all(
       candidates.map(async (overview) => {
-        const details = await loadDetails(overview.appid);
+        const details = await options.loadDetails(overview.appid);
         if (!details) {
           throw new Error(
             `missing Steam app details for AppID ${overview.appid}`,
@@ -992,17 +1281,23 @@
       buildInspectStatePayload,
       buildJobUrl,
       buildRunCommandPayload,
+      buildManagedRegistryBody,
+      buildShortcutControlUrl,
       chooseWindowsExecutableWithSteam,
       applyToolCapabilities,
       chooseNativeRepairAction,
       compatToolRecord,
       compatToolForRenderer,
+      discoverTypedRegistry,
       mergeCompatTools,
+      managedIdentityStorageKey,
       normalizeControlConfig,
       normalizeDependencyCatalog,
+      normalizeShortcutTargetCandidate,
       nativeActionSectionsVisible,
       nativeContainerActionDisabled,
       NATIVE_COMPAT_SECTION_LABELS,
+      isManagedShortcut,
       refreshAppActionComponents,
       reconcileCompatDetails,
       reconcileAppState,
@@ -1028,6 +1323,8 @@
       (appid) => Number.isSafeInteger(appid) && appid > 0,
     ),
   );
+  const managedStoreAppids = new Set(managedAppids);
+  const managedShortcutTargets = new Map();
   const projectCompatTools = Array.isArray(config.compatTools)
     ? config.compatTools.filter(
         (tool) =>
@@ -1101,7 +1398,7 @@
   const actionStates = new Map();
   const nativeLoadedControlAppids = new Set();
   const lastNativeControlPayloads = new Map();
-  const nativeSyncedAppids = new Set();
+  const nativeSyncedStoreAppids = new Set();
   const nativeDetailsSubscriptions = new Map();
   const nativeDetailsRefreshAt = new Map();
   let storedCompatSelections = {};
@@ -1111,6 +1408,14 @@
   let lastNativeRegistryPayload = null;
   globalObject[SELECTED_COMPAT_TOOL_KEY] = (appid) =>
     compatSelections.get(Number(appid)) ?? "";
+
+  function storageKeyForAppid(appid) {
+    return managedShortcutTargets.has(appid)
+      ? managedIdentityStorageKey(
+          "shortcut", appid, managedShortcutTargets.get(appid),
+        )
+      : managedIdentityStorageKey("store", appid);
+  }
 
   function releaseNativeDetailsSubscription(appid) {
     const subscription = nativeDetailsSubscriptions.get(appid);
@@ -1128,7 +1433,7 @@
   }
 
   function refreshNativeDetailsSubscription(appid, force = false) {
-    if (!nativeSyncedAppids.has(appid)) {
+    if (!nativeSyncedStoreAppids.has(appid)) {
       releaseNativeDetailsSubscription(appid);
       return false;
     }
@@ -1151,7 +1456,7 @@
           appid,
           (details) => {
             if (
-              !nativeSyncedAppids.has(appid) ||
+              !nativeSyncedStoreAppids.has(appid) ||
               details?.unAppID !== appid
             ) {
               return;
@@ -1172,22 +1477,22 @@
     }
   }
 
-  function publishNativeSyncedApps() {
+  function publishNativeSyncedStoreApps() {
     for (const appid of [...nativeDetailsSubscriptions.keys()]) {
-      if (!managedAppids.has(appid)) {
+      if (!managedStoreAppids.has(appid)) {
         releaseNativeDetailsSubscription(appid);
       }
     }
-    nativeSyncedAppids.clear();
-    for (const appid of managedAppids) {
-      nativeSyncedAppids.add(appid);
+    nativeSyncedStoreAppids.clear();
+    for (const appid of managedStoreAppids) {
+      nativeSyncedStoreAppids.add(appid);
       if (!nativeDetailsSubscriptions.has(appid)) {
         refreshNativeDetailsSubscription(appid, true);
       }
     }
   }
 
-  async function syncNativeRegistry() {
+  async function syncNativeRegistry(nextRegistry) {
     const endpoint = config.registryEndpoint;
     const token = config.registryToken;
     if (
@@ -1198,27 +1503,34 @@
     ) {
       throw new Error("native registry endpoint is unavailable");
     }
-    const payload = [...managedAppids]
-      .sort((left, right) => left - right)
-      .join(",");
+    const payload = buildManagedRegistryBody(nextRegistry);
     if (payload === lastNativeRegistryPayload) {
       return true;
     }
     try {
-      await globalObject.fetch(
+      const response = await globalObject.fetch(
         `${endpoint}?token=${encodeURIComponent(token)}`,
         {
           method: "POST",
-          mode: "no-cors",
+          mode: "cors",
+          cache: "no-store",
           headers: { "Content-Type": "text/plain" },
           body: payload,
         },
       );
+      if (response?.status !== 204) {
+        throw new Error(
+          `native registry sync failed: ${
+            response?.status ?? "invalid response"
+          }`,
+        );
+      }
+      await ensureManagedRegistryApplied(nextRegistry);
       lastNativeRegistryPayload = payload;
       status.registryNativeSyncs += 1;
       status.registryLastNativeSyncAt = new Date().toISOString();
       status.registryLastNativeSyncError = null;
-      publishNativeSyncedApps();
+      publishNativeSyncedStoreApps();
       await refreshNativeControlConfigs();
       return true;
     } catch (error) {
@@ -1244,13 +1556,21 @@
     if (compatSelections.has(appid)) {
       return;
     }
-    const key = String(appid);
-    const storedTool = Object.prototype.hasOwnProperty.call(
-      storedCompatSelections,
-      key,
-    )
-      ? storedCompatSelections[key]
-      : config.defaultCompatTool;
+    const key = storageKeyForAppid(appid);
+    const legacyKey = String(appid);
+    const storedTool =
+      Object.prototype.hasOwnProperty.call(
+        storedCompatSelections, key,
+      )
+        ? storedCompatSelections[key]
+        : (
+            managedStoreAppids.has(appid) &&
+            Object.prototype.hasOwnProperty.call(
+              storedCompatSelections, legacyKey,
+            )
+          )
+          ? storedCompatSelections[legacyKey]
+          : config.defaultCompatTool;
     const migratedTool =
       storedTool === "realsteamonmac-experimental"
         ? config.defaultCompatTool
@@ -1264,7 +1584,7 @@
   function persistCompatSelections() {
     const serialized = { ...storedCompatSelections };
     for (const [appid, tool] of compatSelections) {
-      serialized[String(appid)] = tool;
+      serialized[storageKeyForAppid(appid)] = tool;
     }
     storedCompatSelections = serialized;
     globalObject.localStorage?.setItem(
@@ -1290,13 +1610,21 @@
     if (controlConfigs.has(appid)) {
       return controlConfigs.get(appid);
     }
-    const key = String(appid);
-    const stored = Object.prototype.hasOwnProperty.call(
-      storedControlConfigs,
-      key,
-    )
-      ? storedControlConfigs[key]
-      : null;
+    const key = storageKeyForAppid(appid);
+    const legacyKey = String(appid);
+    const stored =
+      Object.prototype.hasOwnProperty.call(
+        storedControlConfigs, key,
+      )
+        ? storedControlConfigs[key]
+        : (
+            managedStoreAppids.has(appid) &&
+            Object.prototype.hasOwnProperty.call(
+              storedControlConfigs, legacyKey,
+            )
+          )
+          ? storedControlConfigs[legacyKey]
+          : null;
     const selectedTool = compatToolRecord(
       compatSelections.get(appid),
       projectCompatTools,
@@ -1319,7 +1647,8 @@
   function persistControlConfigs() {
     const serialized = { ...storedControlConfigs };
     for (const [appid, value] of controlConfigs) {
-      serialized[String(appid)] = normalizeControlConfig(value);
+      serialized[storageKeyForAppid(appid)] =
+        normalizeControlConfig(value);
     }
     storedControlConfigs = serialized;
     globalObject.localStorage?.setItem(
@@ -1336,11 +1665,17 @@
       return;
     }
     const response = await globalObject.fetch(
-      buildControlUrl(
-        config.controlEndpoint,
-        config.registryToken,
-        appid,
-      ),
+      managedShortcutTargets.has(appid)
+        ? buildShortcutControlUrl(
+            config.controlEndpoint,
+            config.registryToken,
+            appid,
+          )
+        : buildControlUrl(
+            config.controlEndpoint,
+            config.registryToken,
+            appid,
+          ),
       {
         method: "GET",
         mode: "cors",
@@ -1401,11 +1736,17 @@
     const payload = buildControlPayload(normalized);
     if (lastNativeControlPayloads.get(appid) !== payload) {
       const response = await globalObject.fetch(
-        buildControlUrl(
-          config.controlEndpoint,
-          config.registryToken,
-          appid,
-        ),
+        managedShortcutTargets.has(appid)
+          ? buildShortcutControlUrl(
+              config.controlEndpoint,
+              config.registryToken,
+              appid,
+            )
+          : buildControlUrl(
+              config.controlEndpoint,
+              config.registryToken,
+              appid,
+            ),
         {
           method: "POST",
           mode: "cors",
@@ -1711,7 +2052,8 @@
   }
 
   async function syncNativeCompatSelections() {
-    for (const [appid, selectedTool] of compatSelections) {
+    for (const appid of managedAppids) {
+      const selectedTool = compatSelections.get(appid) ?? "";
       if (!selectedTool) {
         continue;
       }
@@ -1752,7 +2094,7 @@
     if (!overview || !details || !selected) {
       throw new Error(`Steam app state is unavailable for AppID ${appid}`);
     }
-    if (!managedAppids.has(appid)) {
+    if (!managedStoreAppids.has(appid)) {
       throw new Error(`AppID ${appid} is not managed`);
     }
     const actionState = await inspectNativeActionState(appid);
@@ -1773,57 +2115,136 @@
     });
   };
 
-  async function restoreRemovedApp(appid) {
-    const overview =
-      globalObject.appStore?.GetAppOverviewByAppID?.(appid) ?? null;
-    const details = await loadAppDetails(appid);
-    if (overview && details) {
-      reconcileCompatDetails({
-        details,
-        allowlist: new Set(),
-        selectedTool: "",
-        availableTools: [],
-        originalCompatStates,
-      });
-      reconcileAppState({
-        overview,
-        details,
-        allowlist: new Set(),
-        originalStates,
-      });
+  async function restoreRemovedApp(appid, wasStoreApp) {
+    try {
+      const overview =
+        globalObject.appStore?.GetAppOverviewByAppID?.(appid) ?? null;
+      const details = await loadAppDetails(appid);
+      if (overview && details) {
+        reconcileCompatDetails({
+          details,
+          allowlist: new Set(),
+          selectedTool: "",
+          availableTools: [],
+          originalCompatStates,
+        });
+        if (wasStoreApp) {
+          reconcileAppState({
+            overview,
+            details,
+            allowlist: new Set(),
+            originalStates,
+          });
+        }
+      }
+    } finally {
+      compatSelections.delete(appid);
+      controlConfigs.delete(appid);
+      nativeCompatSelections.delete(appid);
+      nativeLoadedControlAppids.delete(appid);
+      lastNativeControlPayloads.delete(appid);
+      availableCompatTools.delete(appid);
+      actionStates.delete(appid);
+      releaseNativeDetailsSubscription(appid);
     }
-    compatSelections.delete(appid);
-    controlConfigs.delete(appid);
-    nativeCompatSelections.delete(appid);
-    nativeLoadedControlAppids.delete(appid);
-    lastNativeControlPayloads.delete(appid);
-    availableCompatTools.delete(appid);
-    releaseNativeDetailsSubscription(appid);
   }
 
-  async function applyManagedRegistry(nextManagedAppids) {
+  async function applyManagedRegistry(nextRegistry) {
+    const nextManagedAppids = new Set([
+      ...nextRegistry.apps,
+      ...nextRegistry.shortcuts.keys(),
+    ]);
+    const retyped = [...managedAppids].filter(
+      (appid) =>
+        nextManagedAppids.has(appid) &&
+        managedStoreAppids.has(appid) !== nextRegistry.apps.has(appid),
+    );
     const removed = [...managedAppids].filter(
       (appid) => !nextManagedAppids.has(appid),
     );
     const added = [...nextManagedAppids].filter(
       (appid) => !managedAppids.has(appid),
     );
-    for (const appid of removed) {
-      await restoreRemovedApp(appid);
-    }
+    const removedIdentities = [...removed, ...retyped].map((appid) => ({
+      appid,
+      wasStoreApp: managedStoreAppids.has(appid),
+    }));
+
+    // The native service has already accepted this snapshot. Commit the
+    // in-memory identity sets without awaiting fallible cleanup or storage.
     managedAppids.clear();
+    managedStoreAppids.clear();
+    managedShortcutTargets.clear();
+    for (const appid of nextRegistry.apps) {
+      managedStoreAppids.add(appid);
+    }
+    for (const [appid, target] of nextRegistry.shortcuts) {
+      managedShortcutTargets.set(appid, target);
+    }
     for (const appid of nextManagedAppids) {
       managedAppids.add(appid);
-      ensureCompatSelection(appid);
-      ensureControlConfig(appid);
     }
     status.appids = [...managedAppids].sort((left, right) => left - right);
-    status.registryAdded += added.length;
-    status.registryRemoved += removed.length;
-    if (added.length || removed.length) {
-      persistCompatSelections();
-      persistControlConfigs();
+    status.registryAdded += added.length + retyped.length;
+    status.registryRemoved += removed.length + retyped.length;
+
+    for (const { appid, wasStoreApp } of removedIdentities) {
+      try {
+        await restoreRemovedApp(appid, wasStoreApp);
+      } catch (error) {
+        status.registryLastError = String(error);
+      }
     }
+    for (const appid of managedAppids) {
+      try {
+        ensureCompatSelection(appid);
+        ensureControlConfig(appid);
+      } catch (error) {
+        status.registryLastError = String(error);
+      }
+    }
+    if (added.length || removed.length || retyped.length) {
+      try {
+        persistCompatSelections();
+        persistControlConfigs();
+      } catch (error) {
+        status.registryLastError = String(error);
+      }
+    }
+  }
+
+  function managedRegistrySnapshot() {
+    return {
+      apps: new Set(managedStoreAppids),
+      shortcuts: new Map(managedShortcutTargets),
+    };
+  }
+
+  function registryMatchesManagedState(registry) {
+    if (
+      registry.apps.size !== managedStoreAppids.size ||
+      registry.shortcuts.size !== managedShortcutTargets.size
+    ) {
+      return false;
+    }
+    for (const appid of registry.apps) {
+      if (!managedStoreAppids.has(appid)) {
+        return false;
+      }
+    }
+    for (const [appid, target] of registry.shortcuts) {
+      if (managedShortcutTargets.get(appid) !== target) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  async function ensureManagedRegistryApplied(registry) {
+    if (!registryMatchesManagedState(registry)) {
+      await applyManagedRegistry(registry);
+    }
+    return managedRegistrySnapshot();
   }
 
   async function refreshManagedRegistry() {
@@ -1844,12 +2265,11 @@
           "Steam app overview store is not initialized",
         );
       }
-      const nextManagedAppids = await discoverManagedApps({
+      const nextRegistry = await discoverTypedRegistry({
         overviews,
         loadDetails: loadAppDetails,
       });
-      await applyManagedRegistry(nextManagedAppids);
-      if (await syncNativeRegistry()) {
+      if (await syncNativeRegistry(nextRegistry)) {
         await syncNativeCompatSelections();
       }
       await reconcile();
@@ -1946,6 +2366,7 @@
       const selectedTool =
         compatToolRecord(selectedToolName, projectCompatTools) ??
         null;
+      const shortcut = managedShortcutTargets.has(appid);
       const compatEnabled = Boolean(selectedTool);
       const busy = activity.state === "running";
 
@@ -1966,6 +2387,10 @@
       }, [appid]);
 
       React.useEffect(() => {
+        if (shortcut) {
+          setActionAvailability(null);
+          return undefined;
+        }
         let active = true;
         void inspectNativeActionState(appid)
           .then((result) => {
@@ -1982,7 +2407,7 @@
         return () => {
           active = false;
         };
-      }, [appid]);
+      }, [appid, shortcut]);
 
       React.useEffect(() => {
         setValue((current) =>
@@ -2332,7 +2757,7 @@
           continue;
         }
         if (
-          nativeSyncedAppids.has(appid) &&
+          nativeSyncedStoreAppids.has(appid) &&
           details.eDisplayStatus === INVALID_PLATFORM
         ) {
           refreshNativeDetailsSubscription(appid);
@@ -2351,10 +2776,13 @@
           status.compatRestored += 1;
         }
 
+        if (!managedStoreAppids.has(appid)) {
+          continue;
+        }
         const result = reconcileAppState({
           overview,
           details,
-          allowlist: nativeSyncedAppids,
+          allowlist: nativeSyncedStoreAppids,
           originalStates,
         });
         if (result === "normalized") {

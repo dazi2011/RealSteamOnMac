@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <libkern/OSCacheControl.h>
+#include <limits.h>
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
 #include <mach-o/dyld.h>
@@ -35,6 +36,7 @@
 #endif
 #define PLATFORM_INVALID_BIT ((uint32_t)0x10)
 #define MAX_ALLOWLIST_APPIDS ((size_t)256)
+#define MAX_MANAGED_SHORTCUTS ((size_t)64)
 #define MAX_TRACKED_APP_OBJECTS ((size_t)64)
 #define TRACKED_OBJECT_REFRESH_DELAY_US 250000
 #define EMPTY_RESCAN_INTERVAL_TICKS 8
@@ -62,6 +64,27 @@ typedef struct {
   bool dxr;
   bool avx;
 } runtime_config;
+
+typedef struct {
+  dev_t device;
+  ino_t inode;
+  off_t size;
+  struct timespec modification_time;
+  struct timespec change_time;
+} shortcut_file_identity;
+
+typedef struct {
+  uint32_t id;
+  char target[PATH_MAX];
+  shortcut_file_identity identity;
+} managed_shortcut;
+
+typedef struct {
+  uint32_t appids[MAX_ALLOWLIST_APPIDS];
+  size_t appid_count;
+  managed_shortcut shortcuts[MAX_MANAGED_SHORTCUTS];
+  size_t shortcut_count;
+} managed_registry;
 
 typedef struct {
   const char *build;
@@ -188,6 +211,8 @@ static const uint32_t kSteamClientInstallGateExpected =
     0x37200188;  // tbnz w8, #4, 0x62508c
 static uint32_t gAllowlist[MAX_ALLOWLIST_APPIDS];
 static size_t gAllowlistCount = 0;
+static managed_shortcut gManagedShortcuts[MAX_MANAGED_SHORTCUTS];
+static size_t gManagedShortcutCount = 0;
 static pthread_mutex_t gAllowlistLock = PTHREAD_MUTEX_INITIALIZER;
 static mach_vm_address_t gTrackedObjects[MAX_TRACKED_APP_OBJECTS];
 static size_t gTrackedObjectCount = 0;
@@ -215,6 +240,20 @@ typedef int (*posix_spawn_function)(
 static posix_spawn_function gOriginalPosixSpawn = NULL;
 
 static void ensure_allowlist_loaded(void);
+static bool write_all(int descriptor, const char *bytes, size_t length);
+static bool parse_registry_payload(
+    const char *text,
+    bool drop_invalid_shortcuts,
+    managed_registry *registry_out);
+static bool persist_managed_registry(
+    const managed_registry *registry);
+static bool load_managed_registry_cache(
+    managed_registry *registry_out);
+static bool shortcut_in_registry(
+    uint32_t shortcut_id,
+    const managed_shortcut *shortcuts,
+    size_t count,
+    const managed_shortcut **shortcut_out);
 
 static void log_line(const char *message) {
   const char *home = getenv("HOME");
@@ -468,6 +507,53 @@ static bool is_allowlisted(uint32_t appid) {
   return found;
 }
 
+static bool is_store_managed(uint32_t appid) {
+  return is_allowlisted(appid);
+}
+
+static bool is_managed_shortcut(uint32_t shortcut_id) {
+  bool found;
+  (void)pthread_mutex_lock(&gAllowlistLock);
+  found = shortcut_in_registry(
+      shortcut_id,
+      gManagedShortcuts,
+      gManagedShortcutCount,
+      NULL);
+  (void)pthread_mutex_unlock(&gAllowlistLock);
+  return found;
+}
+
+static bool shortcut_in_registry(
+    uint32_t shortcut_id,
+    const managed_shortcut *shortcuts,
+    size_t count,
+    const managed_shortcut **shortcut_out) {
+  for (size_t index = 0; index < count; ++index) {
+    if (shortcuts[index].id == shortcut_id) {
+      if (shortcut_out != NULL) {
+        *shortcut_out = &shortcuts[index];
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool lookup_managed_shortcut(
+    uint32_t shortcut_id, managed_shortcut *shortcut_out) {
+  bool found = false;
+  (void)pthread_mutex_lock(&gAllowlistLock);
+  const managed_shortcut *value = NULL;
+  if (shortcut_in_registry(
+          shortcut_id, gManagedShortcuts,
+          gManagedShortcutCount, &value)) {
+    *shortcut_out = *value;
+    found = true;
+  }
+  (void)pthread_mutex_unlock(&gAllowlistLock);
+  return found;
+}
+
 static const char *environment_value(
     char *const environment[], const char *name) {
   if (environment == NULL || name == NULL) {
@@ -509,6 +595,64 @@ static uint32_t spawn_appid(char *const environment[]) {
   return 0;
 }
 
+static bool blocked_redirect_environment(const char *entry) {
+  return
+      entry == NULL ||
+      strncmp(entry, "HOME=", 5) == 0 ||
+      strncmp(entry, "PYTHON", 6) == 0 ||
+      strncmp(entry, "DYLD_", 5) == 0 ||
+      strncmp(entry, "REALSTEAMONMAC_", 15) == 0;
+}
+
+static bool build_redirect_environment(
+    char *const source[],
+    const char *trusted_home,
+    char ***environment_out,
+    char **home_entry_out) {
+  if (
+      trusted_home == NULL || *trusted_home == '\0' ||
+      environment_out == NULL || home_entry_out == NULL
+  ) {
+    return false;
+  }
+  size_t source_count = 0;
+  if (source != NULL) {
+    while (
+        source_count < 4096 &&
+        source[source_count] != NULL
+    ) {
+      ++source_count;
+    }
+    if (source_count == 4096) {
+      return false;
+    }
+  }
+
+  char **environment =
+      calloc(source_count + 2, sizeof(*environment));
+  size_t home_length = strlen(trusted_home);
+  char *home_entry = malloc(home_length + 6);
+  if (environment == NULL || home_entry == NULL) {
+    free(environment);
+    free(home_entry);
+    return false;
+  }
+  memcpy(home_entry, "HOME=", 5);
+  memcpy(home_entry + 5, trusted_home, home_length + 1);
+
+  size_t output_count = 0;
+  for (size_t index = 0; index < source_count; ++index) {
+    if (!blocked_redirect_environment(source[index])) {
+      environment[output_count++] = source[index];
+    }
+  }
+  environment[output_count++] = home_entry;
+  environment[output_count] = NULL;
+  *environment_out = environment;
+  *home_entry_out = home_entry;
+  return true;
+}
+
 static bool has_exe_suffix(const char *path) {
   if (path == NULL) {
     return false;
@@ -541,6 +685,161 @@ static bool is_pe_executable(const char *path) {
   return matches;
 }
 
+static bool path_contains_control_byte(const char *path) {
+  if (path == NULL) {
+    return true;
+  }
+  for (const unsigned char *cursor =
+           (const unsigned char *)path;
+       *cursor != '\0'; ++cursor) {
+    if (*cursor < 0x20 || *cursor == 0x7f) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool path_has_symlink_component(const char *path) {
+  if (
+      path == NULL || path[0] != '/' ||
+      strlen(path) >= PATH_MAX
+  ) {
+    return true;
+  }
+  char candidate[PATH_MAX];
+  strcpy(candidate, path);
+  for (char *cursor = candidate + 1;; ++cursor) {
+    if (*cursor != '/' && *cursor != '\0') {
+      continue;
+    }
+    char saved = *cursor;
+    *cursor = '\0';
+    struct stat item;
+    bool invalid =
+        lstat(candidate, &item) != 0 ||
+        S_ISLNK(item.st_mode);
+    *cursor = saved;
+    if (invalid) {
+      return true;
+    }
+    if (saved == '\0') {
+      break;
+    }
+  }
+  return false;
+}
+
+static bool shortcut_file_identity_matches(
+    const shortcut_file_identity *left,
+    const shortcut_file_identity *right) {
+  return
+      left->device == right->device &&
+      left->inode == right->inode &&
+      left->size == right->size &&
+      left->modification_time.tv_sec == right->modification_time.tv_sec &&
+      left->modification_time.tv_nsec == right->modification_time.tv_nsec &&
+      left->change_time.tv_sec == right->change_time.tv_sec &&
+      left->change_time.tv_nsec == right->change_time.tv_nsec;
+}
+
+static bool validate_shortcut_target(
+    const char *candidate,
+    char canonical[PATH_MAX],
+    shortcut_file_identity *identity_out) {
+  if (
+      candidate == NULL || candidate[0] != '/' ||
+      path_contains_control_byte(candidate) ||
+      !has_exe_suffix(candidate) ||
+      path_has_symlink_component(candidate)
+  ) {
+    return false;
+  }
+  char resolved[PATH_MAX];
+  if (realpath(candidate, resolved) == NULL) {
+    return false;
+  }
+  if (
+      path_has_symlink_component(resolved) ||
+      !has_exe_suffix(resolved)
+  ) {
+    return false;
+  }
+
+  int descriptor = open(resolved, O_RDONLY | O_NOFOLLOW);
+  if (descriptor < 0) {
+    return false;
+  }
+  struct stat file_stat;
+  unsigned char magic[2] = {0, 0};
+  bool valid =
+      fstat(descriptor, &file_stat) == 0 &&
+      S_ISREG(file_stat.st_mode) &&
+      pread(descriptor, magic, sizeof(magic), 0) == (ssize_t)sizeof(magic) &&
+      magic[0] == 'M' && magic[1] == 'Z';
+  if (close(descriptor) != 0) {
+    valid = false;
+  }
+  if (!valid) {
+    return false;
+  }
+  strcpy(canonical, resolved);
+  if (identity_out != NULL) {
+    identity_out->device = file_stat.st_dev;
+    identity_out->inode = file_stat.st_ino;
+    identity_out->size = file_stat.st_size;
+    identity_out->modification_time = file_stat.st_mtimespec;
+    identity_out->change_time = file_stat.st_ctimespec;
+  }
+  return true;
+}
+
+static bool validate_registered_shortcut(
+    uint32_t shortcut_id,
+    const char *candidate,
+    char registered_target[PATH_MAX]) {
+  managed_shortcut registered;
+  shortcut_file_identity current_identity;
+  char canonical[PATH_MAX];
+  if (
+      !lookup_managed_shortcut(shortcut_id, &registered) ||
+      !validate_shortcut_target(
+          candidate, canonical, &current_identity) ||
+      strcmp(registered.target, canonical) != 0 ||
+      !shortcut_file_identity_matches(
+          &registered.identity, &current_identity)
+  ) {
+    return false;
+  }
+  if (registered_target != NULL) {
+    strcpy(registered_target, registered.target);
+  }
+  return true;
+}
+
+static bool validate_runtime_script(
+    const char *path, uid_t expected_owner) {
+  if (
+      path == NULL ||
+      path_has_symlink_component(path)
+  ) {
+    return false;
+  }
+  int descriptor = open(path, O_RDONLY | O_NOFOLLOW);
+  if (descriptor < 0) {
+    return false;
+  }
+  struct stat file_stat;
+  bool valid =
+      fstat(descriptor, &file_stat) == 0 &&
+      S_ISREG(file_stat.st_mode) &&
+      file_stat.st_uid == expected_owner &&
+      (file_stat.st_mode & 022) == 0;
+  if (close(descriptor) != 0) {
+    valid = false;
+  }
+  return valid;
+}
+
 static bool is_missing_launch_target(const char *path) {
   if (
       path == NULL ||
@@ -560,16 +859,20 @@ int realsteamonmac_should_redirect_spawn(
     const char *path, char *const environment[]) {
   ensure_allowlist_loaded();
   uint32_t appid = spawn_appid(environment);
-  return appid != 0 &&
-         is_allowlisted(appid) &&
-         (
-             is_pe_executable(path) ||
-             is_missing_launch_target(path) ||
-             has_app_suffix(path)
-         );
+  if (appid == 0) {
+    return 0;
+  }
+  if (is_store_managed(appid)) {
+    return
+        is_pe_executable(path) ||
+        is_missing_launch_target(path) ||
+        has_app_suffix(path);
+  }
+  return validate_registered_shortcut(appid, path, NULL);
 }
 
-static int realsteamonmac_posix_spawn(
+static int redirect_spawn_with(
+    posix_spawn_function original,
     pid_t *restrict pid,
     const char *restrict path,
     const posix_spawn_file_actions_t *file_actions,
@@ -577,18 +880,18 @@ static int realsteamonmac_posix_spawn(
     char *const argv[restrict],
     char *const envp[restrict]) {
   if (
-      gOriginalPosixSpawn == NULL ||
+      original == NULL ||
       !realsteamonmac_should_redirect_spawn(path, envp)
   ) {
-    return gOriginalPosixSpawn != NULL
-               ? gOriginalPosixSpawn(
+    return original != NULL
+               ? original(
                      pid, path, file_actions, attributes, argv, envp)
                : ENOSYS;
   }
 
-  const char *home = environment_value(envp, "HOME");
+  const char *home = getenv("HOME");
   if (home == NULL || *home == '\0') {
-    return gOriginalPosixSpawn(
+    return original(
         pid, path, file_actions, attributes, argv, envp);
   }
   char runtime[1200];
@@ -598,20 +901,33 @@ static int realsteamonmac_posix_spawn(
           "%s/Library/Application Support/RealSteamOnMac/"
           "runtimes/bin/realsteamonmac-runtime",
           home) >= (int)sizeof(runtime) ||
-      access(runtime, R_OK) != 0
+      !validate_runtime_script(runtime, geteuid())
   ) {
     log_line("spawn: runtime entrypoint is unavailable");
-    return gOriginalPosixSpawn(
+    return original(
         pid, path, file_actions, attributes, argv, envp);
   }
 
   uint32_t appid = spawn_appid(envp);
+  bool store_app = is_store_managed(appid);
+  char registered_target[PATH_MAX];
+  const char *launch_target = path;
+  const char *identity_flag = "--appid";
+  if (!store_app) {
+    if (!validate_registered_shortcut(
+            appid, path, registered_target)) {
+      return original(
+          pid, path, file_actions, attributes, argv, envp);
+    }
+    launch_target = registered_target;
+    identity_flag = "--shortcut-id";
+  }
   char appid_text[16];
   snprintf(appid_text, sizeof(appid_text), "%u", appid);
 
   size_t original_count = 0;
   if (argv != NULL) {
-    while (argv[original_count] != NULL && original_count < 1024) {
+    while (original_count < 1024 && argv[original_count] != NULL) {
       ++original_count;
     }
     if (original_count == 1024) {
@@ -620,33 +936,79 @@ static int realsteamonmac_posix_spawn(
     }
   }
 
-  // python3, runtime, launch, --appid, value, executable, original args...
-  size_t redirected_count = 6 + (original_count > 0 ? original_count - 1 : 0);
+  // python3, -I, runtime, launch, identity, value, executable, args...
+  size_t redirected_count = 7 + (original_count > 0 ? original_count - 1 : 0);
   char **redirected = calloc(redirected_count + 1, sizeof(*redirected));
   if (redirected == NULL) {
     return ENOMEM;
   }
   redirected[0] = "/usr/bin/python3";
-  redirected[1] = runtime;
-  redirected[2] = "launch";
-  redirected[3] = "--appid";
-  redirected[4] = appid_text;
-  redirected[5] = (char *)path;
+  redirected[1] = "-I";
+  redirected[2] = runtime;
+  redirected[3] = "launch";
+  redirected[4] = (char *)identity_flag;
+  redirected[5] = appid_text;
+  redirected[6] = (char *)launch_target;
   for (size_t index = 1; index < original_count; ++index) {
-    redirected[5 + index] = argv[index];
+    redirected[6 + index] = argv[index];
   }
 
-  char message[1500];
-  snprintf(
-      message, sizeof(message),
-      "spawn: redirecting AppID %u Steam target %s through %s",
-      appid, path, runtime);
+  char **redirect_environment = NULL;
+  char *redirect_home = NULL;
+  if (!build_redirect_environment(
+          envp, home, &redirect_environment, &redirect_home)) {
+    free(redirected);
+    return E2BIG;
+  }
+
+  char message[256];
+  if (store_app) {
+    snprintf(
+        message, sizeof(message),
+        "spawn: redirecting store AppID %u through runtime", appid);
+  } else {
+    snprintf(
+        message, sizeof(message),
+        "spawn: redirecting shortcut ID %u through runtime", appid);
+  }
   log_line(message);
-  int result = gOriginalPosixSpawn(
-      pid, "/usr/bin/python3", file_actions, attributes, redirected, envp);
+  int result = original(
+      pid, "/usr/bin/python3", file_actions, attributes,
+      redirected, redirect_environment);
+  free(redirect_home);
+  free(redirect_environment);
   free(redirected);
   return result;
 }
+
+static int realsteamonmac_posix_spawn(
+    pid_t *restrict pid,
+    const char *restrict path,
+    const posix_spawn_file_actions_t *file_actions,
+    const posix_spawnattr_t *restrict attributes,
+    char *const argv[restrict],
+    char *const envp[restrict]) {
+  return redirect_spawn_with(
+      gOriginalPosixSpawn,
+      pid,
+      path,
+      file_actions,
+      attributes,
+      argv,
+      envp);
+}
+
+#if defined(REALSTEAMONMAC_TESTING)
+__attribute__((visibility("default")))
+int realsteamonmac_test_spawn_redirect(
+    posix_spawn_function original,
+    const char *path,
+    char *const argv[],
+    char *const envp[]) {
+  return redirect_spawn_with(
+      original, NULL, path, NULL, NULL, argv, envp);
+}
+#endif
 
 static void patch_steamclient_spawn_redirect(
     const struct mach_header *header) {
@@ -789,6 +1151,7 @@ static void load_allowlist(void) {
     return;
   }
   gAllowlistCount = 0;
+  gManagedShortcutCount = 0;
 
   const char *environment = getenv("REALSTEAMONMAC_APPIDS");
   if (environment != NULL && *environment != '\0') {
@@ -803,17 +1166,88 @@ static void load_allowlist(void) {
   if (support_file_path("allowlist.txt", path)) {
     parse_allowlist_file(path);
   }
-  if (support_file_path("managed-appids-cache.txt", path)) {
+
+  bool loaded_typed_cache = false;
+  managed_registry cached;
+  if (load_managed_registry_cache(&cached)) {
+    bool collision = false;
+    size_t combined_count = gAllowlistCount;
+    for (size_t index = 0; index < cached.shortcut_count; ++index) {
+      if (is_allowlisted_unlocked(cached.shortcuts[index].id)) {
+        collision = true;
+        break;
+      }
+    }
+    for (
+        size_t index = 0;
+        !collision && index < cached.appid_count;
+        ++index
+    ) {
+      if (!is_allowlisted_unlocked(cached.appids[index])) {
+        ++combined_count;
+      }
+    }
+    if (
+        combined_count + cached.shortcut_count >
+        MAX_ALLOWLIST_APPIDS
+    ) {
+      collision = true;
+    }
+    if (
+        !collision &&
+        cached.shortcut_count > 0 &&
+        !persist_managed_registry(&cached)
+    ) {
+      collision = true;
+    }
+    if (!collision) {
+      for (size_t index = 0; index < cached.appid_count; ++index) {
+        add_allowlist_appid(cached.appids[index]);
+      }
+      memcpy(
+          gManagedShortcuts,
+          cached.shortcuts,
+          cached.shortcut_count * sizeof(*gManagedShortcuts));
+      gManagedShortcutCount = cached.shortcut_count;
+      loaded_typed_cache = true;
+    }
+  }
+  if (
+      !loaded_typed_cache &&
+      support_file_path("managed-appids-cache.txt", path)
+  ) {
     parse_allowlist_file(path);
   }
 
-  char message[128];
-  snprintf(message, sizeof(message), "allowlist: loaded %zu AppID(s)",
-           gAllowlistCount);
-  (void)pthread_mutex_unlock(&gAllowlistLock);
-  log_line(message);
+  managed_registry loaded;
+  memset(&loaded, 0, sizeof(loaded));
+  loaded.appid_count = gAllowlistCount;
+  memcpy(
+      loaded.appids,
+      gAllowlist,
+      gAllowlistCount * sizeof(*gAllowlist));
+  loaded.shortcut_count = gManagedShortcutCount;
+  memcpy(
+      loaded.shortcuts,
+      gManagedShortcuts,
+      gManagedShortcutCount * sizeof(*gManagedShortcuts));
+  bool migration_persisted = true;
+  if (!loaded_typed_cache && loaded.appid_count > 0) {
+    migration_persisted = persist_managed_registry(&loaded);
+  }
   atomic_store_explicit(
       &gAllowlistLoaded, true, memory_order_release);
+  (void)pthread_mutex_unlock(&gAllowlistLock);
+
+  char message[160];
+  snprintf(
+      message, sizeof(message),
+      "allowlist: loaded %zu store app(s) and %zu shortcut(s)",
+      loaded.appid_count, loaded.shortcut_count);
+  log_line(message);
+  if (!migration_persisted) {
+    log_line("allowlist: failed to migrate legacy registry cache");
+  }
 }
 
 static void ensure_allowlist_loaded(void) {
@@ -1405,8 +1839,26 @@ static bool load_registry_token(char token[REGISTRY_TOKEN_CAPACITY]) {
             home) >= (int)sizeof(path)) {
       return false;
     }
-    FILE *stream = fopen(path, "r");
+    if (path_has_symlink_component(path)) {
+      return false;
+    }
+    int descriptor = open(path, O_RDONLY | O_NOFOLLOW);
+    if (descriptor < 0) {
+      return false;
+    }
+    struct stat file_stat;
+    if (
+        fstat(descriptor, &file_stat) != 0 ||
+        !S_ISREG(file_stat.st_mode) ||
+        file_stat.st_uid != geteuid() ||
+        (file_stat.st_mode & 077) != 0
+    ) {
+      close(descriptor);
+      return false;
+    }
+    FILE *stream = fdopen(descriptor, "r");
     if (stream == NULL) {
+      close(descriptor);
       return false;
     }
     if (fgets(token, REGISTRY_TOKEN_CAPACITY, stream) == NULL) {
@@ -1447,83 +1899,408 @@ static uint16_t registry_server_port(void) {
   return (uint16_t)value;
 }
 
-static bool parse_registry_payload(
-    const char *text,
-    uint32_t appids[MAX_ALLOWLIST_APPIDS],
-    size_t *count_out) {
-  const char *cursor = text;
-  size_t count = 0;
-  while (*cursor == ' ' || *cursor == '\t' ||
-         *cursor == '\r' || *cursor == '\n') {
-    ++cursor;
+static bool parse_canonical_uint32(
+    const char *text, size_t length, uint32_t *value_out) {
+  if (
+      text == NULL || value_out == NULL ||
+      length == 0 || length > 10 ||
+      (length > 1 && text[0] == '0')
+  ) {
+    return false;
   }
-  if (*cursor == '\0') {
-    *count_out = 0;
-    return true;
-  }
-
-  for (;;) {
-    if (*cursor < '0' || *cursor > '9') {
+  uint64_t value = 0;
+  for (size_t index = 0; index < length; ++index) {
+    if (text[index] < '0' || text[index] > '9') {
       return false;
     }
-    errno = 0;
-    char *end = NULL;
-    unsigned long value = strtoul(cursor, &end, 10);
+    value = (value * 10) + (uint64_t)(text[index] - '0');
+    if (value > UINT32_MAX) {
+      return false;
+    }
+  }
+  if (value == 0) {
+    return false;
+  }
+  *value_out = (uint32_t)value;
+  return true;
+}
+
+static int uppercase_hexadecimal_value(char character) {
+  if (character >= '0' && character <= '9') {
+    return character - '0';
+  }
+  if (character >= 'A' && character <= 'F') {
+    return 10 + character - 'A';
+  }
+  return -1;
+}
+
+static bool valid_utf8_bytes(
+    const unsigned char *bytes, size_t length) {
+  size_t index = 0;
+  while (index < length) {
+    unsigned char lead = bytes[index++];
+    if (lead <= 0x7f) {
+      continue;
+    }
+    size_t continuation_count = 0;
+    uint32_t value = 0;
+    uint32_t minimum = 0;
+    if ((lead & 0xe0) == 0xc0) {
+      continuation_count = 1;
+      value = lead & 0x1f;
+      minimum = 0x80;
+    } else if ((lead & 0xf0) == 0xe0) {
+      continuation_count = 2;
+      value = lead & 0x0f;
+      minimum = 0x800;
+    } else if ((lead & 0xf8) == 0xf0) {
+      continuation_count = 3;
+      value = lead & 0x07;
+      minimum = 0x10000;
+    } else {
+      return false;
+    }
+    if (index + continuation_count > length) {
+      return false;
+    }
+    for (size_t offset = 0; offset < continuation_count; ++offset) {
+      unsigned char continuation = bytes[index++];
+      if ((continuation & 0xc0) != 0x80) {
+        return false;
+      }
+      value = (value << 6) | (continuation & 0x3f);
+    }
     if (
-        errno != 0 || end == cursor || value == 0 ||
-        value > UINT32_MAX || count >= MAX_ALLOWLIST_APPIDS
+        value < minimum || value > 0x10ffff ||
+        (value >= 0xd800 && value <= 0xdfff)
     ) {
       return false;
     }
-    uint32_t appid = (uint32_t)value;
-    if (!appid_in_list(appid, appids, count)) {
-      appids[count++] = appid;
-    }
-    cursor = end;
-    while (*cursor == ' ' || *cursor == '\t' ||
-           *cursor == '\r' || *cursor == '\n') {
-      ++cursor;
-    }
-    if (*cursor == '\0') {
-      *count_out = count;
-      return true;
-    }
-    if (*cursor != ',') {
+  }
+  return true;
+}
+
+static bool decode_shortcut_candidate(
+    const char *encoded,
+    size_t encoded_length,
+    char decoded[PATH_MAX]) {
+  if (
+      encoded == NULL || encoded_length == 0 ||
+      encoded_length % 3 != 0 ||
+      encoded_length / 3 >= PATH_MAX
+  ) {
+    return false;
+  }
+  size_t count = encoded_length / 3;
+  for (size_t index = 0; index < count; ++index) {
+    size_t offset = index * 3;
+    int high = uppercase_hexadecimal_value(encoded[offset + 1]);
+    int low = uppercase_hexadecimal_value(encoded[offset + 2]);
+    if (encoded[offset] != '%' || high < 0 || low < 0) {
       return false;
     }
-    ++cursor;
-    while (*cursor == ' ' || *cursor == '\t' ||
-           *cursor == '\r' || *cursor == '\n') {
-      ++cursor;
+    unsigned char value = (unsigned char)((high << 4) | low);
+    if (value == 0 || value < 0x20 || value == 0x7f) {
+      return false;
     }
-    if (*cursor == '\0') {
+    decoded[index] = (char)value;
+  }
+  decoded[count] = '\0';
+  return valid_utf8_bytes(
+      (const unsigned char *)decoded, count);
+}
+
+static bool parse_registry_payload(
+    const char *text,
+    bool drop_invalid_shortcuts,
+    managed_registry *registry_out) {
+  static const char header[] = "RSMREG\t1\n";
+  if (
+      text == NULL || registry_out == NULL ||
+      strlen(text) >= REGISTRY_REQUEST_CAPACITY ||
+      strncmp(text, header, sizeof(header) - 1) != 0
+  ) {
+    return false;
+  }
+  managed_registry registry;
+  memset(&registry, 0, sizeof(registry));
+  const char *cursor = text + sizeof(header) - 1;
+  while (*cursor != '\0') {
+    const char *line_end = strchr(cursor, '\n');
+    if (line_end == NULL || line_end == cursor) {
+      return false;
+    }
+    if (
+        registry.appid_count + registry.shortcut_count >=
+        MAX_ALLOWLIST_APPIDS
+    ) {
+      return false;
+    }
+    if (cursor[0] == 'A' && cursor[1] == '\t') {
+      uint32_t appid = 0;
+      if (
+          !parse_canonical_uint32(
+              cursor + 2,
+              (size_t)(line_end - (cursor + 2)),
+              &appid) ||
+          appid_in_list(
+              appid, registry.appids, registry.appid_count) ||
+          shortcut_in_registry(
+              appid, registry.shortcuts,
+              registry.shortcut_count, NULL)
+      ) {
+        return false;
+      }
+      registry.appids[registry.appid_count++] = appid;
+    } else if (cursor[0] == 'S' && cursor[1] == '\t') {
+      const char *identifier = cursor + 2;
+      const char *separator =
+          memchr(identifier, '\t', (size_t)(line_end - identifier));
+      if (
+          separator == NULL ||
+          registry.shortcut_count >= MAX_MANAGED_SHORTCUTS
+      ) {
+        return false;
+      }
+      uint32_t shortcut_id = 0;
+      managed_shortcut *shortcut =
+          &registry.shortcuts[registry.shortcut_count];
+      char candidate[PATH_MAX];
+      if (
+          !parse_canonical_uint32(
+              identifier,
+              (size_t)(separator - identifier),
+              &shortcut_id) ||
+          appid_in_list(
+              shortcut_id,
+              registry.appids,
+              registry.appid_count) ||
+          shortcut_in_registry(
+              shortcut_id,
+              registry.shortcuts,
+              registry.shortcut_count, NULL) ||
+          !decode_shortcut_candidate(
+              separator + 1,
+              (size_t)(line_end - (separator + 1)),
+              candidate)
+      ) {
+        return false;
+      }
+      if (!validate_shortcut_target(
+              candidate, shortcut->target, &shortcut->identity)) {
+        if (drop_invalid_shortcuts) {
+          cursor = line_end + 1;
+          continue;
+        }
+        return false;
+      }
+      shortcut->id = shortcut_id;
+      ++registry.shortcut_count;
+    } else {
+      return false;
+    }
+    cursor = line_end + 1;
+  }
+  *registry_out = registry;
+  return true;
+}
+
+static bool write_managed_registry(
+    int descriptor, const managed_registry *registry) {
+  static const char hexadecimal[] = "0123456789ABCDEF";
+  if (!write_all(descriptor, "RSMREG\t1\n", 9)) {
+    return false;
+  }
+  for (size_t index = 0; index < registry->appid_count; ++index) {
+    char line[32];
+    int length = snprintf(
+        line, sizeof(line), "A\t%u\n",
+        (unsigned int)registry->appids[index]);
+    if (
+        length <= 0 || length >= (int)sizeof(line) ||
+        !write_all(descriptor, line, (size_t)length)
+    ) {
       return false;
     }
   }
+  for (size_t index = 0; index < registry->shortcut_count; ++index) {
+    const managed_shortcut *shortcut = &registry->shortcuts[index];
+    char prefix[32];
+    int prefix_length = snprintf(
+        prefix, sizeof(prefix), "S\t%u\t",
+        (unsigned int)shortcut->id);
+    if (
+        prefix_length <= 0 ||
+        prefix_length >= (int)sizeof(prefix) ||
+        !write_all(descriptor, prefix, (size_t)prefix_length)
+    ) {
+      return false;
+    }
+    for (const unsigned char *cursor =
+             (const unsigned char *)shortcut->target;
+         *cursor != '\0'; ++cursor) {
+      char encoded[3] = {
+          '%', hexadecimal[*cursor >> 4],
+          hexadecimal[*cursor & 0x0f],
+      };
+      if (!write_all(descriptor, encoded, sizeof(encoded))) {
+        return false;
+      }
+    }
+    if (!write_all(descriptor, "\n", 1)) {
+      return false;
+    }
+  }
+  return true;
 }
 
-static bool persist_registry_cache(
-    const uint32_t *appids, size_t count) {
+static bool shortcut_binding_matches(
+    int directory, const managed_shortcut *shortcut) {
+  char filename[64];
+  if (
+      snprintf(
+          filename, sizeof(filename),
+          "shortcut-binding-%u.txt",
+          (unsigned int)shortcut->id) >= (int)sizeof(filename)
+  ) {
+    return false;
+  }
+  int descriptor = openat(
+      directory, filename, O_RDONLY | O_NOFOLLOW);
+  if (descriptor < 0) {
+    return false;
+  }
+  struct stat file_stat;
+  bool valid =
+      fstat(descriptor, &file_stat) == 0 &&
+      S_ISREG(file_stat.st_mode) &&
+      file_stat.st_uid == geteuid() &&
+      (file_stat.st_mode & 077) == 0 &&
+      file_stat.st_size > 0 &&
+      file_stat.st_size < PATH_MAX;
+  char target[PATH_MAX];
+  size_t total = 0;
+  while (valid && total < (size_t)file_stat.st_size) {
+    ssize_t count = read(
+        descriptor, target + total,
+        (size_t)file_stat.st_size - total);
+    if (count <= 0) {
+      valid = false;
+      break;
+    }
+    total += (size_t)count;
+  }
+  char extra = '\0';
+  if (valid && read(descriptor, &extra, 1) != 0) {
+    valid = false;
+  }
+  if (close(descriptor) != 0) {
+    valid = false;
+  }
+  if (!valid) {
+    return false;
+  }
+  target[total] = '\0';
+  return strcmp(target, shortcut->target) == 0;
+}
+
+static bool prepare_shortcut_binding(
+    int directory, const managed_shortcut *shortcut) {
+  char filename[64];
+  char temporary[96] = {0};
+  if (
+      snprintf(
+          filename, sizeof(filename),
+          "shortcut-binding-%u.txt",
+          (unsigned int)shortcut->id) >= (int)sizeof(filename)
+  ) {
+    return false;
+  }
+  if (faccessat(directory, filename, F_OK, AT_SYMLINK_NOFOLLOW) == 0) {
+    return shortcut_binding_matches(directory, shortcut);
+  }
+  if (errno != ENOENT) {
+    return false;
+  }
+
+  int descriptor = -1;
+  for (unsigned int attempt = 0; attempt < 32; ++attempt) {
+    if (
+        snprintf(
+            temporary, sizeof(temporary),
+            ".shortcut-binding-%u.%ld.%08x.tmp",
+            (unsigned int)shortcut->id,
+            (long)getpid(), arc4random()) >= (int)sizeof(temporary)
+    ) {
+      return false;
+    }
+    descriptor = openat(
+        directory, temporary,
+        O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
+        0600);
+    if (descriptor >= 0) {
+      break;
+    }
+    if (errno != EEXIST) {
+      return false;
+    }
+  }
+  if (descriptor < 0) {
+    return false;
+  }
+  bool success =
+      fchmod(descriptor, 0600) == 0 &&
+      write_all(
+          descriptor, shortcut->target,
+          strlen(shortcut->target)) &&
+      fsync(descriptor) == 0 &&
+      close(descriptor) == 0;
+  if (!success) {
+    (void)close(descriptor);
+    (void)unlinkat(directory, temporary, 0);
+    return false;
+  }
+  if (
+      linkat(directory, temporary, directory, filename, 0) != 0
+  ) {
+    int link_error = errno;
+    (void)unlinkat(directory, temporary, 0);
+    if (link_error == EEXIST) {
+      return shortcut_binding_matches(directory, shortcut);
+    }
+    return false;
+  }
+  success =
+      unlinkat(directory, temporary, 0) == 0 &&
+      fsync(directory) == 0;
+  if (!success) {
+    return false;
+  }
+  return shortcut_binding_matches(directory, shortcut);
+}
+
+static bool persist_managed_registry(
+    const managed_registry *registry) {
+  if (
+      registry == NULL ||
+      registry->appid_count > MAX_ALLOWLIST_APPIDS ||
+      registry->shortcut_count > MAX_MANAGED_SHORTCUTS ||
+      registry->appid_count + registry->shortcut_count >
+          MAX_ALLOWLIST_APPIDS
+  ) {
+    return false;
+  }
   const char *home = getenv("HOME");
   if (home == NULL) {
     return false;
   }
   char root[1024];
-  char path[1200];
-  char temporary[1250];
   if (
       snprintf(
           root, sizeof(root),
           "%s/Library/Application Support/RealSteamOnMac",
-          home) >= (int)sizeof(root) ||
-      snprintf(
-          path, sizeof(path),
-          "%s/managed-appids-cache.txt", root) >=
-          (int)sizeof(path) ||
-      snprintf(
-          temporary, sizeof(temporary),
-          "%s/.managed-appids-cache.txt.XXXXXX", root) >=
-          (int)sizeof(temporary)
+          home) >= (int)sizeof(root)
   ) {
     return false;
   }
@@ -1539,42 +2316,143 @@ static bool persist_registry_cache(
   ) {
     return false;
   }
-
-  int descriptor = mkstemp(temporary);
-  if (descriptor < 0) {
+  int directory = open(root, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+  if (directory < 0) {
     return false;
   }
-  bool success = fchmod(descriptor, 0600) == 0;
-  for (size_t index = 0; success && index < count; ++index) {
-    char line[32];
-    int length = snprintf(
-        line, sizeof(line), "%u\n", (unsigned int)appids[index]);
+  struct stat directory_stat;
+  bool success =
+      fstat(directory, &directory_stat) == 0 &&
+      directory_stat.st_dev == root_stat.st_dev &&
+      directory_stat.st_ino == root_stat.st_ino;
+  for (
+      size_t index = 0;
+      success && index < registry->shortcut_count;
+      ++index
+  ) {
+    success = prepare_shortcut_binding(
+        directory, &registry->shortcuts[index]);
+  }
+  char temporary[96] = {0};
+  int descriptor = -1;
+  for (unsigned int attempt = 0; success && attempt < 32; ++attempt) {
     if (
-        length <= 0 ||
-        length >= (int)sizeof(line) ||
-        write(descriptor, line, (size_t)length) != (ssize_t)length
+        snprintf(
+            temporary, sizeof(temporary),
+            ".managed-registry-v1.%ld.%08x.tmp",
+            (long)getpid(), arc4random()) >= (int)sizeof(temporary)
     ) {
       success = false;
+      break;
+    }
+    descriptor = openat(
+        directory, temporary,
+        O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
+        0600);
+    if (descriptor >= 0) {
+      break;
+    }
+    if (errno != EEXIST) {
+      success = false;
+      break;
     }
   }
-  success = success && fsync(descriptor) == 0;
-  if (close(descriptor) != 0) {
+  if (descriptor < 0) {
+    success = false;
+  }
+  if (
+      success &&
+      (
+          fchmod(descriptor, 0600) != 0 ||
+          !write_managed_registry(descriptor, registry) ||
+          fsync(descriptor) != 0
+      )
+  ) {
+    success = false;
+  }
+  if (descriptor >= 0 && close(descriptor) != 0) {
     success = false;
   }
   if (success) {
-    success = rename(temporary, path) == 0;
+    success =
+        renameat(
+            directory, temporary,
+            directory, "managed-registry-v1.txt") == 0 &&
+        fsync(directory) == 0;
   }
-  if (!success) {
-    (void)unlink(temporary);
+  if (!success && temporary[0] != '\0') {
+    (void)unlinkat(directory, temporary, 0);
   }
+  (void)close(directory);
   return success;
 }
 
-static void publish_registry(
-    const uint32_t *appids, size_t count) {
+static bool load_managed_registry_cache(
+    managed_registry *registry_out) {
+  char path[1200];
+  if (
+      registry_out == NULL ||
+      !support_file_path("managed-registry-v1.txt", path)
+  ) {
+    return false;
+  }
+  int descriptor = open(path, O_RDONLY | O_NOFOLLOW);
+  if (descriptor < 0) {
+    return false;
+  }
+  struct stat file_stat;
+  bool valid =
+      fstat(descriptor, &file_stat) == 0 &&
+      S_ISREG(file_stat.st_mode) &&
+      (file_stat.st_mode & 077) == 0 &&
+      file_stat.st_size > 0 &&
+      file_stat.st_size < REGISTRY_REQUEST_CAPACITY;
+  char payload[REGISTRY_REQUEST_CAPACITY];
+  size_t total = 0;
+  while (valid && total < (size_t)file_stat.st_size) {
+    ssize_t count = read(
+        descriptor,
+        payload + total,
+        (size_t)file_stat.st_size - total);
+    if (count <= 0) {
+      valid = false;
+      break;
+    }
+    total += (size_t)count;
+  }
+  char extra = '\0';
+  if (valid && read(descriptor, &extra, 1) != 0) {
+    valid = false;
+  }
+  if (close(descriptor) != 0) {
+    valid = false;
+  }
+  if (!valid) {
+    return false;
+  }
+  payload[total] = '\0';
+  if (strlen(payload) != total) {
+    return false;
+  }
+  return parse_registry_payload(payload, true, registry_out);
+}
+
+static bool publish_registry(const managed_registry *registry) {
   (void)pthread_mutex_lock(&gAllowlistLock);
-  memcpy(gAllowlist, appids, count * sizeof(*appids));
-  gAllowlistCount = count;
+  if (!persist_managed_registry(registry)) {
+    (void)pthread_mutex_unlock(&gAllowlistLock);
+    return false;
+  }
+  memcpy(
+      gAllowlist,
+      registry->appids,
+      registry->appid_count * sizeof(*gAllowlist));
+  gAllowlistCount = registry->appid_count;
+  memcpy(
+      gManagedShortcuts,
+      registry->shortcuts,
+      registry->shortcut_count * sizeof(*gManagedShortcuts));
+  gManagedShortcutCount = registry->shortcut_count;
   atomic_store_explicit(
       &gAllowlistLoaded, true, memory_order_release);
   (void)pthread_mutex_unlock(&gAllowlistLock);
@@ -1588,19 +2466,17 @@ static void publish_registry(
   char message[128];
   snprintf(
       message, sizeof(message),
-      "registry: accepted %zu managed AppID(s)", count);
+      "registry: accepted %zu store app(s) and %zu shortcut(s)",
+      registry->appid_count, registry->shortcut_count);
   log_line(message);
-  if (persist_registry_cache(appids, count)) {
-    log_line("registry: persisted managed AppID seed");
-  } else {
-    log_line("registry: failed to persist managed AppID seed");
-  }
+  log_line("registry: persisted typed managed registry");
+  return true;
 }
 
 __attribute__((visibility("default")))
 bool realsteamonmac_is_managed_app(uint32_t appid) {
   ensure_allowlist_loaded();
-  return is_allowlisted(appid);
+  return is_store_managed(appid);
 }
 
 static bool parse_content_length(
@@ -1687,13 +2563,31 @@ static void send_http_response(
   if (length <= 0 || length >= (int)sizeof(response)) {
     return;
   }
-  if (send(
-          connection, response, (size_t)length,
-          MSG_NOSIGNAL) != length) {
-    return;
+  size_t sent = 0;
+  while (sent < (size_t)length) {
+    ssize_t result = send(
+        connection, response + sent,
+        (size_t)length - sent, MSG_NOSIGNAL);
+    if (result < 0 && errno == EINTR) {
+      continue;
+    }
+    if (result <= 0) {
+      return;
+    }
+    sent += (size_t)result;
   }
-  if (body_length > 0) {
-    (void)send(connection, body, body_length, MSG_NOSIGNAL);
+  sent = 0;
+  while (sent < body_length) {
+    ssize_t result = send(
+        connection, body + sent,
+        body_length - sent, MSG_NOSIGNAL);
+    if (result < 0 && errno == EINTR) {
+      continue;
+    }
+    if (result <= 0) {
+      return;
+    }
+    sent += (size_t)result;
   }
 }
 
@@ -1730,6 +2624,25 @@ static bool parse_config_target(
     return false;
   }
   return parse_positive_appid(target + prefix_length, appid_out);
+}
+
+static bool parse_shortcut_config_target(
+    const char *target,
+    const char *token,
+    uint32_t *shortcut_id_out) {
+  char prefix[320];
+  int prefix_length = snprintf(
+      prefix, sizeof(prefix),
+      "/config?token=%s&kind=shortcut&id=", token);
+  if (
+      prefix_length <= 0 ||
+      prefix_length >= (int)sizeof(prefix) ||
+      strncmp(target, prefix, (size_t)prefix_length) != 0
+  ) {
+    return false;
+  }
+  return parse_positive_appid(
+      target + prefix_length, shortcut_id_out);
 }
 
 static bool parse_action_target(
@@ -1941,6 +2854,7 @@ static bool spawn_action_job(
       (unsigned int)appid);
   char *arguments[] = {
       "/usr/bin/python3",
+      "-I",
       runtime,
       "action",
       "--appid",
@@ -2148,14 +3062,20 @@ static bool runtime_config_root(char path[1200]) {
 }
 
 static bool runtime_config_path(
-    uint32_t appid, char path[1400]) {
+    uint32_t appid,
+    bool shortcut,
+    char path[1400]) {
   char root[1200];
   if (!runtime_config_root(root)) {
     return false;
   }
-  return snprintf(
-             path, 1400, "%s/%u.json",
-             root, (unsigned int)appid) < 1400;
+  return shortcut
+             ? snprintf(
+                   path, 1400, "%s/shortcut-%u.json",
+                   root, (unsigned int)appid) < 1400
+             : snprintf(
+                   path, 1400, "%s/%u.json",
+                   root, (unsigned int)appid) < 1400;
 }
 
 static bool format_runtime_config(
@@ -2198,7 +3118,9 @@ static bool write_all(int descriptor, const char *bytes, size_t length) {
 }
 
 static bool save_runtime_config(
-    uint32_t appid, const runtime_config *config) {
+    uint32_t appid,
+    bool shortcut,
+    const runtime_config *config) {
   char root[1200];
   char path[1400];
   char temporary[1450];
@@ -2206,10 +3128,12 @@ static bool save_runtime_config(
   if (
       !runtime_config_root(root) ||
       (mkdir(root, 0700) != 0 && errno != EEXIST) ||
-      !runtime_config_path(appid, path) ||
+      !runtime_config_path(appid, shortcut, path) ||
       snprintf(
           temporary, sizeof(temporary),
-          "%s/.%u.json.XXXXXX",
+          shortcut
+              ? "%s/.shortcut-%u.json.XXXXXX"
+              : "%s/.%u.json.XXXXXX",
           root, (unsigned int)appid) >= (int)sizeof(temporary) ||
       !format_runtime_config(config, output)
   ) {
@@ -2243,9 +3167,11 @@ static bool save_runtime_config(
 }
 
 static bool load_runtime_config_json(
-    uint32_t appid, char output[RUNTIME_CONFIG_CAPACITY]) {
+    uint32_t appid,
+    bool shortcut,
+    char output[RUNTIME_CONFIG_CAPACITY]) {
   char path[1400];
-  if (!runtime_config_path(appid, path)) {
+  if (!runtime_config_path(appid, shortcut, path)) {
     return false;
   }
   int descriptor = open(path, O_RDONLY | O_NOFOLLOW);
@@ -2374,24 +3300,33 @@ static void handle_registry_connection(
   memcpy(payload, request + header_length, content_length);
   payload[content_length] = '\0';
   if (strcmp(target, registry_target) == 0) {
-    if (strcmp(method, "POST") != 0) {
+    if (strcmp(method, "OPTIONS") == 0) {
+      send_http_response(connection, 204, "text/plain", NULL);
+      return;
+    }
+    if (strcmp(method, "POST") != 0 || content_length == 0) {
       send_http_response(connection, 403, "text/plain", NULL);
       return;
     }
-    uint32_t appids[MAX_ALLOWLIST_APPIDS];
-    size_t appid_count = 0;
-    if (!parse_registry_payload(payload, appids, &appid_count)) {
+    managed_registry registry;
+    if (
+        strlen(payload) != content_length ||
+        !parse_registry_payload(payload, false, &registry)
+    ) {
       send_http_response(connection, 400, "text/plain", NULL);
       return;
     }
-    publish_registry(appids, appid_count);
+    if (!publish_registry(&registry)) {
+      send_http_response(connection, 500, "text/plain", NULL);
+      return;
+    }
     send_http_response(connection, 204, "text/plain", NULL);
     return;
   }
 
   uint32_t action_appid = 0;
   if (parse_action_target(target, token, &action_appid)) {
-    if (!is_allowlisted(action_appid)) {
+    if (!is_store_managed(action_appid)) {
       send_http_response(connection, 403, "text/plain", NULL);
       return;
     }
@@ -2433,7 +3368,7 @@ static void handle_registry_connection(
   char job_id[ACTION_JOB_ID_CAPACITY];
   if (parse_job_target(
           target, token, &job_appid, job_id)) {
-    if (!is_allowlisted(job_appid)) {
+    if (!is_store_managed(job_appid)) {
       send_http_response(connection, 403, "text/plain", NULL);
       return;
     }
@@ -2462,10 +3397,18 @@ static void handle_registry_connection(
   }
 
   uint32_t appid = 0;
+  bool shortcut_config = false;
   if (
-      !parse_config_target(target, token, &appid) ||
-      !is_allowlisted(appid)
+      parse_config_target(target, token, &appid) &&
+      is_store_managed(appid)
   ) {
+    shortcut_config = false;
+  } else if (
+      parse_shortcut_config_target(target, token, &appid) &&
+      is_managed_shortcut(appid)
+  ) {
+    shortcut_config = true;
+  } else {
     send_http_response(connection, 403, "text/plain", NULL);
     return;
   }
@@ -2479,7 +3422,8 @@ static void handle_registry_connection(
       return;
     }
     char json[RUNTIME_CONFIG_CAPACITY];
-    if (!load_runtime_config_json(appid, json)) {
+    if (!load_runtime_config_json(
+            appid, shortcut_config, json)) {
       send_http_response(connection, 500, "text/plain", NULL);
       return;
     }
@@ -2492,7 +3436,8 @@ static void handle_registry_connection(
       send_http_response(connection, 400, "text/plain", NULL);
       return;
     }
-    if (!save_runtime_config(appid, &config)) {
+    if (!save_runtime_config(
+            appid, shortcut_config, &config)) {
       send_http_response(connection, 500, "text/plain", NULL);
       return;
     }

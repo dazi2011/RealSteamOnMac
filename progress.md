@@ -2455,3 +2455,38 @@
 - The rollback-identity batch passed its expanded one-click installer
   contract, shell syntax checks, independent quality review, and
   `git diff --check`; commit `1f7ba3b` is pushed on `main`.
+- Published a typed native registry that keeps Steam store AppIDs and
+  non-Steam shortcut IDs separate across discovery, configuration, status,
+  permissions, and launch dispatch. Store launches retain `--appid`; shortcut
+  launches use only `--shortcut-id` and the exact registered canonical target.
+- Shortcut registration now requires an absolute, existing, regular,
+  non-symlink `.exe` with an `MZ` header. The native hook records file identity,
+  rejects in-process replacement, persists a mode-`0600` immutable
+  shortcut-ID/path binding, and retains that binding after deletion so a
+  recycled ID cannot silently inherit a different target or prefix.
+- Hardened native publication and spawn handling with serialized cache
+  persistence/publication, atomic cache writes, embedded-NUL rejection,
+  secure token/runtime-file checks, partial-send handling, isolated Python
+  mode, trusted process `HOME`, and removal of Python, dyld, and
+  RealSteamOnMac control variables from redirected children.
+- SteamUI now submits deterministic typed snapshots, commits state only after
+  an authenticated `204`, uses typed store/shortcut persistence keys, and
+  excludes shortcuts from manifest, install, repair, download, Rockstar
+  recovery, AppID-special-case, native status, and action reconciliation.
+  Shortcut deletion cleans local UI state even when native details disappear;
+  target changes remain fail closed.
+- Added native and JavaScript regressions for mixed typed snapshots, restart
+  cache recovery, failed persistence preserving old state, empty-registry
+  clearing, active and delete/re-add target changes, store/shortcut collisions,
+  symlink and non-PE rejection, file replacement, environment sanitization,
+  and missing-helper fallback.
+- Fresh verification passed all 206 Python tests, all 96 Node tests, strict C
+  warning checks, Python/JavaScript/shell syntax checks, `git diff --check`,
+  and every directly relevant hook, registry, spawn, runtime-package,
+  installer, updater, SteamUI, and packaging shell contract. The standalone
+  Steam launcher contract cannot exercise its stale-ipc assertion while the
+  user's real `steam_osx` process is running; two isolated attempts reproduced
+  the test's explicit environment guard rather than a change in this batch.
+- No real-Steam shortcut smoke test was performed. The current user Steam
+  session was left untouched; the next live gate is a controlled fixture
+  shortcut after deploying this committed batch.

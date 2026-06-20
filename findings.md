@@ -1743,3 +1743,71 @@
   `docs/superpowers/plans/2026-06-08-people-playground-native-download.md`
 - Steam backup recorded by the handoff:
   `$HOME/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z`
+
+## Typed Shortcut Registry Review — 2026-06-21
+
+### Must Fix In This Batch
+
+| Finding | Resolution |
+|---------|------------|
+| A shortcut target could be replaced between registration and launch while retaining the same path | Record device, inode, size, mtime, and ctime at publication and require an exact match immediately before redirect. The Python resolver performs its own canonical PE checks as a second boundary. |
+| A recycled shortcut ID could inherit the old prefix/config after deletion or a target change | Atomically persist a secure `shortcut-binding-<id>.txt` tombstone and reject every later path mismatch, including delete/re-add and restart. |
+| Redirected launch trusted child-controlled `HOME`, Python, dyld, and RealSteamOnMac variables | Resolve the runtime from the hook process home, validate owner/mode/symlinks, use Python isolated mode, preserve ordinary/Steam variables, and remove interpreter/injection/control variables. |
+| Registry persistence and in-memory publication were not one serialized operation | Hold the allowlist mutex through binding validation, atomic persistence, and in-memory publication, including cache migration. |
+| SteamUI numeric-only local state allowed store/shortcut identity collision and target rebinding | Use typed keys (`store:<id>` and `shortcut:<id>:<target>`), with legacy numeric migration only for store games. |
+| Shortcut records still reached store-game reconciliation cleanup paths | Restrict manifest, status, repair, action, subscription, and reconciliation paths to the store registry. |
+| Native detail lookup failure could interrupt shortcut deletion cleanup | Move local restore/cleanup into `finally` and synchronize native compatibility selections only for the current typed registry. |
+
+### Tests Added
+
+- Typed mixed store/shortcut cache publication and restart recovery.
+- Persistence failure preserves the prior in-memory registry and cache.
+- Header-only empty registry clears active identities.
+- Active target change and delete/re-add target change fail closed.
+- Atomic replacement of the registered executable fails shortcut redirect.
+- Store/shortcut numeric collision, symlink, non-`MZ`, `.app`, and exact-target
+  rejection.
+- Redirect preserves ordinary and Steam variables, strips injection/control
+  variables, and falls back unchanged when the runtime helper is missing.
+- SteamUI keeps the previous registry after POST failure and never routes
+  shortcuts through store repair/action/status policy.
+
+### Deferred Hardening
+
+- Passing an already validated executable descriptor all the way into Wine
+  would close the remaining narrow race after the final native/Python checks.
+  The current path and file-identity checks reject common replacement attacks,
+  but they are not a descriptor-based execution capability.
+- Persisted shortcut bindings are path bindings, not content hashes. A file
+  replaced at the same canonical path across a full Steam restart is accepted
+  after fresh PE validation. Content pinning needs an explicit update/approval
+  workflow before it can be made compatible with legitimate game updates.
+- Audit hook patch-state globals with ThreadSanitizer; current tests do not
+  prove every initialization/read is data-race-free.
+- Tighten loopback Host/Origin/CORS and request-time bounds only after recording
+  the real Steam SharedJSContext origin and Private Network Access behavior.
+- Add native corrupt/oversized-cache and Unicode restart matrices, plus
+  coalescing for a registry refresh requested while another refresh is active.
+
+### Already Covered Or Not A Batch Defect
+
+- Store/shortcut ID collision, parent and leaf symlinks, non-`MZ`, `.app`,
+  action denial, and POST-failure state retention now have direct tests.
+- `tests/test_steam_launcher.sh` fails its stale-ipc fixture when the user's
+  real `steam_osx` is running because production intentionally refuses to
+  terminate ipcserver while Steam is active. This is an environment
+  precondition in an unchanged subsystem, not evidence against the typed
+  registry batch.
+
+### Next Live Gates
+
+1. Deploy the committed hook/runtime/UI and add one controlled `MZ` `.exe`
+   through Steam's native Add a Non-Steam Game dialog.
+2. Prove the typed shortcut ID, `--shortcut-id`, and
+   `compatdata/nonsteam-<id>/pfx`, then remove only that fixture shortcut.
+3. For Black Myth: Wukong `2358720`, prove a nonzero Windows depot/required
+   byte plan before spending time on download behavior.
+4. For Aimlabs `714010`, finish the pending update and prove the installed
+   helper selects `AimLab_tb.exe`, never `AimLab.app`.
+5. For Hogwarts Legacy `990080`, perform one Play launch proving fallback from
+   stale `Phoenix-Win64-Test.exe` to `HogwartsLegacy.exe`.

@@ -35,6 +35,21 @@ function details(appid, platforms = ["windows"]) {
   };
 }
 
+function shortcutOverview(appid, target) {
+  return overview(appid, {
+    app_type: 0x40000000,
+    subscribed_to: false,
+    shortcut_target: target,
+  });
+}
+
+function shortcutDetails(appid, target) {
+  return {
+    ...details(appid),
+    strShortcutExe: target,
+  };
+}
+
 async function waitFor(predicate) {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     if (predicate()) {
@@ -57,11 +72,13 @@ test("installs the predicate before dynamically replacing the bootstrap registry
       },
     }),
     overview(990080),
+    shortcutOverview(700, '"/Volumes/Games/Shortcut Demo.exe"'),
     overview(4000),
   ];
   const detailsByAppid = new Map([
     [1118200, details(1118200)],
     [990080, details(990080)],
+    [700, shortcutDetails(700, '"/Volumes/Games/Shortcut Demo.exe"')],
     [4000, details(4000, ["windows", "osx", "linux"])],
   ]);
   const nativeSpecifyCalls = [];
@@ -77,6 +94,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   let nextActionJob = 0;
   const intervalCallbacks = new Map();
   const storage = new Map();
+  let storageWritesFail = false;
   function allocateActionJob(appid, action, result) {
     nextActionJob += 1;
     const jobId = nextActionJob.toString(16).padStart(32, "0");
@@ -213,6 +231,9 @@ test("installs the predicate before dynamically replacing the bootstrap registry
         return storage.get(key) ?? null;
       },
       setItem(key, value) {
+        if (storageWritesFail) {
+          throw new Error("fixture storage write failed");
+        }
         storage.set(key, value);
       },
     },
@@ -283,9 +304,17 @@ test("installs the predicate before dynamically replacing the bootstrap registry
       }
       registryRequests.push({ url, options });
       if (registryRequests.length === 1) {
-        throw new Error("registry server is not ready");
+        return { ok: false, status: 503 };
       }
-      return {};
+      if (
+        options.body.includes(
+          "S\t700\t" +
+          "%2F%56%6F%6C%75%6D%65%73%2F%47%61%6D%65%73%2F%52%65%70%6C%61%63%65%6D%65%6E%74%2E%65%78%65\n",
+        )
+      ) {
+        return { ok: false, status: 500 };
+      }
+      return { ok: true, status: 204 };
     },
     console,
   });
@@ -310,18 +339,15 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   await waitFor(
     () =>
       context.__REALSTEAMONMAC_UI_STATUS__.registryScans === 1 &&
-      context.__REALSTEAMONMAC_UI_STATUS__.appids.length === 2,
+      registryRequests.length === 1,
   );
   assert.deepEqual(
     [...context.__REALSTEAMONMAC_UI_STATUS__.appids],
-    [990080, 1118200],
+    [1118200],
   );
-  assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(990080), true);
+  assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(990080), false);
+  assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(700), false);
   assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(4000), false);
-  assert.equal(
-    context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__(990080),
-    "realsteamonmac-dxmt",
-  );
   assert.equal(registryRequests.length, 1);
   assert.equal(
     context.__REALSTEAMONMAC_UI_STATUS__.registryNativeSyncs,
@@ -329,13 +355,30 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   );
   assert.match(
     context.__REALSTEAMONMAC_UI_STATUS__.registryLastNativeSyncError,
-    /registry server is not ready/,
+    /503/,
   );
+  assert.equal(registryRequests[0].options.method, "POST");
+  assert.equal(registryRequests[0].options.mode, "cors");
+  assert.equal(
+    registryRequests[0].options.body,
+    "RSMREG\t1\n" +
+      "A\t990080\n" +
+      "A\t1118200\n" +
+      "S\t700\t" +
+      "%2F%56%6F%6C%75%6D%65%73%2F%47%61%6D%65%73%2F%53%68%6F%72%74%63%75%74" +
+      "%20%44%65%6D%6F%2E%65%78%65\n",
+  );
+  assert.equal(nativeDetailRegistrations.length, 0);
+  assert.equal(controlRequests.length, 0);
 
+  storageWritesFail = true;
   await intervalCallbacks.get(5000)();
   await waitFor(
-    () => context.__REALSTEAMONMAC_UI_STATUS__.registryScans === 2,
+    () =>
+      context.__REALSTEAMONMAC_UI_STATUS__.registryScans === 2 &&
+      context.__REALSTEAMONMAC_UI_STATUS__.appids.length === 3,
   );
+  storageWritesFail = false;
   assert.equal(registryRequests.length, 2);
   assert.equal(
     context.__REALSTEAMONMAC_UI_STATUS__.registryNativeSyncs,
@@ -346,6 +389,11 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     null,
   );
   assert.deepEqual(
+    [...context.__REALSTEAMONMAC_UI_STATUS__.appids],
+    [700, 990080, 1118200],
+  );
+  assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(700), true);
+  assert.deepEqual(
     [...nativeDetailRegistrations].sort((left, right) => left - right),
     [990080, 1118200],
   );
@@ -355,6 +403,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   );
   assert.equal(detailsByAppid.get(990080).eDisplayStatus, 9);
   assert.equal(detailsByAppid.get(1118200).eDisplayStatus, 11);
+  assert.equal(detailsByAppid.get(700).eDisplayStatus, 14);
   assert.equal(
     overviews[0].selected_per_client_data.display_status,
     11,
@@ -362,6 +411,10 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   assert.equal(
     overviews[1].selected_per_client_data.display_status,
     9,
+  );
+  assert.equal(
+    overviews[2].selected_per_client_data.display_status,
+    14,
   );
   assert.deepEqual(nativeSpecifyCalls, []);
   const scansBeforeNativeDetailCallback =
@@ -381,11 +434,31 @@ test("installs the predicate before dynamically replacing the bootstrap registry
       "?token=0123456789abcdef0123456789abcdef",
   );
   assert.equal(registryRequests[1].options.method, "POST");
-  assert.equal(registryRequests[1].options.mode, "no-cors");
-  assert.equal(registryRequests[1].options.body, "990080,1118200");
+  assert.equal(registryRequests[1].options.mode, "cors");
+  assert.equal(registryRequests[1].options.body, registryRequests[0].options.body);
+  const shortcutControlRequests = controlRequests.filter((request) => {
+    const url = new URL(request.url);
+    return (
+      url.searchParams.get("kind") === "shortcut" &&
+      url.searchParams.get("id") === "700"
+    );
+  });
+  assert.equal(shortcutControlRequests.length, 1);
+  assert.equal(shortcutControlRequests[0].options.method, "GET");
+  assert.equal(shortcutControlRequests[0].url.includes("target"), false);
+  assert.equal(shortcutControlRequests[0].url.includes("Shortcut"), false);
   assert.equal(
     typeof context.__REALSTEAMONMAC_REQUEST_REPAIR__,
     "function",
+  );
+  const actionRequestCountBeforeShortcutRepair = actionRequests.length;
+  await assert.rejects(
+    context.__REALSTEAMONMAC_REQUEST_REPAIR__(700),
+    /not managed/,
+  );
+  assert.equal(
+    actionRequests.length,
+    actionRequestCountBeforeShortcutRepair,
   );
   assert.equal(
     await context.__REALSTEAMONMAC_REQUEST_REPAIR__(990080),
@@ -422,6 +495,28 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     tools.some((tool) => tool.strToolName === "realsteamonmac-dxmt"),
     true,
   );
+  const shortcutTools =
+    await context.SteamClient.Apps.GetAvailableCompatTools(700);
+  assert.equal(
+    shortcutTools.some(
+      (tool) => tool.strToolName === "realsteamonmac-dxmt",
+    ),
+    true,
+  );
+  await context.SteamClient.Apps.SpecifyCompatTool(
+    700,
+    "realsteamonmac-dxvk",
+  );
+  const shortcutConfigWrite = controlRequests.at(-1);
+  assert.equal(shortcutConfigWrite.options.method, "POST");
+  assert.equal(
+    shortcutConfigWrite.url,
+    "http://127.0.0.1:57344/config" +
+      "?token=0123456789abcdef0123456789abcdef" +
+      "&kind=shortcut&id=700",
+  );
+  assert.equal(shortcutConfigWrite.url.includes("target"), false);
+  assert.equal(actionRequests.length, 2);
 
   await context.SteamClient.Apps.SpecifyCompatTool(
     990080,
@@ -514,6 +609,54 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(990080), true);
   assert.equal(
     context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__(990080),
+    "",
+  );
+
+  detailsByAppid.set(
+    700,
+    shortcutDetails(700, "/Volumes/Games/Replacement.exe"),
+  );
+  await intervalCallbacks.get(5000)();
+  await waitFor(
+    () => context.__REALSTEAMONMAC_UI_STATUS__.registryScans === 7,
+  );
+  assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(700), true);
+  assert.match(
+    registryRequests.at(-1).options.body,
+    /S\t700\t%2F%56%6F%6C%75%6D%65%73%2F%47%61%6D%65%73%2F%52%65%70%6C%61%63%65%6D%65%6E%74%2E%65%78%65\n/,
+  );
+  assert.equal(
+    registryRequests.at(-1).options.body.includes("Shortcut%20Demo"),
+    false,
+  );
+  assert.match(
+    context.__REALSTEAMONMAC_UI_STATUS__.registryLastNativeSyncError,
+    /500/,
+  );
+
+  overviews[2].visible_in_game_list = false;
+  await intervalCallbacks.get(5000)();
+  await waitFor(
+    () => context.__REALSTEAMONMAC_UI_STATUS__.registryScans === 8,
+  );
+  assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(700), false);
+  assert.equal(
+    registryRequests.at(-1).options.body.includes("S\t700\t"),
+    false,
+  );
+
+  overviews[2].visible_in_game_list = true;
+  await intervalCallbacks.get(5000)();
+  await waitFor(
+    () => context.__REALSTEAMONMAC_UI_STATUS__.registryScans === 9,
+  );
+  assert.equal(context.__REALSTEAMONMAC_IS_MANAGED_APP__(700), false);
+  assert.match(
+    registryRequests.at(-1).options.body,
+    /S\t700\t%2F%56%6F%6C%75%6D%65%73%2F%47%61%6D%65%73%2F%52%65%70%6C%61%63%65%6D%65%6E%74%2E%65%78%65\n/,
+  );
+  assert.equal(
+    context.__REALSTEAMONMAC_SELECTED_COMPAT_TOOL__(700),
     "",
   );
 });
