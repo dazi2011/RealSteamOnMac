@@ -151,7 +151,8 @@ RUNTIME_EXECUTABLE="$STEAM_RUNTIME/Contents/MacOS/steam_osx"
 STEAM_PACKAGE="$STEAM_RUNTIME/Contents/MacOS/package"
 STATE_FILE="$SUPPORT_ROOT/install-state.json"
 
-STEAM_INFO=$(/usr/bin/python3 - "$STEAM_PACKAGE" <<'PY'
+read_steam_info() {
+    STEAM_INFO=$(/usr/bin/python3 - "$STEAM_PACKAGE" <<'PY'
 import re
 import sys
 from pathlib import Path
@@ -194,17 +195,20 @@ print(manifest)
 print(channel or "stable")
 print(match.group(1))
 PY
-)
-STEAM_MANIFEST=$(printf '%s\n' "$STEAM_INFO" | sed -n '1p')
-STEAM_CHANNEL=$(printf '%s\n' "$STEAM_INFO" | sed -n '2p')
-STEAM_BUILD=$(printf '%s\n' "$STEAM_INFO" | sed -n '3p')
-case "$STEAM_BUILD" in
-    1780705203|1780965181|1781212412) ;;
-    *)
-        echo "unsupported Steam build: $STEAM_BUILD" >&2
-        exit 1
-        ;;
-esac
+    )
+    STEAM_MANIFEST=$(printf '%s\n' "$STEAM_INFO" | sed -n '1p')
+    STEAM_CHANNEL=$(printf '%s\n' "$STEAM_INFO" | sed -n '2p')
+    STEAM_BUILD=$(printf '%s\n' "$STEAM_INFO" | sed -n '3p')
+    case "$STEAM_BUILD" in
+        1780705203|1780965181|1781212412) ;;
+        *)
+            echo "unsupported Steam build: $STEAM_BUILD" >&2
+            exit 1
+            ;;
+    esac
+}
+
+read_steam_info
 
 if [ -f "$STATE_FILE" ]; then
     STATE_STEAM_INFO=$(/usr/bin/python3 - "$STATE_FILE" <<'PY'
@@ -293,6 +297,83 @@ PY
     }
 fi
 
+validate_clean_backup() {
+    /usr/bin/python3 - \
+        "$CLEAN_BACKUP/SteamRuntime.app/Contents/MacOS/package" \
+        "$STEAM_CHANNEL" \
+        "$STEAM_BUILD" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+package = Path(sys.argv[1])
+current_channel = sys.argv[2]
+current_build = sys.argv[3]
+if not package.is_dir():
+    raise SystemExit("rollback snapshot Steam package directory is missing")
+if "\n" in str(package) or "\r" in str(package):
+    raise SystemExit("rollback snapshot Steam package path is invalid")
+
+beta_path = package / "beta"
+channel = ""
+try:
+    if beta_path.is_file():
+        channel = beta_path.read_text(
+            encoding="ascii", errors="strict"
+        ).strip()
+except (OSError, UnicodeError):
+    raise SystemExit(
+        "rollback snapshot Steam beta channel could not be read"
+    ) from None
+if channel and re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,31}", channel) is None:
+    raise SystemExit("rollback snapshot Steam beta channel is invalid")
+
+prefix = f"steam_client_{channel}_" if channel else "steam_client_"
+manifest = None
+try:
+    for variant in ("signed-2_", "signed_", ""):
+        candidate = package / f"{prefix}{variant}osx.manifest"
+        installed = package / f"{prefix}{variant}osx.installed"
+        if candidate.is_file() and installed.is_file():
+            manifest = candidate
+            break
+except OSError:
+    raise SystemExit(
+        "rollback snapshot Steam build manifest could not be read"
+    ) from None
+if manifest is None:
+    label = channel or "stable"
+    raise SystemExit(
+        f"rollback snapshot Steam build manifest is missing for channel {label}"
+    )
+
+try:
+    with manifest.open(encoding="utf-8") as stream:
+        content = stream.read(64 * 1024)
+except (OSError, UnicodeError):
+    raise SystemExit(
+        "rollback snapshot Steam build manifest could not be read"
+    ) from None
+match = re.search(r'"version"\s+"([0-9]{8,12})"', content)
+if match is None:
+    raise SystemExit("rollback snapshot Steam build manifest has no valid version")
+
+snapshot_channel = channel or "stable"
+if snapshot_channel != current_channel:
+    raise SystemExit(
+        "current Steam channel does not match the rollback snapshot"
+    )
+if match.group(1) != current_build:
+    raise SystemExit(
+        "current Steam build does not match the rollback snapshot"
+    )
+PY
+}
+
+if [ -n "$CLEAN_BACKUP" ]; then
+    validate_clean_backup
+fi
+
 steam_is_running() {
     pgrep -f "^$RUNTIME_EXECUTABLE( |$)" >/dev/null 2>&1
 }
@@ -331,6 +412,11 @@ if steam_is_running; then
     fi
 fi
 
+read_steam_info
+if [ -n "$CLEAN_BACKUP" ]; then
+    validate_clean_backup
+fi
+
 for executable in \
     "$HOOK_BUILDER" \
     "$LAUNCHER_BUILDER" \
@@ -357,6 +443,7 @@ if [ -z "$CLEAN_BACKUP" ]; then
         --steam-app "$STEAM_APP" \
         --runtime-app "$STEAM_RUNTIME" \
         --destination "$CLEAN_BACKUP"
+    validate_clean_backup
 fi
 
 "$HOOK_BUILDER"

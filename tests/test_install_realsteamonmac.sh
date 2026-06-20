@@ -15,10 +15,34 @@ CACHE="$TMP/cache"
 COMPAT_TOOLS="$TMP/compatibilitytools.d"
 GPTK="$TMP/GPTK.dmg"
 
+write_snapshot_package() {
+    package=$1
+    channel=$2
+    build=$3
+
+    rm -rf "$package"
+    mkdir -p "$package"
+    if [ "$channel" = publicbeta ]; then
+        printf 'publicbeta\n' >"$package/beta"
+        manifest="$package/steam_client_publicbeta_signed-2_osx.manifest"
+        installed="$package/steam_client_publicbeta_signed-2_osx.installed"
+    else
+        manifest="$package/steam_client_signed-2_osx.manifest"
+        installed="$package/steam_client_signed-2_osx.installed"
+    fi
+    cat >"$manifest" <<EOF
+"osx"
+{
+    "version" "$build"
+}
+EOF
+    : >"$installed"
+}
+
 mkdir -p \
     "$STEAM_APP" \
     "$RUNTIME_APP/Contents/MacOS/package" \
-    "$BACKUP" \
+    "$BACKUP/Steam.app" \
     "$TMP/bin"
 : >"$RUNTIME_APP/Contents/MacOS/steam_osx"
 printf 'publicbeta\n' \
@@ -37,6 +61,10 @@ cat >"$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed_osx.man
 }
 EOF
 : >"$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed_osx.installed"
+write_snapshot_package \
+    "$BACKUP/SteamRuntime.app/Contents/MacOS/package" \
+    publicbeta \
+    1781212412
 : >"$GPTK"
 
 make_recorder() {
@@ -98,13 +126,27 @@ if [ '@NAME@' = runtime ]; then
     ln -s "packages/$package_id" "$runtime_root/current"
 fi
 if [ '@NAME@' = backup ]; then
+    runtime_app=
+    destination=
     while [ "$#" -gt 0 ]; do
-        if [ "$1" = --destination ]; then
-            mkdir -p "$2/Steam.app" "$2/SteamRuntime.app"
-            break
-        fi
-        shift
+        case "$1" in
+            --runtime-app)
+                runtime_app=$2
+                shift 2
+                ;;
+            --destination)
+                destination=$2
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
     done
+    mkdir -p "$destination/Steam.app" \
+        "$destination/SteamRuntime.app/Contents/MacOS"
+    cp -R "$runtime_app/Contents/MacOS/package" \
+        "$destination/SteamRuntime.app/Contents/MacOS/package"
 fi
 EOF
 
@@ -112,6 +154,194 @@ for name in hook launcher bridge gptk_bridge runtime injection backup; do
     make_recorder "$name"
 done
 
+run_first_install() {
+    support=$1
+    shift
+    env \
+        PATH="${INSTALLER_PATH:-$PATH}" \
+        REALSTEAMONMAC_HOOK_BUILDER="$TMP/bin/hook" \
+        REALSTEAMONMAC_LAUNCHER_BUILDER="$TMP/bin/launcher" \
+        REALSTEAMONMAC_BRIDGE_BUILDER="$TMP/bin/bridge" \
+        REALSTEAMONMAC_RUNTIME_INSTALLER="$TMP/bin/runtime" \
+        REALSTEAMONMAC_INJECTION_INSTALLER="$TMP/bin/injection" \
+        REALSTEAMONMAC_BACKUP_BUILDER="$TMP/bin/backup" \
+        REALSTEAMONMAC_STEAM_STOPPER="${STEAM_STOPPER_FIXTURE:-}" \
+        "$ROOT/script/install_realsteamonmac.sh" \
+            --clean-backup "$BACKUP" \
+            --without-gptk \
+            --steam-app "$STEAM_APP" \
+            --runtime-app "$RUNTIME_APP" \
+            --support-root "$support" \
+            --compat-tools-root "$support/compatibilitytools.d" \
+            --runtime-root "$support/runtimes" \
+            --cache-dir "$CACHE" \
+            "$@"
+}
+
+MISMATCH_FAILURES=0
+CHANNEL_MISMATCH_ERROR="$TMP/channel-mismatch.error"
+write_snapshot_package \
+    "$BACKUP/SteamRuntime.app/Contents/MacOS/package" \
+    stable \
+    1781212412
+: >"$LOG"
+if run_first_install "$TMP/channel-mismatch-support" \
+    > /dev/null 2>"$CHANNEL_MISMATCH_ERROR"; then
+    echo "installer must reject a rollback snapshot from another channel" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+if ! test "$(cat "$CHANNEL_MISMATCH_ERROR")" = \
+    "current Steam channel does not match the rollback snapshot"; then
+    echo "channel mismatch must report the exact rollback snapshot error" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+if [ -s "$LOG" ]; then
+    echo "channel mismatch must fail before installer components run" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+
+BUILD_MISMATCH_ERROR="$TMP/build-mismatch.error"
+write_snapshot_package \
+    "$BACKUP/SteamRuntime.app/Contents/MacOS/package" \
+    publicbeta \
+    1780705203
+: >"$LOG"
+if run_first_install "$TMP/build-mismatch-support" \
+    > /dev/null 2>"$BUILD_MISMATCH_ERROR"; then
+    echo "installer must reject a rollback snapshot from another build" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+if ! test "$(cat "$BUILD_MISMATCH_ERROR")" = \
+    "current Steam build does not match the rollback snapshot"; then
+    echo "build mismatch must report the exact rollback snapshot error" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+if [ -s "$LOG" ]; then
+    echo "build mismatch must fail before installer components run" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+
+INVALID_BETA_ERROR="$TMP/invalid-beta.error"
+write_snapshot_package \
+    "$BACKUP/SteamRuntime.app/Contents/MacOS/package" \
+    publicbeta \
+    1781212412
+printf '\377\n' \
+    >"$BACKUP/SteamRuntime.app/Contents/MacOS/package/beta"
+: >"$LOG"
+if run_first_install "$TMP/invalid-beta-support" \
+    > /dev/null 2>"$INVALID_BETA_ERROR"; then
+    echo "installer must reject an unreadable rollback beta channel" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+if ! test "$(cat "$INVALID_BETA_ERROR")" = \
+    "rollback snapshot Steam beta channel could not be read"; then
+    echo "invalid rollback beta encoding must report a stable error" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+if grep -Fq "Traceback" "$INVALID_BETA_ERROR"; then
+    echo "invalid rollback beta encoding must not emit a traceback" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+if [ -s "$LOG" ]; then
+    echo "invalid rollback beta encoding must fail before components run" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+
+INVALID_MANIFEST_ERROR="$TMP/invalid-manifest.error"
+write_snapshot_package \
+    "$BACKUP/SteamRuntime.app/Contents/MacOS/package" \
+    publicbeta \
+    1781212412
+printf '\377\n' \
+    >"$BACKUP/SteamRuntime.app/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.manifest"
+: >"$LOG"
+if run_first_install "$TMP/invalid-manifest-support" \
+    > /dev/null 2>"$INVALID_MANIFEST_ERROR"; then
+    echo "installer must reject an unreadable rollback manifest" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+if ! test "$(cat "$INVALID_MANIFEST_ERROR")" = \
+    "rollback snapshot Steam build manifest could not be read"; then
+    echo "invalid rollback manifest encoding must report a stable error" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+if grep -Fq "Traceback" "$INVALID_MANIFEST_ERROR"; then
+    echo "invalid rollback manifest encoding must not emit a traceback" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+if [ -s "$LOG" ]; then
+    echo "invalid rollback manifest encoding must fail before components run" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+
+STOP_RUNNING_MARKER="$TMP/steam-running"
+cat >"$TMP/bin/pgrep" <<EOF
+#!/bin/sh
+test -f "$STOP_RUNNING_MARKER"
+EOF
+chmod +x "$TMP/bin/pgrep"
+cat >"$TMP/bin/stopper" <<EOF
+#!/bin/sh
+set -eu
+package="$RUNTIME_APP/Contents/MacOS/package"
+rm "\$package/beta"
+mv "\$package/steam_client_publicbeta_signed-2_osx.manifest" \
+    "\$package/steam_client_signed-2_osx.manifest"
+mv "\$package/steam_client_publicbeta_signed-2_osx.installed" \
+    "\$package/steam_client_signed-2_osx.installed"
+sed -i '' 's/1781212412/1780705203/' \
+    "\$package/steam_client_signed-2_osx.manifest"
+rm "$STOP_RUNNING_MARKER"
+EOF
+chmod +x "$TMP/bin/stopper"
+write_snapshot_package \
+    "$BACKUP/SteamRuntime.app/Contents/MacOS/package" \
+    publicbeta \
+    1781212412
+: >"$STOP_RUNNING_MARKER"
+: >"$LOG"
+STOP_REVALIDATION_ERROR="$TMP/stop-revalidation.error"
+if INSTALLER_PATH="$TMP/bin:$PATH" \
+    STEAM_STOPPER_FIXTURE="$TMP/bin/stopper" \
+    run_first_install "$TMP/stop-revalidation-support" --quit-steam \
+    > /dev/null 2>"$STOP_REVALIDATION_ERROR"; then
+    echo "installer must revalidate the rollback snapshot after stopping Steam" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+if ! test "$(cat "$STOP_REVALIDATION_ERROR")" = \
+    "current Steam channel does not match the rollback snapshot"; then
+    echo "post-stop channel mismatch must report the exact snapshot error" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+if grep -Fq "Traceback" "$STOP_REVALIDATION_ERROR"; then
+    echo "post-stop snapshot validation must not emit a traceback" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+if [ -s "$LOG" ]; then
+    echo "post-stop snapshot mismatch must fail before components run" >&2
+    MISMATCH_FAILURES=$((MISMATCH_FAILURES + 1))
+fi
+sed -i '' 's/1780705203/1781212412/' \
+    "$RUNTIME_APP/Contents/MacOS/package/steam_client_signed-2_osx.manifest"
+mv \
+    "$RUNTIME_APP/Contents/MacOS/package/steam_client_signed-2_osx.manifest" \
+    "$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.manifest"
+mv \
+    "$RUNTIME_APP/Contents/MacOS/package/steam_client_signed-2_osx.installed" \
+    "$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.installed"
+printf 'publicbeta\n' \
+    >"$RUNTIME_APP/Contents/MacOS/package/beta"
+
+if [ "$MISMATCH_FAILURES" -ne 0 ]; then
+    exit 1
+fi
+
+write_snapshot_package \
+    "$BACKUP/SteamRuntime.app/Contents/MacOS/package" \
+    publicbeta \
+    1781212412
+: >"$LOG"
 env \
     REALSTEAMONMAC_HOOK_BUILDER="$TMP/bin/hook" \
     REALSTEAMONMAC_LAUNCHER_BUILDER="$TMP/bin/launcher" \
@@ -160,6 +390,10 @@ mv \
 mv \
     "$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.installed" \
     "$RUNTIME_APP/Contents/MacOS/package/steam_client_signed-2_osx.installed"
+write_snapshot_package \
+    "$BACKUP/SteamRuntime.app/Contents/MacOS/package" \
+    stable \
+    1781212412
 env \
     REALSTEAMONMAC_HOOK_BUILDER="$TMP/bin/hook" \
     REALSTEAMONMAC_LAUNCHER_BUILDER="$TMP/bin/launcher" \
@@ -180,6 +414,10 @@ grep -q '"steam_build": "1781212412"' \
     "$STABLE_SUPPORT/install-state.json"
 grep -q '"steam_channel": "stable"' \
     "$STABLE_SUPPORT/install-state.json"
+write_snapshot_package \
+    "$BACKUP/SteamRuntime.app/Contents/MacOS/package" \
+    publicbeta \
+    1781212412
 mv \
     "$RUNTIME_APP/Contents/MacOS/package/steam_client_signed-2_osx.manifest" \
     "$RUNTIME_APP/Contents/MacOS/package/steam_client_publicbeta_signed-2_osx.manifest"
@@ -248,6 +486,10 @@ rm -rf "$SUPPORT" "$RUNTIME_ROOT"
 LEGACY_BACKUP_ROOT="$TMP/legacy-backups"
 LEGACY_BACKUP="$LEGACY_BACKUP_ROOT/steam-20260607T000000Z"
 mkdir -p "$LEGACY_BACKUP/Steam.app" "$LEGACY_BACKUP/SteamRuntime.app"
+write_snapshot_package \
+    "$LEGACY_BACKUP/SteamRuntime.app/Contents/MacOS/package" \
+    publicbeta \
+    1781212412
 LEGACY_BACKUP_REAL=$(CDPATH= cd -- "$LEGACY_BACKUP" && pwd -P)
 mkdir -p "$STEAM_APP/Contents"
 printf '%s\n' \
