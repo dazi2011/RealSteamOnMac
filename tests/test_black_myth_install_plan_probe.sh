@@ -9,6 +9,8 @@ grep -q 'const appid = 2358720;' "$PROBE"
 grep -q 'OpenInstallWizard(\[appid\])' "$PROBE"
 grep -q 'GetInstallManagerInfo()' "$PROBE"
 grep -q 'CancelInstall()' "$PROBE"
+grep -q '@sSteamCmdForcePlatformType windows' "$PROBE"
+grep -q '@sSteamCmdForcePlatformType macos' "$PROBE"
 
 if grep -Eq 'ContinueInstall|RunGame|ResumeAppUpdate' "$PROBE"; then
   printf '%s\n' "install-plan probe must not start a download or game" >&2

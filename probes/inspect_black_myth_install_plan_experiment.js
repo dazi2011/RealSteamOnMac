@@ -5,16 +5,26 @@
   }
 
   const before = await SteamClient.Installs.GetInstallManagerInfo();
-  const openResult = await SteamClient.Installs.OpenInstallWizard([appid]);
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-  const planned = await SteamClient.Installs.GetInstallManagerInfo();
-
+  let openResult = null;
+  let planned = null;
   let cancelResult = null;
   let cancelled = false;
-  if (planned.currentAppID === appid) {
-    cancelResult = await SteamClient.Installs.CancelInstall();
-    cancelled = true;
-    await new Promise((resolve) => setTimeout(resolve, 500));
+  try {
+    await SteamClient.Console.ExecCommand(
+      "@sSteamCmdForcePlatformType windows",
+    );
+    openResult = await SteamClient.Installs.OpenInstallWizard([appid]);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    planned = await SteamClient.Installs.GetInstallManagerInfo();
+    if (planned.currentAppID === appid) {
+      cancelResult = await SteamClient.Installs.CancelInstall();
+      cancelled = true;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  } finally {
+    await SteamClient.Console.ExecCommand(
+      "@sSteamCmdForcePlatformType macos",
+    );
   }
   const after = await SteamClient.Installs.GetInstallManagerInfo();
 

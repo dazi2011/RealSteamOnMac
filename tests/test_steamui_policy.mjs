@@ -41,11 +41,13 @@ const {
   nativeContainerActionDisabled,
   NATIVE_COMPAT_SECTION_LABELS,
   normalizeShortcutTargetCandidate,
+  openWindowsInstallWizard,
   refreshAppActionComponents,
   reconcileCompatDetails,
   reconcileAppState,
   requestNativeRepair,
   rendererForCompatTool,
+  runManagedGame,
   DETAILS_REFRESH_INTERVAL_MS,
 } = require("../ui/realsteamonmac_ui.js");
 
@@ -216,6 +218,73 @@ test("builds the fixed native control request shape", () => {
 
 test("builds a read-only native action availability request", () => {
   assert.equal(buildInspectStatePayload(), "action=inspect-state");
+});
+
+test("uses the backend-selected Windows launch entry for managed games", async () => {
+  const calls = [];
+  const result = await runManagedGame({
+    gameid: "990080",
+    options: "",
+    launchOption: -1,
+    launchSource: 7,
+    managedAppids: new Set([990080]),
+    inspectState: async (appid) => {
+      assert.equal(appid, 990080);
+      return {
+        installed: true,
+        manifest_diagnostic: "repair-required",
+        launch_entry_id: 13,
+        launch_executable: "HogwartsLegacy.exe",
+      };
+    },
+    originalRunGame: (...arguments_) => {
+      calls.push(arguments_);
+      return 42;
+    },
+  });
+
+  assert.equal(result, 42);
+  assert.deepEqual(calls, [["990080", "", 13, 7]]);
+});
+
+test("preserves explicit and unmanaged Steam launch choices", async () => {
+  const calls = [];
+  const originalRunGame = (...arguments_) => {
+    calls.push(arguments_);
+    return calls.length;
+  };
+  const inspectState = async () => {
+    throw new Error("inspectState must not run");
+  };
+
+  assert.equal(
+    await runManagedGame({
+      gameid: "990080",
+      options: "",
+      launchOption: 9,
+      launchSource: 7,
+      managedAppids: new Set([990080]),
+      inspectState,
+      originalRunGame,
+    }),
+    1,
+  );
+  assert.equal(
+    await runManagedGame({
+      gameid: "275850",
+      options: "",
+      launchOption: -1,
+      launchSource: 7,
+      managedAppids: new Set([990080]),
+      inspectState,
+      originalRunGame,
+    }),
+    2,
+  );
+  assert.deepEqual(calls, [
+    ["990080", "", 9, 7],
+    ["275850", "", -1, 7],
+  ]);
 });
 
 test("shows installed native sections but disables container actions without a prefix", () => {
@@ -1189,13 +1258,19 @@ test("chooses bounded Steam-owned repair actions", () => {
       sizeOnDisk: "0",
       manifestDiagnostic: "content-missing",
     }),
-    "install",
+    "reset",
   );
 });
 
 test("executes repair through fixed SteamClient methods", async () => {
   const calls = [];
+  let activePlanAppid = 0;
   const steamClient = {
+    Console: {
+      async ExecCommand(command) {
+        calls.push(["console", command]);
+      },
+    },
     Apps: {
       async VerifyApp(appid) {
         calls.push(["verify", appid]);
@@ -1209,7 +1284,20 @@ test("executes repair through fixed SteamClient methods", async () => {
     },
     Installs: {
       async OpenInstallWizard(appids) {
+        activePlanAppid = appids[0];
         calls.push(["install", [...appids]]);
+      },
+      async OpenUninstallWizard(appids, preserveUserFiles) {
+        calls.push(["uninstall", [...appids], preserveUserFiles]);
+      },
+      async GetInstallManagerInfo() {
+        const currentAppID = activePlanAppid;
+        activePlanAppid = 0;
+        return {
+          currentAppID,
+          nDiskSpaceRequired: currentAppID ? 1024 : 0,
+          eAppError: 0,
+        };
       },
     },
   };
@@ -1256,7 +1344,9 @@ test("executes repair through fixed SteamClient methods", async () => {
   assert.deepEqual(calls, [
     ["resume", 2358720, "0"],
     ["verify", 990080],
+    ["console", "@sSteamCmdForcePlatformType windows"],
     ["install", [714010]],
+    ["console", "@sSteamCmdForcePlatformType macos"],
   ]);
 
   assert.equal(
@@ -1273,7 +1363,11 @@ test("executes repair through fixed SteamClient methods", async () => {
     }),
     "install",
   );
-  assert.deepEqual(calls.at(-1), ["install", [2358720]]);
+  assert.deepEqual(calls.slice(-3), [
+    ["console", "@sSteamCmdForcePlatformType windows"],
+    ["install", [2358720]],
+    ["console", "@sSteamCmdForcePlatformType macos"],
+  ]);
 
   assert.equal(
     await requestNativeRepair({
@@ -1287,9 +1381,9 @@ test("executes repair through fixed SteamClient methods", async () => {
       manifestDiagnostic: "installed-depots-missing",
       clientid: "0",
     }),
-    "install",
+    "reset",
   );
-  assert.deepEqual(calls.at(-1), ["install", [2358720]]);
+  assert.deepEqual(calls.at(-1), ["uninstall", [2358720], true]);
 
   await assert.rejects(
     requestNativeRepair({
@@ -1304,6 +1398,72 @@ test("executes repair through fixed SteamClient methods", async () => {
     }),
     /not managed/,
   );
+});
+
+test("opens a Windows depot plan and restores the macOS content platform", async () => {
+  const calls = [];
+  let planned = false;
+  const steamClient = {
+    Console: {
+      async ExecCommand(command) {
+        calls.push(["console", command]);
+      },
+    },
+    Installs: {
+      async OpenInstallWizard(appids) {
+        planned = true;
+        calls.push(["install", [...appids]]);
+      },
+      async GetInstallManagerInfo() {
+        return {
+          currentAppID: planned ? 2358720 : 0,
+          nDiskSpaceRequired: planned ? 149864365377 : 0,
+          eAppError: 0,
+        };
+      },
+    },
+  };
+
+  const plan = await openWindowsInstallWizard(
+    steamClient,
+    2358720,
+    async () => {},
+  );
+
+  assert.equal(plan.currentAppID, 2358720);
+  assert.equal(plan.nDiskSpaceRequired, 149864365377);
+  assert.deepEqual(calls, [
+    ["console", "@sSteamCmdForcePlatformType windows"],
+    ["install", [2358720]],
+    ["console", "@sSteamCmdForcePlatformType macos"],
+  ]);
+});
+
+test("refuses to change the content platform during another install", async () => {
+  const calls = [];
+  await assert.rejects(
+    openWindowsInstallWizard(
+      {
+        Console: {
+          async ExecCommand(command) {
+            calls.push(command);
+          },
+        },
+        Installs: {
+          async GetInstallManagerInfo() {
+            return { currentAppID: 730 };
+          },
+          async OpenInstallWizard() {
+            assert.fail("must not open another install");
+          },
+        },
+      },
+      2358720,
+      async () => {},
+    ),
+    /another Steam install is active/,
+  );
+  assert.deepEqual(calls, []);
 });
 
 for (const detailsStatus of [3, 7, 9, 11, 19, 35]) {

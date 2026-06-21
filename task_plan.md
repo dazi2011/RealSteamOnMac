@@ -148,10 +148,19 @@ Phase 8: 2026-06-11 field regression remediation and verified release
 - [ ] Repair stable/beta Steam discovery, language-independent actions,
       restart readiness, Windows-only labeling, download reconciliation, and
       stale installed-manifest handling.
+  - [x] Force Windows content planning only around managed native install
+        wizards, reject empty plans, and restore macOS platform selection.
+  - [x] Route zero-depot/stale shell manifests to a user-confirmed native
+        uninstall reset that preserves user files.
+  - [ ] Complete live Black Myth reset and confirm its second Install action
+        shows a nonzero Windows depot plan.
 - [x] Drain a stale native `Steam.AppBundle/.../ipcserver` before restart
       without matching CrossOver's Windows Steam processes.
 - [ ] Repair Windows executable resolution, Rockstar bootstrap recovery,
       Windows-only `.exe` launch, and avoid false `.app` target selection.
+  - [x] Resolve the verified Windows appinfo launch entry before managed
+        automatic RunGame calls, covering Aimlabs and Hogwarts Legacy.
+  - [ ] Complete user launch acceptance for Aimlabs and Hogwarts Legacy.
 - [ ] Allow Steam's add-non-Steam-game flow to accept `.exe` files while
       preserving native `.app` behavior and applying compatibility only to PE
       executables.

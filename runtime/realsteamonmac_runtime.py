@@ -457,7 +457,7 @@ def inspect_action_state(appid, steam_root=None):
         else:
             prefix = compat_data / "pfx"
             container_exists = prefix.is_dir() and not prefix.is_symlink()
-        return {
+        result = {
             "installed": installed,
             "container_exists": container_exists,
             "manifest_diagnostic": install_state["diagnostic"],
@@ -469,6 +469,33 @@ def inspect_action_state(appid, steam_root=None):
             "staged_depot_count": install_state["staged_depot_count"],
             "install_path_nonempty": install_state["install_path_nonempty"],
         }
+        if installed:
+            try:
+                descriptor = build_launch_descriptor_from_appinfo(
+                    default_appinfo_path(steam_root),
+                    expected_appid=appid,
+                    install_path=install_path,
+                )
+                launch = resolve_launch_descriptor_value(
+                    descriptor,
+                    expected_appid=appid,
+                    install_path=install_path,
+                )
+                entry_id = int(launch["entry_id"], 10)
+                if entry_id < 0:
+                    raise ValueError("negative launch entry")
+                result["launch_entry_id"] = entry_id
+                result["launch_executable"] = str(
+                    launch["executable"].relative_to(install_path)
+                )
+            except (
+                LaunchDescriptorError,
+                OSError,
+                RuntimeError,
+                ValueError,
+            ) as error:
+                result["launch_diagnostic"] = str(error)
+        return result
     return {
         "installed": False,
         "container_exists": False,

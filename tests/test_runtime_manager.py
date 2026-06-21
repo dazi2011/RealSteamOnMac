@@ -1723,6 +1723,64 @@ class RuntimeManagerTests(unittest.TestCase):
         self.assertEqual(result["installed_depot_count"], 0)
         self.assertEqual(result["install_path_nonempty"], False)
 
+    def test_inspect_state_reports_verified_windows_launch_entry(self):
+        result = runtime.inspect_action_state("1118200")
+
+        self.assertEqual(result["installed"], True)
+        self.assertEqual(result["manifest_diagnostic"], "ready")
+        self.assertEqual(result["launch_entry_id"], 0)
+        self.assertEqual(result["launch_executable"], "Fixture.exe")
+
+    def test_inspect_state_avoids_stale_hogwarts_branch_entry(self):
+        appid = 990080
+        install_dir = "Hogwarts Legacy"
+        install_path = self.steamapps / "common" / install_dir
+        install_path.mkdir()
+        (install_path / "HogwartsLegacy.exe").write_bytes(b"MZfixture")
+        self.write_appinfo(
+            {
+                "0": {
+                    "executable": "Phoenix-Win64-Test.exe",
+                    "type": "option1",
+                    "config": {
+                        "oslist": "windows",
+                        "BetaKey": "development",
+                    },
+                },
+                "13": {
+                    "executable": "HogwartsLegacy.exe",
+                    "type": "default",
+                    "config": {"oslist": "windows"},
+                },
+            },
+            appid=appid,
+            installdir=install_dir,
+        )
+        (self.steamapps / f"appmanifest_{appid}.acf").write_text(
+            '"AppState"\n{\n'
+            f'\t"appid"\t\t"{appid}"\n'
+            '\t"StateFlags"\t\t"36"\n'
+            f'\t"installdir"\t\t"{install_dir}"\n'
+            '\t"SizeOnDisk"\t\t"74056715310"\n'
+            '\t"UpdateResult"\t\t"0"\n'
+            '\t"InstalledDepots"\n'
+            "\t{\n"
+            '\t\t"990081"\n'
+            "\t\t{\n"
+            '\t\t\t"manifest"\t\t"5198899101792588169"\n'
+            '\t\t\t"size"\t\t"74056715310"\n'
+            "\t\t}\n"
+            "\t}\n"
+            "}\n",
+            encoding="utf-8",
+        )
+
+        result = runtime.inspect_action_state(str(appid))
+
+        self.assertEqual(result["manifest_diagnostic"], "repair-required")
+        self.assertEqual(result["launch_entry_id"], 13)
+        self.assertEqual(result["launch_executable"], "HogwartsLegacy.exe")
+
     def test_action_job_rejects_an_installed_app_without_a_container(self):
         arguments = SimpleNamespace(
             appid="1118200",

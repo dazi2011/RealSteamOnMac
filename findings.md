@@ -1,5 +1,32 @@
 # Findings And Decisions
 
+## 2026-06-22 Game-Specific Launch And Download Regressions
+
+- Aimlabs AppID `714010` has a valid installed Windows launch entry
+  (`aimlab_tb.exe`) and a macOS appinfo entry (`AimLab.app`). On macOS, Steam's
+  automatic `RunGame(..., -1, ...)` selects the missing `.app` and fails before
+  the RealSteamOnMac spawn hook. The correct boundary is the native RunGame
+  request, not a fake `.app` or a post-spawn recovery.
+- Hogwarts Legacy AppID `990080` has a stale branch launch entry
+  (`Phoenix-Win64-Test.exe`) and a valid default Windows entry
+  (`HogwartsLegacy.exe`, entry 13). Steam also rejects the stale entry before
+  spawn. Managed automatic launches must therefore pass the backend-verified
+  appinfo entry ID into Steam's original RunGame call.
+- Black Myth: Wukong AppID `2358720` is recorded with `StateFlags=4`,
+  `SizeOnDisk=0`, and an empty `InstalledDepots` map. Its content log records
+  zero active depots, zero target depots, zero mounted depots, and a successful
+  completion. This is a platform-selection failure, not a network download.
+- Steam's console command
+  `@sSteamCmdForcePlatformType windows`, scoped around the native install
+  wizard and restored to `macos`, produces a real nonzero Windows depot plan
+  without requiring native compatibility-tool registration. A live cancelled
+  probe returned 42,218,544,928 required bytes for an uninstalled Windows-only
+  title.
+- The existing Black Myth manifest prevents Steam from producing a new plan.
+  It must first be cleared through Steam's native uninstall confirmation with
+  user files preserved. This reset is intentionally user-confirmed and is not
+  part of automated acceptance.
+
 ## 2026-06-21 Steam Public Beta 1781911235
 
 - Valve public beta build `1781911235` changes both SteamClient and SteamUI

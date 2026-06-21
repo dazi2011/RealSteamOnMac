@@ -87,6 +87,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   const nativeDetailUnregistrations = [];
   const nativeDetailCallbacks = new Map();
   const nativeRepairCalls = [];
+  let plannedAppid = 0;
   const registryRequests = [];
   const controlRequests = [];
   const actionRequests = [];
@@ -174,7 +175,21 @@ test("installs the predicate before dynamically replacing the bootstrap registry
       },
     },
     SteamClient: {
+      Console: {
+        async ExecCommand(command) {
+          nativeRepairCalls.push(["console", command]);
+        },
+      },
       Apps: {
+        async RunGame(gameid, options, launchOption, launchSource) {
+          nativeRepairCalls.push([
+            "run",
+            gameid,
+            options,
+            launchOption,
+            launchSource,
+          ]);
+        },
         async GetAvailableCompatTools() {
           return [
             {
@@ -216,7 +231,22 @@ test("installs the predicate before dynamically replacing the bootstrap registry
       },
       Installs: {
         async OpenInstallWizard(appids) {
+          plannedAppid = appids[0];
           nativeRepairCalls.push(["install", [...appids]]);
+        },
+        async OpenUninstallWizard(appids, preserveUserFiles) {
+          nativeRepairCalls.push([
+            "uninstall",
+            [...appids],
+            preserveUserFiles,
+          ]);
+        },
+        async GetInstallManagerInfo() {
+          return {
+            currentAppID: plannedAppid,
+            nDiskSpaceRequired: 1024,
+            eAppError: 0,
+          };
         },
       },
     },
@@ -469,7 +499,9 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     "verify",
   );
   assert.deepEqual(nativeRepairCalls, [
+    ["console", "@sSteamCmdForcePlatformType windows"],
     ["install", [990080]],
+    ["console", "@sSteamCmdForcePlatformType macos"],
     ["verify", 1118200],
   ]);
   assert.deepEqual(

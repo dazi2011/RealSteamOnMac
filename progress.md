@@ -1,5 +1,50 @@
 # Progress Log
 
+## Session: 2026-06-22
+
+### Phase 8: Windows Launch Selection And Depot Repair
+
+- **Status:** installed and Steam startup verified; game launch/reset acceptance pending
+- Reproduced the three remaining field failures from live Steam state and logs.
+- Proved Aimlabs and Hogwarts Legacy fail before `posix_spawn`: Steam's
+  automatic launch choice selects `AimLab.app` and
+  `Phoenix-Win64-Test.exe`, then returns files-missing before the existing
+  runtime descriptor fallback can run.
+- Wrapped Steam's native `Apps.RunGame` only for managed games using automatic
+  launch selection. The backend now resolves and validates the Windows
+  appinfo launch entry first; explicit selections and unmanaged/native games
+  remain unchanged.
+- Proved Black Myth: Wukong has a zero-byte, zero-depot installed manifest.
+  Its previous install used a macOS content plan with zero active/target
+  depots and nevertheless completed successfully.
+- Live-tested Steam's own temporary
+  `@sSteamCmdForcePlatformType windows` install planning on an uninstalled
+  Windows-only game. Steam returned a nonzero 42.2 GB plan; the probe cancelled
+  immediately and restored the content platform to macOS.
+- Added a bounded Windows-depot install wrapper that refuses to run while
+  another install is active, verifies a nonzero native plan, cancels empty
+  plans, and restores the macOS content platform in `finally`.
+- Added a Steam-native reset path for zero-depot/stale shell manifests through
+  `OpenUninstallWizard(..., preserveUserFiles=true)`. No destructive reset was
+  automatically confirmed.
+- Focused validation passed: 100 Node tests, 133 Python tests, installer
+  contract, syntax/bytecode checks, Black Myth probe contract, and
+  `git diff --check`.
+- Formally reinstalled the current source over Steam public beta `1781911235`.
+  Installed UI, runtime, and launch-descriptor hashes match source; SteamUI and
+  code signatures verify.
+- Steam reached its shared main UI context in three seconds. The native
+  registry synchronized 34 managed Windows-only games with no startup error,
+  and the installed `Apps.RunGame` method is the managed launch-entry wrapper.
+- A second live cancelled install probe confirmed the 42,218,544,928-byte
+  Windows plan remains intact after restoring the global content platform to
+  macOS, before the native wizard is cancelled.
+- Installed read-only inspection resolves Aimlabs to entry 0
+  (`AimLab_tb.exe`) and Hogwarts Legacy to entry 13
+  (`HogwartsLegacy.exe`). Black Myth remains correctly classified as
+  `content-missing`, zero depots, and zero bytes until the user confirms its
+  native reset.
+
 ## Session: 2026-06-21
 
 ### Phase 8: Steam 1781911235 Support And Installed Handoff

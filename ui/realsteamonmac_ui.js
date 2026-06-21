@@ -819,11 +819,11 @@
   }
 
   function manifestDiagnosticRepairAction(diagnostic) {
-    if (
-      MANIFEST_INSTALL_DIAGNOSTICS.has(diagnostic) ||
-      MANIFEST_STALE_SHELL_DIAGNOSTICS.has(diagnostic)
-    ) {
+    if (MANIFEST_INSTALL_DIAGNOSTICS.has(diagnostic)) {
       return "install";
+    }
+    if (MANIFEST_STALE_SHELL_DIAGNOSTICS.has(diagnostic)) {
+      return "reset";
     }
     if (MANIFEST_RESUME_DIAGNOSTICS.has(diagnostic)) {
       return "resume";
@@ -930,6 +930,62 @@
     return "install";
   }
 
+  async function openWindowsInstallWizard(
+    steamClient,
+    appid,
+    sleep = (milliseconds) =>
+      new Promise((resolve) =>
+        globalObject.setTimeout(resolve, milliseconds),
+      ),
+  ) {
+    if (
+      typeof steamClient?.Console?.ExecCommand !== "function" ||
+      typeof steamClient?.Installs?.OpenInstallWizard !== "function" ||
+      typeof steamClient?.Installs?.GetInstallManagerInfo !== "function"
+    ) {
+      throw new Error("Steam Windows install-plan APIs are unavailable");
+    }
+    const before =
+      await steamClient.Installs.GetInstallManagerInfo();
+    if (Number(before?.currentAppID ?? 0) !== 0) {
+      throw new Error("another Steam install is active");
+    }
+    let plan = null;
+    try {
+      await steamClient.Console.ExecCommand(
+        "@sSteamCmdForcePlatformType windows",
+      );
+      await steamClient.Installs.OpenInstallWizard([appid]);
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        plan = await steamClient.Installs.GetInstallManagerInfo();
+        if (
+          plan?.currentAppID === appid &&
+          Number(plan.nDiskSpaceRequired) > 0 &&
+          Number(plan.eAppError ?? 0) === 0
+        ) {
+          return plan;
+        }
+        if (Number(plan?.eAppError ?? 0) !== 0) {
+          break;
+        }
+        await sleep(100);
+      }
+      if (
+        plan?.currentAppID === appid &&
+        typeof steamClient.Installs.CancelInstall === "function"
+      ) {
+        await steamClient.Installs.CancelInstall();
+      }
+      throw new Error(
+        `Steam produced an empty Windows depot plan for AppID ${appid}`,
+      );
+    } finally {
+      await steamClient.Console.ExecCommand(
+        "@sSteamCmdForcePlatformType macos",
+      );
+    }
+  }
+
   async function requestNativeRepair({
     steamClient,
     appid,
@@ -983,14 +1039,67 @@
       await steamClient.Apps.VerifyApp(appid);
       return action;
     }
+    if (action === "reset") {
+      if (
+        typeof steamClient?.Installs?.OpenUninstallWizard !==
+        "function"
+      ) {
+        throw new Error("Steam stale-install reset API is unavailable");
+      }
+      await steamClient.Installs.OpenUninstallWizard([appid], true);
+      return action;
+    }
     if (
       typeof steamClient?.Installs?.OpenInstallWizard !==
       "function"
     ) {
       throw new Error("Steam install API is unavailable");
     }
-    await steamClient.Installs.OpenInstallWizard([appid]);
+    await openWindowsInstallWizard(steamClient, appid);
     return action;
+  }
+
+  async function runManagedGame({
+    gameid,
+    options,
+    launchOption,
+    launchSource,
+    managedAppids,
+    inspectState,
+    originalRunGame,
+  }) {
+    const appid = Number(gameid);
+    if (
+      launchOption !== -1 ||
+      !Number.isSafeInteger(appid) ||
+      appid <= 0 ||
+      !managedAppids.has(appid)
+    ) {
+      return originalRunGame(
+        gameid,
+        options,
+        launchOption,
+        launchSource,
+      );
+    }
+    const state = await inspectState(appid);
+    if (
+      state?.installed !== true ||
+      !Number.isSafeInteger(state.launch_entry_id) ||
+      state.launch_entry_id < 0 ||
+      typeof state.launch_executable !== "string" ||
+      !state.launch_executable.toLowerCase().endsWith(".exe")
+    ) {
+      throw new Error(
+        `verified Windows launch entry is unavailable for AppID ${appid}`,
+      );
+    }
+    return originalRunGame(
+      gameid,
+      options,
+      state.launch_entry_id,
+      launchSource,
+    );
   }
 
   function getSelectedData(overview) {
@@ -1294,6 +1403,7 @@
       normalizeControlConfig,
       normalizeDependencyCatalog,
       normalizeShortcutTargetCandidate,
+      openWindowsInstallWizard,
       nativeActionSectionsVisible,
       nativeContainerActionDisabled,
       NATIVE_COMPAT_SECTION_LABELS,
@@ -1303,6 +1413,7 @@
       reconcileAppState,
       requestNativeRepair,
       rendererForCompatTool,
+      runManagedGame,
       CONTROL_DEFAULTS,
       ACTION_POLL_INTERVAL_MS,
       COMPAT_TOOL_PRIORITY,
@@ -1983,6 +2094,7 @@
 
   let originalGetAvailableCompatTools = null;
   let originalSpecifyCompatTool = null;
+  let originalRunGame = null;
 
   async function commitNativeCompatSelection(appid, tool) {
     if (nativeCompatSelections.get(appid) === tool) {
@@ -2001,7 +2113,8 @@
     if (
       !apps ||
       typeof apps.SpecifyCompatTool !== "function" ||
-      typeof apps.GetAvailableCompatTools !== "function"
+      typeof apps.GetAvailableCompatTools !== "function" ||
+      typeof apps.RunGame !== "function"
     ) {
       throw new Error("Steam compatibility tool APIs are unavailable");
     }
@@ -2009,6 +2122,7 @@
     originalSpecifyCompatTool = apps.SpecifyCompatTool.bind(apps);
     originalGetAvailableCompatTools =
       apps.GetAvailableCompatTools.bind(apps);
+    originalRunGame = apps.RunGame.bind(apps);
     apps.GetAvailableCompatTools = async (appid) => {
       if (!managedAppids.has(appid)) {
         return originalGetAvailableCompatTools(appid);
@@ -2048,6 +2162,19 @@
       void reconcile();
       return result;
     };
+    apps.RunGame = (gameid, options, launchOption, launchSource) =>
+      runManagedGame({
+        gameid,
+        options,
+        launchOption,
+        launchSource,
+        managedAppids: managedStoreAppids,
+        inspectState: inspectNativeActionState,
+        originalRunGame,
+      }).catch((error) => {
+        status.actionLastError = String(error);
+        throw error;
+      });
     return originalSpecifyCompatTool;
   }
 
