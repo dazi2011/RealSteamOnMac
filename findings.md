@@ -1,5 +1,26 @@
 # Findings And Decisions
 
+## 2026-06-21 Steam Public Beta 1781911235
+
+- Valve public beta build `1781911235` changes both SteamClient and SteamUI
+  identities, so the previous build profile cannot be reused by offset alone.
+- The verified arm64 SteamClient profile uses UUID
+  `6886D7F5-2B8B-35D3-9008-6ACABF64DF57`, compatibility gate `0x00A03A3C`,
+  install gate `0x006254B4`, fallthrough `0x006254B8`, invalid target
+  `0x006254E4`, and the unchanged `_posix_spawn` pointer `0x018FD500`.
+- The SteamUI arm64 UUID is
+  `879F08BB-DC65-3967-8834-714D804A53F9`; the platform-flags getter moved to
+  `0x005EFE70`.
+- The SteamUI anchor structure remains compatible. The new clean compatibility
+  chunk hash is
+  `58b133db3f5db69768dc6889579aea1dcd7993bf86c332be79493b68879a7fee`.
+  The generated patched hash remains an output identity and is not accepted as
+  clean input.
+- A build-matched clean rollback snapshot is now available at
+  `~/RealSteamOnMac-Backups/steam-20260621T092529Z`.
+- Live startup proves installation and profile activation on `1781911235`.
+  It does not prove the pending game-specific and non-Steam workflows.
+
 ## 2026-06-11 Field Requirements
 
 - Rockstar Launcher installation interruption can leave Red Dead Redemption 2

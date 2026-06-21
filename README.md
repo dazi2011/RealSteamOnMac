@@ -8,7 +8,7 @@ per-game GPTK, DXMT, DXVK macOS, or WineD3D selection.
 > [!WARNING]
 > This is experimental software that patches a specific macOS Steam build.
 > Keep the generated rollback backup. Release `0.1.2` supports verified Steam
-> builds `1780705203`, `1780965181`, and `1781212412`.
+> builds `1780705203`, `1780965181`, `1781212412`, and `1781911235`.
 
 ## Highlights
 
@@ -45,7 +45,8 @@ these native sections remain visible but stay disabled until Steam has created
 
 - Apple Silicon Mac.
 - macOS 14 Sonoma or later.
-- Native macOS Steam with build `1780705203`, `1780965181`, or `1781212412`.
+- Native macOS Steam with build `1780705203`, `1780965181`, `1781212412`, or
+  `1781911235`.
 - Internet access and approximately 3 GB of free space.
 - Apple Command Line Tools, including `/usr/bin/python3`.
 
@@ -102,7 +103,7 @@ package size, and SHA-256 before opening the distinct transactional
 ```bash
 "$HOME/Library/Application Support/RealSteamOnMac/bin/check-for-updates" \
   --current-version "$(<"$HOME/Library/Application Support/RealSteamOnMac/VERSION")" \
-  --steam-build 1781212412 \
+  --steam-build 1781911235 \
   --public-key "$HOME/Library/Application Support/RealSteamOnMac/release-public-key.hex" \
   --verifier "$HOME/Library/Application Support/RealSteamOnMac/bin/verify-release-signature" \
   --install

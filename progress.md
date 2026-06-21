@@ -1,5 +1,37 @@
 # Progress Log
 
+## Session: 2026-06-21
+
+### Phase 8: Steam 1781911235 Support And Installed Handoff
+
+- **Status:** installed; user acceptance pending
+- Re-read the project plans and confirmed `main` was clean and synchronized at
+  `f61ed45`. No root RTF instruction file was present.
+- Formally uninstalled the stale mixed installation through the project
+  uninstaller. The modified Steam and 6.7 GB support tree were moved under
+  `~/RealSteamOnMac-Rollback/uninstall-20260621T091843Z`; games and prefixes
+  were preserved.
+- Started unmodified native Steam and allowed Valve's cached public-beta update
+  to complete from build `1781212412` to `1781911235`.
+- Captured and cross-checked the new SteamClient, SteamUI, bootstrap, web
+  resource, UUID, SHA-256, instruction, function-layout, and lazy-binding
+  identities.
+- Added strict build `1781911235` profiles without weakening UUID, hash,
+  instruction, or anchor validation.
+- Passed the focused SteamClient patch, SteamUI, hook, typed registry, spawn
+  redirect, installer, injection, release packaging, Node, and runtime tests.
+- Installed current source using a new build-matched clean snapshot at
+  `~/RealSteamOnMac-Backups/steam-20260621T092529Z`.
+- Verified the installed state records build `1781911235` and publicbeta, the
+  full runtime checksum manifest passes, all six runtime/helper files and the
+  UI match source, SteamUI verifies, and the app/hook/engine signatures pass.
+- Launched Steam and captured live evidence that the new install gate, spawn
+  redirect, typed registry, and data reconciliation profiles loaded. A system
+  screenshot confirmed the Simplified Chinese Steam store main interface.
+- Stopped automatic real-machine acceptance at the main interface. No game,
+  non-Steam shortcut, dependency action, container deletion, or destructive
+  operation was started. Steam resumed an existing download queue by itself.
+
 ## Session: 2026-06-11
 
 ### Phase 8: Field Regression Remediation And Verified Release

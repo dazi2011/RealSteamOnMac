@@ -159,6 +159,18 @@ static const steamclient_profile kSteamClientProfiles[] = {
         0x00627A08,
         STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET_REFRESH,
     },
+    {
+        "1781911235",
+        {
+            0x68, 0x86, 0xD7, 0xF5, 0x2B, 0x8B, 0x35, 0xD3,
+            0x90, 0x08, 0x6A, 0xCA, 0xBF, 0x64, 0xDF, 0x57,
+        },
+        0x00A03A3C,
+        0x006254B4,
+        0x006254B8,
+        0x006254E4,
+        STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET_REFRESH,
+    },
 };
 static const steamui_profile kSteamUIProfiles[] = {
     {
@@ -192,6 +204,14 @@ static const steamui_profile kSteamUIProfiles[] = {
             0xAC, 0xFC, 0x94, 0xC4, 0xF1, 0x22, 0x1E, 0xE5,
         },
         0x005EDF44,
+    },
+    {
+        "1781911235",
+        {
+            0x87, 0x9F, 0x08, 0xBB, 0xDC, 0x65, 0x39, 0x67,
+            0x88, 0x34, 0x71, 0x4D, 0x80, 0x4A, 0x53, 0xF9,
+        },
+        0x005EFE70,
     },
 };
 static const size_t kSteamClientProfileCount =

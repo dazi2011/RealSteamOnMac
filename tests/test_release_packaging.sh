@@ -203,6 +203,7 @@ if value["supported_steam_builds"] != [
     "1780705203",
     "1780965181",
     "1781212412",
+    "1781911235",
 ]:
     raise SystemExit("release manifest Steam build list is incomplete")
 if value["updater"]["name"] != "RealSteamOnMac-Update.pkg":

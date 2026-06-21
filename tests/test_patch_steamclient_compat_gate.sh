@@ -6,8 +6,10 @@ PATCHER="$ROOT/script/patch_steamclient_compat_gate.py"
 DEFAULT_BACKUP="$HOME/RealSteamOnMac-Backups/steam-1780705203-20260607T083704Z/SteamRuntime.app/Contents/MacOS/steamclient.dylib"
 DEFAULT_RUNTIME="$HOME/Library/Application Support/Steam/Steam.AppBundle/Steam/Contents/MacOS/steamclient.dylib"
 CURRENT_REFRESH_HASH=234a51d3ed72fadffc88b5dd3d176b372475fc0eb49442d3936802180c574cb6
+CURRENT_1781911235_HASH=ba7168140b6e6505c54ad9a0a940a807f4e2773a6ed9f40612b66028686bf435
 if [ -f "$DEFAULT_RUNTIME" ] &&
-    [ "$(shasum -a 256 "$DEFAULT_RUNTIME" | awk '{print $1}')" = "$CURRENT_REFRESH_HASH" ]; then
+    { [ "$(shasum -a 256 "$DEFAULT_RUNTIME" | awk '{print $1}')" = "$CURRENT_REFRESH_HASH" ] ||
+      [ "$(shasum -a 256 "$DEFAULT_RUNTIME" | awk '{print $1}')" = "$CURRENT_1781911235_HASH" ]; }; then
     DEFAULT_SOURCE="$DEFAULT_RUNTIME"
 elif [ -f "$DEFAULT_BACKUP" ]; then
     DEFAULT_SOURCE="$DEFAULT_BACKUP"
@@ -34,6 +36,9 @@ case "$SOURCE_HASH" in
         ;;
     234a51d3ed72fadffc88b5dd3d176b372475fc0eb49442d3936802180c574cb6)
         EXPECTED_BUILD=1781212412
+        ;;
+    ba7168140b6e6505c54ad9a0a940a807f4e2773a6ed9f40612b66028686bf435)
+        EXPECTED_BUILD=1781911235
         ;;
     *)
         echo "test source is not a supported Steam build" >&2

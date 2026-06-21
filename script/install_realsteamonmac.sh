@@ -200,7 +200,7 @@ PY
     STEAM_CHANNEL=$(printf '%s\n' "$STEAM_INFO" | sed -n '2p')
     STEAM_BUILD=$(printf '%s\n' "$STEAM_INFO" | sed -n '3p')
     case "$STEAM_BUILD" in
-        1780705203|1780965181|1781212412) ;;
+        1780705203|1780965181|1781212412|1781911235) ;;
         *)
             echo "unsupported Steam build: $STEAM_BUILD" >&2
             exit 1

@@ -69,8 +69,8 @@ detached signature is Ed25519 and is verified with
 Unknown fields, unknown Steam builds, cross-repository URLs, incorrect sizes,
 and incorrect SHA-256 digests fail closed.
 
-Release `0.1.2` supports Steam builds `1780705203`, `1780965181`, and
-`1781212412`.
+Release `0.1.2` supports Steam builds `1780705203`, `1780965181`,
+`1781212412`, and `1781911235`.
 
 ## Recovery
 

@@ -26,6 +26,7 @@ def valid_manifest():
             "1780705203",
             "1780965181",
             "1781212412",
+            "1781911235",
         ],
         "minimum_macos": "14.0",
         "architecture": "arm64",

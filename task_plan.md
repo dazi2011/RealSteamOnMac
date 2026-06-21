@@ -127,6 +127,11 @@ Phase 8: 2026-06-11 field regression remediation and verified release
       verification before publication.
 - [ ] Publish a verified GitHub release and make the repository public.
 - **Status:** in progress
+- **Steam 1781911235 checkpoint:** strict SteamClient, SteamUI, installer, and
+  release profiles are implemented and installed. The build-matched rollback
+  snapshot, runtime/helper hashes, SteamUI verification, live install-gate and
+  spawn-redirection logs, typed registry publication, and normal Steam main
+  interface have been verified. Game and workflow acceptance remains manual.
 
 ### Phase 8: Field Regression Remediation And Verified Release
 

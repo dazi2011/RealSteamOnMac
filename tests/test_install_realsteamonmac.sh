@@ -2,6 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+grep -q '1781911235' "$ROOT/script/install_realsteamonmac.sh"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
