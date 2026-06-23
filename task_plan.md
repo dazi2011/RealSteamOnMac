@@ -152,6 +152,8 @@ Phase 8: 2026-06-11 field regression remediation and verified release
         wizards, reject empty plans, and restore macOS platform selection.
   - [x] Route zero-depot/stale shell manifests to a user-confirmed native
         uninstall reset that preserves user files.
+  - [x] Connect Steam's actual native `OpenInstallWizard` method to the full
+        managed repair dispatcher without recursion or unmanaged-app changes.
   - [ ] Complete live Black Myth reset and confirm its second Install action
         shows a nonzero Windows depot plan.
 - [x] Drain a stale native `Steam.AppBundle/.../ipcserver` before restart
@@ -160,6 +162,8 @@ Phase 8: 2026-06-11 field regression remediation and verified release
       Windows-only `.exe` launch, and avoid false `.app` target selection.
   - [x] Resolve the verified Windows appinfo launch entry before managed
         automatic RunGame calls, covering Aimlabs and Hogwarts Legacy.
+  - [x] Bypass build `1781911235`'s allowlist-scoped missing-executable
+        preflight only after the verified spawn redirect is active.
   - [ ] Complete user launch acceptance for Aimlabs and Hogwarts Legacy.
 - [ ] Allow Steam's add-non-Steam-game flow to accept `.exe` files while
       preserving native `.app` behavior and applying compatibility only to PE

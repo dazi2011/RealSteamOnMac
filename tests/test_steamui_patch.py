@@ -284,6 +284,7 @@ class SteamUIPatchTests(unittest.TestCase):
             json.loads(payload),
             {
                 "appids": [1118200],
+                "steamBuild": "1781911235",
                 "defaultCompatTool": "realsteamonmac-dxmt",
                 "registryEndpoint": "http://127.0.0.1:57344/registry",
                 "controlEndpoint": "http://127.0.0.1:57344/config",

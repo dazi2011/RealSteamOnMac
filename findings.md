@@ -1,5 +1,30 @@
 # Findings And Decisions
 
+## 2026-06-23 Native Download And Launch Preflight
+
+- Steam's native Download action calls
+  `SteamClient.Installs.OpenInstallWizard`; the prior repair function was only
+  exported globally and never connected to that method. The wrapper now routes
+  exactly one managed store AppID through the full existing repair dispatcher,
+  while preserving unmanaged and multi-app calls.
+- On SteamClient UUID `6886D7F5-2B8B-35D3-9008-6ACABF64DF57`, the launch
+  routine keeps the AppID in `w28`, calls the final-path `_lstat` check at
+  `0x6235CC`, and branches at `0x6235D0` to the AppError 28 path
+  `0x6237A8`. This is the precise reason post-spawn fallback never ran.
+- The accepted fix is a build/profile-gated branch trampoline, not a fake
+  `.app`, filesystem-wide stat hook, or direct runtime launch. Managed apps
+  continue at `0x6235D4`; every unmanaged app replays the original file
+  existence result.
+- The launch gate must fail closed unless its context words match and the
+  allowlist-scoped `posix_spawn` redirect is already active.
+- SteamUI configuration now records the exact Steam build. The launcher reads
+  the same private build identity when reapplying UI resources, preventing a
+  missing CLI argument from forcing the old bootstrap fallback.
+- Installed read-only evidence after the fix: Aimlabs selects
+  `AimLab_tb.exe`; Hogwarts Legacy selects `HogwartsLegacy.exe`; Black Myth:
+  Wukong is a real incomplete download with 134,709,809,376 bytes remaining,
+  zero installed depots, and no created container.
+
 ## 2026-06-22 Game-Specific Launch And Download Regressions
 
 - Aimlabs AppID `714010` has a valid installed Windows launch entry

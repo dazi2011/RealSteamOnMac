@@ -96,6 +96,34 @@ grep -q 'steamclient: install gate patched' "$SOURCE"
 grep -q 'patch_steamclient_install_gate(steamclient, 0)' "$SOURCE"
 grep -q 'patch_steamclient_install_gate(header, slide)' "$SOURCE"
 
+# The launch-time missing-executable gate must remain UUID/profile bound. Steam
+# build 1781911235 checks the assembled launch target at 0x6235cc and branches
+# from 0x6235d0 to the AppError_28 path at 0x6237a8. Managed AppIDs bypass only
+# that branch so the existing allowlist-scoped posix_spawn redirect can run.
+grep -q 'launch_gate_offset' "$SOURCE"
+grep -q 'launch_gate_fallthrough_offset' "$SOURCE"
+grep -q 'launch_gate_missing_offset' "$SOURCE"
+grep -q '0x006235D0' "$SOURCE"
+grep -q '0x006235D4' "$SOURCE"
+grep -q '0x006237A8' "$SOURCE"
+grep -q '0x36000EC0' "$SOURCE"
+grep -q '0x942E693D' "$SOURCE"
+grep -q '0xB00098E8' "$SOURCE"
+grep -q '0x5280039B' "$SOURCE"
+grep -q 'build_launch_gate_trampoline' "$SOURCE"
+grep -q 'patch_steamclient_launch_gate' "$SOURCE"
+grep -q 'gSteamClientLaunchGatePatched' "$SOURCE"
+grep -q 'gSteamClientLaunchGateTrampoline' "$SOURCE"
+grep -q 'branch_destination' "$SOURCE"
+grep -q 'steamclient: launch gate patched' "$SOURCE"
+grep -q 'patch_steamclient_launch_gate(steamclient, 0)' "$SOURCE"
+grep -q 'patch_steamclient_launch_gate(header, slide)' "$SOURCE"
+image_spawn_line=$(grep -n 'patch_steamclient_spawn_redirect(header)' "$SOURCE" |
+    head -1 | cut -d: -f1)
+image_launch_line=$(grep -n 'patch_steamclient_launch_gate(header, slide)' "$SOURCE" |
+    tail -1 | cut -d: -f1)
+test "$image_spawn_line" -lt "$image_launch_line"
+
 # The browser registry is authenticated, loopback-only, bounded, and can
 # request a live install-gate rebuild without broadening the initial allowlist.
 grep -q 'realsteamonmac_start_registry_server' "$SOURCE"

@@ -48,6 +48,7 @@ const {
   requestNativeRepair,
   rendererForCompatTool,
   runManagedGame,
+  runManagedInstallWizard,
   DETAILS_REFRESH_INTERVAL_MS,
 } = require("../ui/realsteamonmac_ui.js");
 
@@ -220,7 +221,7 @@ test("builds a read-only native action availability request", () => {
   assert.equal(buildInspectStatePayload(), "action=inspect-state");
 });
 
-test("uses the backend-selected Windows launch entry for managed games", async () => {
+test("validates a Windows launch entry but preserves Steam automatic launch selection", async () => {
   const calls = [];
   const result = await runManagedGame({
     gameid: "990080",
@@ -237,6 +238,7 @@ test("uses the backend-selected Windows launch entry for managed games", async (
         launch_executable: "HogwartsLegacy.exe",
       };
     },
+    launchGateAvailable: true,
     originalRunGame: (...arguments_) => {
       calls.push(arguments_);
       return 42;
@@ -244,6 +246,25 @@ test("uses the backend-selected Windows launch entry for managed games", async (
   });
 
   assert.equal(result, 42);
+  assert.deepEqual(calls, [["990080", "", -1, 7]]);
+});
+
+test("preserves the previous launch argument on builds without the launch gate", async () => {
+  const calls = [];
+  await runManagedGame({
+    gameid: "990080",
+    options: "",
+    launchOption: -1,
+    launchSource: 7,
+    managedAppids: new Set([990080]),
+    inspectState: async () => ({
+      installed: true,
+      launch_entry_id: 13,
+      launch_executable: "HogwartsLegacy.exe",
+    }),
+    launchGateAvailable: false,
+    originalRunGame: (...arguments_) => calls.push(arguments_),
+  });
   assert.deepEqual(calls, [["990080", "", 13, 7]]);
 });
 
@@ -1437,6 +1458,43 @@ test("opens a Windows depot plan and restores the macOS content platform", async
     ["install", [2358720]],
     ["console", "@sSteamCmdForcePlatformType macos"],
   ]);
+});
+
+test("routes the native managed install button through stale-shell reset and Windows planning", async () => {
+  const calls = [];
+  const managedAppids = new Set([2358720]);
+  const originalOpenInstallWizard = async (appids) => {
+    calls.push(["install", [...appids]]);
+    return 73;
+  };
+
+  assert.equal(
+    await runManagedInstallWizard({
+      appids: [2358720],
+      managedAppids,
+      requestRepair: async (appid) => {
+        calls.push(["repair", appid]);
+        return "reset";
+      },
+      originalOpenInstallWizard,
+    }),
+    undefined,
+  );
+  assert.deepEqual(calls, [["repair", 2358720]]);
+
+  calls.length = 0;
+  assert.equal(
+    await runManagedInstallWizard({
+      appids: [730, 2358720],
+      managedAppids,
+      requestRepair: async () => {
+        assert.fail("multi-app native installs must pass through");
+      },
+      originalOpenInstallWizard,
+    }),
+    73,
+  );
+  assert.deepEqual(calls, [["install", [730, 2358720]]]);
 });
 
 test("refuses to change the content platform during another install", async () => {

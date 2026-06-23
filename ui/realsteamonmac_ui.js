@@ -937,10 +937,14 @@
       new Promise((resolve) =>
         globalObject.setTimeout(resolve, milliseconds),
       ),
+    openInstallWizard =
+      steamClient?.Installs?.OpenInstallWizard?.bind(
+        steamClient.Installs,
+      ),
   ) {
     if (
       typeof steamClient?.Console?.ExecCommand !== "function" ||
-      typeof steamClient?.Installs?.OpenInstallWizard !== "function" ||
+      typeof openInstallWizard !== "function" ||
       typeof steamClient?.Installs?.GetInstallManagerInfo !== "function"
     ) {
       throw new Error("Steam Windows install-plan APIs are unavailable");
@@ -955,7 +959,7 @@
       await steamClient.Console.ExecCommand(
         "@sSteamCmdForcePlatformType windows",
       );
-      await steamClient.Installs.OpenInstallWizard([appid]);
+      await openInstallWizard([appid]);
       for (let attempt = 0; attempt < 30; attempt += 1) {
         plan = await steamClient.Installs.GetInstallManagerInfo();
         if (
@@ -986,6 +990,27 @@
     }
   }
 
+  async function runManagedInstallWizard({
+    appids,
+    managedAppids,
+    requestRepair,
+    originalOpenInstallWizard,
+  }) {
+    const appid =
+      Array.isArray(appids) && appids.length === 1
+        ? Number(appids[0])
+        : 0;
+    if (
+      !Number.isSafeInteger(appid) ||
+      appid <= 0 ||
+      !managedAppids.has(appid)
+    ) {
+      return originalOpenInstallWizard(appids);
+    }
+    await requestRepair(appid);
+    return undefined;
+  }
+
   async function requestNativeRepair({
     steamClient,
     appid,
@@ -996,6 +1021,7 @@
     sizeOnDisk,
     manifestDiagnostic,
     clientid,
+    openInstallWizard,
   }) {
     if (
       allowlisted !== true ||
@@ -1055,7 +1081,12 @@
     ) {
       throw new Error("Steam install API is unavailable");
     }
-    await openWindowsInstallWizard(steamClient, appid);
+    await openWindowsInstallWizard(
+      steamClient,
+      appid,
+      undefined,
+      openInstallWizard,
+    );
     return action;
   }
 
@@ -1066,6 +1097,7 @@
     launchSource,
     managedAppids,
     inspectState,
+    launchGateAvailable,
     originalRunGame,
   }) {
     const appid = Number(gameid);
@@ -1097,7 +1129,7 @@
     return originalRunGame(
       gameid,
       options,
-      state.launch_entry_id,
+      launchGateAvailable ? launchOption : state.launch_entry_id,
       launchSource,
     );
   }
@@ -1414,6 +1446,7 @@
       requestNativeRepair,
       rendererForCompatTool,
       runManagedGame,
+      runManagedInstallWizard,
       CONTROL_DEFAULTS,
       ACTION_POLL_INTERVAL_MS,
       COMPAT_TOOL_PRIORITY,
@@ -2095,6 +2128,7 @@
   let originalGetAvailableCompatTools = null;
   let originalSpecifyCompatTool = null;
   let originalRunGame = null;
+  let originalOpenInstallWizard = null;
 
   async function commitNativeCompatSelection(appid, tool) {
     if (nativeCompatSelections.get(appid) === tool) {
@@ -2110,11 +2144,14 @@
 
   function installCompatToolBridge() {
     const apps = globalObject.SteamClient?.Apps;
+    const installs = globalObject.SteamClient?.Installs;
     if (
       !apps ||
       typeof apps.SpecifyCompatTool !== "function" ||
       typeof apps.GetAvailableCompatTools !== "function" ||
-      typeof apps.RunGame !== "function"
+      typeof apps.RunGame !== "function" ||
+      !installs ||
+      typeof installs.OpenInstallWizard !== "function"
     ) {
       throw new Error("Steam compatibility tool APIs are unavailable");
     }
@@ -2123,6 +2160,8 @@
     originalGetAvailableCompatTools =
       apps.GetAvailableCompatTools.bind(apps);
     originalRunGame = apps.RunGame.bind(apps);
+    originalOpenInstallWizard =
+      installs.OpenInstallWizard.bind(installs);
     apps.GetAvailableCompatTools = async (appid) => {
       if (!managedAppids.has(appid)) {
         return originalGetAvailableCompatTools(appid);
@@ -2170,7 +2209,19 @@
         launchSource,
         managedAppids: managedStoreAppids,
         inspectState: inspectNativeActionState,
+        launchGateAvailable:
+          configuration.steamBuild === "1781911235",
         originalRunGame,
+      }).catch((error) => {
+        status.actionLastError = String(error);
+        throw error;
+      });
+    installs.OpenInstallWizard = (appids) =>
+      runManagedInstallWizard({
+        appids,
+        managedAppids: managedStoreAppids,
+        requestRepair: requestCurrentNativeRepair,
+        originalOpenInstallWizard,
       }).catch((error) => {
         status.actionLastError = String(error);
         throw error;
@@ -2212,7 +2263,7 @@
     return result?.details ?? result ?? null;
   }
 
-  globalObject[REPAIR_ACTION_KEY] = async (requestedAppid) => {
+  async function requestCurrentNativeRepair(requestedAppid) {
     const appid = Number(requestedAppid);
     const overview =
       globalObject.appStore?.GetAppOverviewByAppID?.(appid) ?? null;
@@ -2239,8 +2290,11 @@
         actionState.size_on_disk ?? overview.size_on_disk,
       manifestDiagnostic: actionState.manifest_diagnostic,
       clientid: overview.selected_clientid ?? selected.clientid ?? "0",
+      openInstallWizard: originalOpenInstallWizard,
     });
-  };
+  }
+
+  globalObject[REPAIR_ACTION_KEY] = requestCurrentNativeRepair;
 
   async function restoreRemovedApp(appid, wasStoreApp) {
     try {

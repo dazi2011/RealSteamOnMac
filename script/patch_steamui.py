@@ -364,9 +364,17 @@ def load_public_dependencies(path):
     return public
 
 
-def config_bytes(appids, registry_token, dependencies, compat_tools):
+def config_bytes(
+    appids,
+    registry_token,
+    dependencies,
+    compat_tools,
+    steam_build,
+):
     if not compat_tools:
         raise ValueError("Steam UI compatibility tool catalog is empty")
+    if re.fullmatch(r"[0-9]{8,12}", steam_build) is None:
+        raise ValueError("Steam UI build identity is invalid")
     tool_names = {
         tool["strToolName"] for tool in compat_tools
     }
@@ -378,6 +386,7 @@ def config_bytes(appids, registry_token, dependencies, compat_tools):
     payload = json.dumps(
         {
             "appids": appids,
+            "steamBuild": steam_build,
             "defaultCompatTool": default_compat_tool,
             "registryEndpoint": REGISTRY_ENDPOINT,
             "controlEndpoint": CONTROL_ENDPOINT,
@@ -600,6 +609,7 @@ def verify_steamui(steamui_root):
     job_endpoint = parsed.get("jobEndpoint")
     registry_token = parsed.get("registryToken")
     dependencies = parsed.get("dependencies")
+    steam_build = parsed.get("steamBuild")
     if (
         not isinstance(compat_tools, list)
         or not compat_tools
@@ -648,6 +658,8 @@ def verify_steamui(steamui_root):
         or job_endpoint != JOB_ENDPOINT
         or not isinstance(registry_token, str)
         or re.fullmatch(r"[0-9A-Fa-f]{32,64}", registry_token) is None
+        or not isinstance(steam_build, str)
+        or re.fullmatch(r"[0-9]{8,12}", steam_build) is None
         or not isinstance(dependencies, list)
         or not dependencies
         or any(
@@ -673,6 +685,7 @@ def install_steamui(
     allowlist,
     dependency_catalog=None,
     compat_tools_root=None,
+    steam_build="1781911235",
 ):
     paths = paths_for(steamui_root)
     ui_source = Path(ui_source)
@@ -729,6 +742,7 @@ def install_steamui(
             registry_token,
             dependencies,
             compat_tools,
+            steam_build,
         ),
     )
     paths["config"].chmod(0o600)
@@ -773,6 +787,7 @@ def build_parser():
     install.add_argument("--allowlist", required=True)
     install.add_argument("--dependencies", required=True)
     install.add_argument("--compat-tools-root", required=True)
+    install.add_argument("--steam-build", required=True)
 
     verify = subparsers.add_parser("verify")
     verify.add_argument("--steamui-root", required=True)
@@ -791,6 +806,7 @@ def main(argv=None):
             arguments.allowlist,
             arguments.dependencies,
             arguments.compat_tools_root,
+            arguments.steam_build,
         )
         print(f"steamui=installed appids={','.join(map(str, appids))}")
     elif arguments.command == "verify":

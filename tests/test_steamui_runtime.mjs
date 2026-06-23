@@ -88,6 +88,10 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   const nativeDetailCallbacks = new Map();
   const nativeRepairCalls = [];
   let plannedAppid = 0;
+  const originalOpenInstallWizard = async (appids) => {
+    plannedAppid = appids[0];
+    nativeRepairCalls.push(["install", [...appids]]);
+  };
   const registryRequests = [];
   const controlRequests = [];
   const actionRequests = [];
@@ -112,6 +116,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
   const context = vm.createContext({
     __REALSTEAMONMAC_CONFIG__: Object.freeze({
       appids: [1118200],
+      steamBuild: "1781911235",
       defaultCompatTool: "realsteamonmac-dxmt",
       registryEndpoint: "http://127.0.0.1:57344/registry",
       controlEndpoint: "http://127.0.0.1:57344/config",
@@ -230,10 +235,7 @@ test("installs the predicate before dynamically replacing the bootstrap registry
         },
       },
       Installs: {
-        async OpenInstallWizard(appids) {
-          plannedAppid = appids[0];
-          nativeRepairCalls.push(["install", [...appids]]);
-        },
+        OpenInstallWizard: originalOpenInstallWizard,
         async OpenUninstallWizard(appids, preserveUserFiles) {
           nativeRepairCalls.push([
             "uninstall",
@@ -481,6 +483,29 @@ test("installs the predicate before dynamically replacing the bootstrap registry
     typeof context.__REALSTEAMONMAC_REQUEST_REPAIR__,
     "function",
   );
+  assert.notEqual(
+    context.SteamClient.Installs.OpenInstallWizard,
+    originalOpenInstallWizard,
+  );
+  const nativeInstallResult =
+    await context.SteamClient.Installs.OpenInstallWizard([990080]);
+  assert.equal(nativeInstallResult, undefined);
+  assert.deepEqual(nativeRepairCalls, [
+    ["console", "@sSteamCmdForcePlatformType windows"],
+    ["install", [990080]],
+    ["console", "@sSteamCmdForcePlatformType macos"],
+  ]);
+  assert.deepEqual(
+    actionRequests.map((request) => [
+      Number(new URL(request.url).searchParams.get("appid")),
+      request.options.body,
+    ]),
+    [[990080, "action=inspect-state"]],
+  );
+  plannedAppid = 0;
+  nativeRepairCalls.length = 0;
+  actionRequests.length = 0;
+
   const actionRequestCountBeforeShortcutRepair = actionRequests.length;
   await assert.rejects(
     context.__REALSTEAMONMAC_REQUEST_REPAIR__(700),

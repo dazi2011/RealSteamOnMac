@@ -69,12 +69,57 @@ static bool parent_path(char *destination, size_t capacity,
   return true;
 }
 
+static bool read_steam_build(const char *path,
+                             char *destination,
+                             size_t capacity) {
+  struct stat item;
+  if (
+      lstat(path, &item) != 0 ||
+      !S_ISREG(item.st_mode) ||
+      item.st_uid != geteuid() ||
+      (item.st_mode & 0022) != 0
+  ) {
+    return false;
+  }
+  FILE *stream = fopen(path, "r");
+  if (stream == NULL) {
+    return false;
+  }
+  char value[32] = {0};
+  bool success = fgets(value, sizeof(value), stream) != NULL;
+  int trailing = fgetc(stream);
+  if (fclose(stream) != 0) {
+    success = false;
+  }
+  size_t length = strcspn(value, "\r\n");
+  value[length] = '\0';
+  if (
+      trailing != EOF ||
+      length < 8 ||
+      length > 12 ||
+      length >= capacity
+  ) {
+    success = false;
+  }
+  for (size_t index = 0; success && index < length; ++index) {
+    if (value[index] < '0' || value[index] > '9') {
+      success = false;
+    }
+  }
+  if (!success) {
+    return false;
+  }
+  memcpy(destination, value, length + 1);
+  return true;
+}
+
 static bool install_steamui_patch(const char *patcher,
                                   const char *steamui,
                                   const char *ui_source,
                                   const char *allowlist,
                                   const char *dependencies,
-                                  const char *compat_tools) {
+                                  const char *compat_tools,
+                                  const char *steam_build) {
   pid_t child = fork();
   if (child < 0) {
     log_line("Steam UI patch failed: fork: %s", strerror(errno));
@@ -95,6 +140,8 @@ static bool install_steamui_patch(const char *patcher,
         (char *)dependencies,
         "--compat-tools-root",
         (char *)compat_tools,
+        "--steam-build",
+        (char *)steam_build,
         NULL,
     };
     execv(arguments[0], arguments);
@@ -436,6 +483,8 @@ int main(int argc, char **argv) {
   char ui_source[PATH_MAX];
   char allowlist[PATH_MAX];
   char dependencies[PATH_MAX];
+  char steam_build_path[PATH_MAX];
+  char steam_build[32];
   char compat_tools[PATH_MAX];
   char registry_token[PATH_MAX];
   char runtime_directory[PATH_MAX];
@@ -452,6 +501,8 @@ int main(int argc, char **argv) {
                   "allowlist.txt") ||
       !build_path(dependencies, sizeof(dependencies), support,
                   "dependencies/catalog.json") ||
+      !build_path(steam_build_path, sizeof(steam_build_path), support,
+                  "steam-build") ||
       !build_path(registry_token, sizeof(registry_token), support,
                   "registry-token") ||
       !parent_path(runtime_directory, sizeof(runtime_directory), runtime) ||
@@ -486,16 +537,22 @@ int main(int argc, char **argv) {
       access(ui_source, R_OK) != 0 ||
       access(allowlist, R_OK) != 0 ||
       access(dependencies, R_OK) != 0 ||
+      access(steam_build_path, R_OK) != 0 ||
       access(compat_tools, R_OK) != 0 ||
       access(registry_token, R_OK) != 0) {
     return exec_original_bootstrap(argc, argv,
                                    "RealSteamOnMac support files are missing");
   }
+  if (!read_steam_build(
+          steam_build_path, steam_build, sizeof(steam_build))) {
+    return exec_original_bootstrap(argc, argv,
+                                   "Steam build identity is unavailable");
+  }
   drain_stale_native_ipcserver(native_ipcserver);
   wait_for_stale_steam_helpers();
   if (!install_steamui_patch(
           patcher, steamui, ui_source, allowlist, dependencies,
-          compat_tools)) {
+          compat_tools, steam_build)) {
     return exec_original_bootstrap(argc, argv,
                                    "Steam UI resource patch failed");
   }

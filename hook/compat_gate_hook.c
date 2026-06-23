@@ -93,6 +93,9 @@ typedef struct {
   uintptr_t install_gate_offset;
   uintptr_t install_gate_fallthrough_offset;
   uintptr_t install_gate_invalid_offset;
+  uintptr_t launch_gate_offset;
+  uintptr_t launch_gate_fallthrough_offset;
+  uintptr_t launch_gate_missing_offset;
   uintptr_t posix_spawn_pointer_offset;
 } steamclient_profile;
 
@@ -121,6 +124,9 @@ static const steamclient_profile kSteamClientProfiles[] = {
         0x0062505C,
         0x00625060,
         0x0062508C,
+        0,
+        0,
+        0,
         STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET,
     },
     {
@@ -133,6 +139,9 @@ static const steamclient_profile kSteamClientProfiles[] = {
         0x00624600,
         0x00624604,
         0x00624630,
+        0,
+        0,
+        0,
         STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET,
     },
     {
@@ -145,6 +154,9 @@ static const steamclient_profile kSteamClientProfiles[] = {
         0x00627884,
         0x00627888,
         0x006278B4,
+        0,
+        0,
+        0,
         STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET_REFRESH,
     },
     {
@@ -157,6 +169,9 @@ static const steamclient_profile kSteamClientProfiles[] = {
         0x006279D8,
         0x006279DC,
         0x00627A08,
+        0,
+        0,
+        0,
         STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET_REFRESH,
     },
     {
@@ -169,6 +184,9 @@ static const steamclient_profile kSteamClientProfiles[] = {
         0x006254B4,
         0x006254B8,
         0x006254E4,
+        0x006235D0,
+        0x006235D4,
+        0x006237A8,
         STEAMCLIENT_POSIX_SPAWN_POINTER_OFFSET_REFRESH,
     },
 };
@@ -229,6 +247,14 @@ static const uint32_t kSteamClientForcedTrue[2] = {
 };
 static const uint32_t kSteamClientInstallGateExpected =
     0x37200188;  // tbnz w8, #4, 0x62508c
+static const uint32_t kSteamClientLaunchGateExpected =
+    0x36000EC0;  // tbz w0, #0, 0x6237a8
+static const uint32_t kSteamClientLaunchGateCallExpected =
+    0x942E693D;  // bl 0x11bdac0
+static const uint32_t kSteamClientLaunchGateFallthroughExpected =
+    0xB00098E8;  // adrp x8, 0x1940000
+static const uint32_t kSteamClientLaunchGateErrorExpected =
+    0x5280039B;  // mov w27, #0x1c
 static uint32_t gAllowlist[MAX_ALLOWLIST_APPIDS];
 static size_t gAllowlistCount = 0;
 static managed_shortcut gManagedShortcuts[MAX_MANAGED_SHORTCUTS];
@@ -243,6 +269,9 @@ static bool gSteamClientPatched = false;
 static bool gSteamClientSpawnPatched = false;
 static _Atomic bool gSteamClientInstallGatePatched = false;
 static _Atomic bool gInstallGateRefreshRequested = false;
+static _Atomic bool gSteamClientLaunchGatePatched = false;
+static _Atomic bool gLaunchGateRefreshRequested = false;
+static void *gSteamClientLaunchGateTrampoline = NULL;
 static bool gDataScanStartedLogged = false;
 static bool gDataScanSummaryLogged = false;
 static bool gWorkerStarted = false;
@@ -1289,6 +1318,17 @@ static bool encode_branch(void *source, void *destination,
   return true;
 }
 
+static void *branch_destination(void *source, uint32_t instruction) {
+  if ((instruction & 0xFC000000) != 0x14000000) {
+    return NULL;
+  }
+  int64_t immediate = instruction & 0x03FFFFFF;
+  if ((immediate & 0x02000000) != 0) {
+    immediate |= ~((int64_t)0x03FFFFFF);
+  }
+  return (uint8_t *)source + (immediate * 4);
+}
+
 static void *allocate_near_page(void *target, size_t *page_size_out) {
   long raw_page_size = sysconf(_SC_PAGESIZE);
   if (raw_page_size <= 0) {
@@ -1445,6 +1485,114 @@ static void *build_install_gate_trampoline(void *target,
   return memory;
 }
 
+// Steam's launch path assembles the selected launch executable, checks whether
+// it exists, and uses `tbz w0, #0, <missing>` to return AppError_28 before
+// posix_spawn. The AppID lives in w28 throughout this function. Managed apps
+// must reach the existing allowlist-scoped spawn redirect even when Steam
+// selected a stale Windows path or a missing macOS .app entry.
+//
+// Trampoline layout (per allowlisted AppID, then a shared tail):
+//   movz w10, #<appid_lo>
+//   movk w10, #<appid_hi>, lsl #16
+//   cmp  w28, w10
+//   b.eq skip                 ; managed -> continue toward posix_spawn
+//   ... (repeat per AppID) ...
+//   tbz  w0, #0, missing      ; original file-existence decision
+// skip:
+//   b    <profile fall-through>
+// missing:
+//   b    <profile missing target>
+static void *build_launch_gate_trampoline(
+    void *target,
+    uintptr_t module_base,
+    const steamclient_profile *profile) {
+  uint32_t allowlist[MAX_ALLOWLIST_APPIDS];
+  size_t allowlist_count = copy_allowlist(allowlist);
+  if (allowlist_count == 0) {
+    return NULL;
+  }
+
+  size_t page_size = 0;
+  void *memory = allocate_near_page(target, &page_size);
+  if (memory == NULL) {
+    return NULL;
+  }
+
+  size_t required_words = (allowlist_count * 4) + 3;
+  if (required_words > page_size / sizeof(uint32_t)) {
+    release_allocated_page(memory, page_size);
+    return NULL;
+  }
+
+  uint32_t *instructions = (uint32_t *)memory;
+  size_t branch_indices[MAX_ALLOWLIST_APPIDS];
+  size_t cursor = 0;
+  for (size_t index = 0; index < allowlist_count; ++index) {
+    uint32_t appid = allowlist[index];
+    uint32_t low = appid & 0xFFFF;
+    uint32_t high = appid >> 16;
+    instructions[cursor++] = 0x5280000A | (low << 5);
+    instructions[cursor++] = 0x72A0000A | (high << 5);
+    instructions[cursor++] = 0x6B0A039F;  // cmp w28, w10
+    branch_indices[index] = cursor;
+    instructions[cursor++] = 0;  // b.eq skip
+  }
+
+  size_t tbz_index = cursor;
+  instructions[cursor++] = 0;  // tbz w0, #0, missing
+  size_t skip_index = cursor;
+  instructions[cursor++] = 0;  // b <module + fall-through>
+  size_t missing_index = cursor;
+  instructions[cursor++] = 0;  // b <module + missing>
+
+  for (size_t index = 0; index < allowlist_count; ++index) {
+    intptr_t delta =
+        (intptr_t)skip_index - (intptr_t)branch_indices[index];
+    if (delta < -(1 << 18) || delta >= (1 << 18)) {
+      release_allocated_page(memory, page_size);
+      return NULL;
+    }
+    uint32_t immediate = (uint32_t)delta & 0x7FFFF;
+    instructions[branch_indices[index]] =
+        0x54000000 | (immediate << 5);  // b.eq skip
+  }
+
+  {
+    intptr_t delta = (intptr_t)missing_index - (intptr_t)tbz_index;
+    uint32_t imm14 = (uint32_t)delta & 0x3FFF;
+    instructions[tbz_index] =
+        0x36000000 | (imm14 << 5);  // tbz w0, #0, missing
+  }
+
+  uint32_t branch = 0;
+  if (!encode_branch(
+          &instructions[skip_index],
+          (void *)(module_base +
+                   profile->launch_gate_fallthrough_offset),
+          &branch)) {
+    release_allocated_page(memory, page_size);
+    return NULL;
+  }
+  instructions[skip_index] = branch;
+
+  if (!encode_branch(
+          &instructions[missing_index],
+          (void *)(module_base + profile->launch_gate_missing_offset),
+          &branch)) {
+    release_allocated_page(memory, page_size);
+    return NULL;
+  }
+  instructions[missing_index] = branch;
+
+  size_t code_size = cursor * sizeof(uint32_t);
+  sys_icache_invalidate(memory, code_size);
+  if (mprotect(memory, page_size, PROT_READ | PROT_EXEC) != 0) {
+    release_allocated_page(memory, page_size);
+    return NULL;
+  }
+  return memory;
+}
+
 static void finish_install_gate_update(
     uint64_t generation, bool patched) {
   atomic_store_explicit(
@@ -1560,6 +1708,158 @@ static void patch_steamclient_install_gate(const struct mach_header *header,
   log_line(message);
 }
 
+static void finish_launch_gate_update(
+    uint64_t generation, bool patched) {
+  atomic_store_explicit(
+      &gSteamClientLaunchGatePatched, patched, memory_order_release);
+  atomic_store_explicit(
+      &gLaunchGateRefreshRequested, false, memory_order_release);
+  if (
+      atomic_load_explicit(
+          &gAllowlistGeneration, memory_order_acquire) != generation
+  ) {
+    atomic_store_explicit(
+        &gSteamClientLaunchGatePatched, false, memory_order_release);
+    atomic_store_explicit(
+        &gLaunchGateRefreshRequested, true, memory_order_release);
+  }
+}
+
+static void patch_steamclient_launch_gate(const struct mach_header *header,
+                                          intptr_t slide) {
+  const steamclient_profile *profile =
+      steamclient_profile_for_header(header);
+  if (profile == NULL) {
+    return;
+  }
+  if (profile->launch_gate_offset == 0) {
+    atomic_store_explicit(
+        &gSteamClientLaunchGatePatched, true, memory_order_release);
+    return;
+  }
+  if (!gSteamClientSpawnPatched) {
+    return;
+  }
+
+  bool refresh_requested =
+      atomic_load_explicit(
+          &gLaunchGateRefreshRequested, memory_order_acquire);
+  if (
+      atomic_load_explicit(
+          &gSteamClientLaunchGatePatched, memory_order_acquire) &&
+      !refresh_requested
+  ) {
+    return;
+  }
+
+  ensure_allowlist_loaded();
+  uint64_t generation =
+      atomic_load_explicit(
+          &gAllowlistGeneration, memory_order_acquire);
+  uint32_t allowlist[MAX_ALLOWLIST_APPIDS];
+  size_t allowlist_count = copy_allowlist(allowlist);
+
+  uint8_t *target =
+      (uint8_t *)((uintptr_t)header + profile->launch_gate_offset);
+  uint32_t current = 0;
+  uint32_t call = 0;
+  uint32_t fallthrough = 0;
+  uint32_t error = 0;
+  memcpy(&current, target, sizeof(current));
+  memcpy(&call, target - sizeof(call), sizeof(call));
+  memcpy(&fallthrough, target + sizeof(fallthrough), sizeof(fallthrough));
+  memcpy(
+      &error,
+      (uint8_t *)((uintptr_t)header +
+                  profile->launch_gate_missing_offset + 0x6C),
+      sizeof(error));
+  if (
+      call != kSteamClientLaunchGateCallExpected ||
+      fallthrough != kSteamClientLaunchGateFallthroughExpected ||
+      error != kSteamClientLaunchGateErrorExpected
+  ) {
+    log_line("steamclient: refused unexpected launch gate context");
+    return;
+  }
+  if (current != kSteamClientLaunchGateExpected) {
+    void *destination = branch_destination(target, current);
+    if (
+        destination == gSteamClientLaunchGateTrampoline &&
+        gSteamClientLaunchGateTrampoline != NULL &&
+        !refresh_requested
+    ) {
+      atomic_store_explicit(
+          &gSteamClientLaunchGatePatched, true, memory_order_release);
+      log_line("steamclient: launch gate already redirected");
+      return;
+    }
+    if (destination != gSteamClientLaunchGateTrampoline) {
+      log_line("steamclient: refused foreign launch gate branch");
+      return;
+    }
+  }
+
+  if (allowlist_count == 0) {
+    if (current != kSteamClientLaunchGateExpected) {
+      uintptr_t page = 0;
+      size_t protected_size = 0;
+      if (!make_text_writable(
+              target, sizeof(kSteamClientLaunchGateExpected),
+              &page, &protected_size)) {
+        log_line("steamclient: could not restore empty launch gate");
+        return;
+      }
+      memcpy(
+          target, &kSteamClientLaunchGateExpected,
+          sizeof(kSteamClientLaunchGateExpected));
+      sys_icache_invalidate(
+          target, sizeof(kSteamClientLaunchGateExpected));
+      restore_text_protection(page, protected_size);
+    }
+    // Do not deallocate a previous trampoline here: another Steam thread may
+    // already have branched into it. Registry refreshes are bounded, so
+    // retaining obsolete executable pages is safer than a use-after-free.
+    gSteamClientLaunchGateTrampoline = NULL;
+    finish_launch_gate_update(generation, true);
+    log_line("steamclient: launch gate restored (empty allowlist)");
+    return;
+  }
+
+  void *branch_target =
+      build_launch_gate_trampoline(
+          target, (uintptr_t)header, profile);
+  if (branch_target == NULL) {
+    log_line("steamclient: could not build launch gate filter");
+    return;
+  }
+
+  uint32_t branch = 0;
+  if (!encode_branch(target, branch_target, &branch)) {
+    log_line("steamclient: generated launch gate filter is not reachable");
+    return;
+  }
+
+  uintptr_t page = 0;
+  size_t protected_size = 0;
+  if (!make_text_writable(target, sizeof(branch), &page, &protected_size)) {
+    log_line("steamclient: could not make launch gate writable");
+    return;
+  }
+  memcpy(target, &branch, sizeof(branch));
+  sys_icache_invalidate(target, sizeof(branch));
+  restore_text_protection(page, protected_size);
+  gSteamClientLaunchGateTrampoline = branch_target;
+  finish_launch_gate_update(generation, true);
+
+  char message[224];
+  snprintf(message, sizeof(message),
+           "steamclient: launch gate patched build=%s slide=%p target=%p "
+           "trampoline=%p appids=%zu",
+           profile->build,
+           (void *)slide, (void *)target, branch_target, allowlist_count);
+  log_line(message);
+}
+
 static void patch_steamclient(const struct mach_header *header,
                               intptr_t slide) {
   const steamclient_profile *profile =
@@ -1605,6 +1905,7 @@ static void image_added(const struct mach_header *header, intptr_t slide) {
   patch_steamclient(header, slide);
   patch_steamclient_install_gate(header, slide);
   patch_steamclient_spawn_redirect(header);
+  patch_steamclient_launch_gate(header, slide);
 }
 
 __attribute__((visibility("default")))
@@ -2483,6 +2784,10 @@ static bool publish_registry(const managed_registry *registry) {
       &gInstallGateRefreshRequested, true, memory_order_release);
   atomic_store_explicit(
       &gSteamClientInstallGatePatched, false, memory_order_release);
+  atomic_store_explicit(
+      &gLaunchGateRefreshRequested, true, memory_order_release);
+  atomic_store_explicit(
+      &gSteamClientLaunchGatePatched, false, memory_order_release);
   char message[128];
   snprintf(
       message, sizeof(message),
@@ -3571,6 +3876,14 @@ static void *data_override_worker(void *context) {
           find_steamclient_image(NULL);
       if (steamclient != NULL) {
         patch_steamclient_spawn_redirect(steamclient);
+      }
+    }
+    if (!atomic_load_explicit(
+            &gSteamClientLaunchGatePatched, memory_order_acquire)) {
+      const struct mach_header *steamclient =
+          find_steamclient_image(NULL);
+      if (steamclient != NULL) {
+        patch_steamclient_launch_gate(steamclient, 0);
       }
     }
     const struct mach_header *steamui = find_steamui_image(NULL);

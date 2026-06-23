@@ -1,5 +1,47 @@
 # Progress Log
 
+## Session: 2026-06-23
+
+### Phase 8: Native Download Wiring And Missing-Executable Launch Gate
+
+- **Status:** installed and Steam startup verified; user game acceptance pending
+- Traced the remaining Aimlabs and Hogwarts failures to SteamClient build
+  `1781911235` offset `0x6235D0`, where `_lstat` failure branches to
+  AppError 28 before the existing `posix_spawn` redirect.
+- Added a UUID/profile-gated, allowlist-filtered launch trampoline that
+  preserves Steam's original result for unmanaged apps and bypasses only the
+  missing-target branch for managed apps. It validates the surrounding call,
+  fallthrough, and AppError instructions and activates only after the spawn
+  redirect is installed.
+- Restored Steam's automatic launch-option argument on build `1781911235`;
+  the runtime continues to resolve Aimlabs from missing `AimLab.app` to
+  `AimLab_tb.exe` and Hogwarts from missing `Phoenix-Win64-Test.exe` to
+  `HogwartsLegacy.exe`. Older supported builds retain the previous argument
+  behavior until equivalent native offsets are profiled.
+- Connected Steam's real `Installs.OpenInstallWizard` entry point to the
+  existing complete native repair dispatcher for one managed AppID. Unmanaged
+  and multi-app calls pass through unchanged, and the saved original wizard
+  prevents recursion.
+- Added a private installed Steam build identity consumed by the launcher so
+  startup UI reapplication preserves build-specific launch behavior instead
+  of entering the fallback bootstrap.
+- Focused validation passed: 96 Node tests, 133 runtime/descriptor Python
+  tests, 21 SteamUI patch tests, native hook/spawn contracts, launcher,
+  injection installer, top-level installer, syntax checks, and
+  `git diff --check`.
+- Formally reinstalled from the build-matched clean backup. Installed UI and
+  native-engine hashes match source; SteamUI and app signatures verify.
+- Steam public beta `1781911235` reached the main Store/Steam shared contexts.
+  The install gate, spawn redirect, launch gate, 34-app registry, and initial
+  reconciliation all loaded without project errors.
+- Read-only game acceptance resolves Aimlabs to `AimLab_tb.exe` and Hogwarts
+  Legacy to `HogwartsLegacy.exe`. Black Myth: Wukong now reports
+  `download-incomplete` with 134,709,809,376 bytes remaining instead of a
+  zero-byte completed shell.
+- No game was automatically launched and no download, uninstall, container,
+  prefix, or game deletion was performed. The three reported workflows remain
+  pending direct user interaction.
+
 ## Session: 2026-06-22
 
 ### Phase 8: Windows Launch Selection And Depot Repair

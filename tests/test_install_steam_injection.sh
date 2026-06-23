@@ -68,6 +68,7 @@ ditto "$RUNTIME_APP" "$BACKUP/SteamRuntime.app"
 
 "$ROOT/script/install_steam_injection.sh" \
     --clean-backup "$BACKUP" \
+    --steam-build 1781911235 \
     --steam-app "$STEAM_APP" \
     --runtime-app "$RUNTIME_APP" \
     --support-root "$SUPPORT" \
@@ -75,6 +76,7 @@ ditto "$RUNTIME_APP" "$BACKUP/SteamRuntime.app"
 
 "$ROOT/script/install_steam_injection.sh" \
     --clean-backup "$BACKUP" \
+    --steam-build 1781911235 \
     --steam-app "$STEAM_APP" \
     --runtime-app "$RUNTIME_APP" \
     --support-root "$SUPPORT" \
@@ -156,6 +158,7 @@ ln -sfn "packages/$OPEN_PACKAGE" "$SUPPORT/runtimes/current"
 
 "$ROOT/script/install_steam_injection.sh" \
     --clean-backup "$BACKUP" \
+    --steam-build 1781911235 \
     --steam-app "$STEAM_APP" \
     --runtime-app "$RUNTIME_APP" \
     --support-root "$SUPPORT" \

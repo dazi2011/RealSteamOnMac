@@ -16,9 +16,10 @@ DEPENDENCY_SOURCE="$ROOT/config/dependencies.json"
 SUPPORT_ROOT="$HOME/Library/Application Support/RealSteamOnMac"
 COMPAT_TOOLS_ROOT="$HOME/Library/Application Support/Steam/compatibilitytools.d"
 CLEAN_BACKUP=""
+STEAM_BUILD=""
 
 usage() {
-    echo "usage: $0 --clean-backup DIRECTORY [--steam-app PATH] [--runtime-app PATH] [--support-root PATH] [--compat-tools-root PATH]" >&2
+    echo "usage: $0 --clean-backup DIRECTORY --steam-build BUILD [--steam-app PATH] [--runtime-app PATH] [--support-root PATH] [--compat-tools-root PATH]" >&2
     exit 2
 }
 
@@ -27,6 +28,11 @@ while [ "$#" -gt 0 ]; do
         --clean-backup)
             [ "$#" -ge 2 ] || usage
             CLEAN_BACKUP=$2
+            shift 2
+            ;;
+        --steam-build)
+            [ "$#" -ge 2 ] || usage
+            STEAM_BUILD=$2
             shift 2
             ;;
         --steam-app)
@@ -56,6 +62,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "$CLEAN_BACKUP" ] || usage
+printf '%s\n' "$STEAM_BUILD" | grep -Eq '^[0-9]{8,12}$' || usage
 [ -d "$STEAM_APP" ] || {
     echo "Steam app not found: $STEAM_APP" >&2
     exit 1
@@ -342,13 +349,18 @@ if ! grep -Eq '^[0-9A-Fa-f]{32,64}$' "$REGISTRY_TOKEN"; then
     echo "RealSteamOnMac registry token is invalid" >&2
     exit 1
 fi
+STEAM_BUILD_FILE="$SUPPORT_ROOT/steam-build"
+STEAM_BUILD_TEMP="$SUPPORT_ROOT/.steam-build.$$"
+(umask 077 && printf '%s\n' "$STEAM_BUILD" >"$STEAM_BUILD_TEMP")
+mv "$STEAM_BUILD_TEMP" "$STEAM_BUILD_FILE"
 
 "$PATCHER_TARGET" install \
     --steamui-root "$STEAMUI_ROOT" \
     --ui-source "$UI_TARGET" \
     --allowlist "$SUPPORT_ROOT/allowlist.txt" \
     --dependencies "$DEPENDENCY_TARGET" \
-    --compat-tools-root "$COMPAT_TOOLS_ROOT"
+    --compat-tools-root "$COMPAT_TOOLS_ROOT" \
+    --steam-build "$STEAM_BUILD"
 
 # Preserve the clean Valve bootstrap as a standalone fallback executable.
 SIGNED_BOOTSTRAP="$TMP_ROOT/steam_osx.original"

@@ -486,6 +486,7 @@ fi
 
 "$INJECTION_INSTALLER" \
     --clean-backup "$CLEAN_BACKUP" \
+    --steam-build "$STEAM_BUILD" \
     --steam-app "$STEAM_APP" \
     --runtime-app "$STEAM_RUNTIME" \
     --support-root "$SUPPORT_ROOT" \

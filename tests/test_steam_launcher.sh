@@ -42,6 +42,7 @@ if grep -Eq \
     exit 1
 fi
 grep -q 'exec_original_bootstrap' "$SOURCE"
+grep -q 'steam-build' "$SOURCE"
 
 "$BUILD_SCRIPT"
 file "$LAUNCHER" | grep -q 'arm64'
@@ -72,6 +73,7 @@ for tool in "$ROOT"/compat-tool/*; do
     cp -R "$tool" "$COMPAT_TOOLS/$(basename "$tool")"
 done
 printf '%s\n' 1118200 >"$SUPPORT/allowlist.txt"
+printf '%s\n' 1781911235 >"$SUPPORT/steam-build"
 printf '%s\n' 0123456789abcdef0123456789abcdef \
     >"$SUPPORT/registry-token"
 cp "$ROOT/config/dependencies.json" \
@@ -161,6 +163,8 @@ grep -Fq "tools=disabled" "$CAPTURE"
 grep -Fq "args=-skipinitialbootstrap -cef-enable-debugging" "$CAPTURE"
 grep -Fq "steamui=verified" "$CAPTURE"
 grep -Fq '/realsteamonmac/ui.js' "$STEAMUI/index.html"
+grep -Fq '"steamBuild":"1781911235"' \
+    "$STEAMUI/realsteamonmac/config.js"
 test -f "$STEAMUI/index.html.realsteamonmac.original"
 test -f \
     "$STEAMUI/chunk~2dcc5aaf7.js.realsteamonmac.original"
